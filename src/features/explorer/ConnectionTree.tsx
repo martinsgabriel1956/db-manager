@@ -16,6 +16,7 @@ import {
   defaultSchemaFor,
   ENGINE_LABEL,
   ENVIRONMENT_STYLE,
+  isBrowsable,
   isSqlEngine
 } from "@/features/connections/options";
 import type { TableTarget } from "@/features/tabs/store";
@@ -60,7 +61,8 @@ function ConnectionNode({
   onOpenEditor
 }: ConnectionNodeProps) {
   const [expanded, setExpanded] = useState(false);
-  const isSupported = isSqlEngine(connection.engine);
+  const isSupported = isBrowsable(connection.engine);
+  const hasSqlEditor = isSqlEngine(connection.engine);
   const schemas = useSchemas(connection.id, expanded && isSupported);
   const disconnect = useDisconnect();
   const environment = ENVIRONMENT_STYLE[connection.environment];
@@ -83,7 +85,7 @@ function ConnectionNode({
           <span className="text-xs text-muted-foreground">{ENGINE_LABEL[connection.engine]}</span>
           {connection.readOnly && <Badge variant="outline">RO</Badge>}
         </button>
-        {isSupported && (
+        {hasSqlEditor && (
           <Button
             size="icon-xs"
             variant="ghost"

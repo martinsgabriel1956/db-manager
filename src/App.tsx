@@ -9,6 +9,7 @@ import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { ConnectionTree } from "@/features/explorer/ConnectionTree";
 import { isConnectionQuery } from "@/features/explorer/queries";
+import { CollectionView } from "@/features/mongo/CollectionView";
 import { HistoryView } from "@/features/history/HistoryView";
 import { TableView } from "@/features/table/TableView";
 import { TabBar } from "@/features/tabs/TabBar";
@@ -193,6 +194,16 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const connection = connections.find(c => c.id === tab.connectionId);
   if (!connection) {
     return null;
+  }
+  if (tab.kind === "table" && connection.engine === "mongo") {
+    return (
+      <CollectionView
+        connectionId={tab.connectionId}
+        database={tab.schema}
+        collection={tab.table}
+        readOnly={connection.readOnly}
+      />
+    );
   }
   if (tab.kind === "table") {
     return (

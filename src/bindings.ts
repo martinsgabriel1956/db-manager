@@ -20,9 +20,22 @@ export const commands = {
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
 	searchHistory: (text: string, connectionId: string | null) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId }),
+	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
+	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
+	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
+	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
 };
 
 /* Types */
+export type AggregateOutcome = {
+	documents: string[],
+	/**  more results existed than the display limit */
+	truncated: boolean,
+	durationMs: number,
+};
+
+export type AggregateResponse = { status: "executed"; outcome: AggregateOutcome } | { status: "needsConfirmation"; confirmation: Confirmation };
+
 /**
  *  Serialized as `{ kind, message }`. The payload is the final, human-readable message
  *  (built by the constructors below), so `message` and `Display` always match.
@@ -123,6 +136,15 @@ export type ConnectionConfig = {
 	keySeparator: string | null,
 };
 
+export type DocumentPage = {
+	documents: string[],
+	hasMore: boolean,
+};
+
+export type DocumentWrite = { kind: "insert"; document: string } | 
+/**  replaces the whole document with that _id */
+{ kind: "replace"; id: string; document: string } | { kind: "delete"; id: string };
+
 export type Engine = "postgres" | "mysql" | "sqlite" | "mongo" | "redis";
 
 export type Environment = "local" | "dev" | "staging" | "prod";
@@ -135,6 +157,19 @@ export type Filter = {
 };
 
 export type FilterOp = "eq" | "like" | "isNull" | "isNotNull";
+
+/**  Documents and _ids cross the boundary as Extended JSON text (see adapters/mongo/ejson.rs). */
+export type FindRequest = {
+	database: string,
+	collection: string,
+	/**  Extended JSON; empty means everything */
+	filter: string,
+	sort: string,
+	projection: string,
+	/**  0-based */
+	page: number,
+	pageSize: number,
+};
 
 export type ForeignKeyInfo = {
 	name: string,
@@ -240,8 +275,17 @@ export type TableStructure = {
 	foreignKeys: ForeignKeyInfo[],
 };
 
-/**  Where the database lives: a server (Postgres, MySQL, Mongo, Redis) or a file (SQLite). */
-export type Target = { kind: "network"; host: string; port: number; database: string; username: string } | { kind: "file"; path: string };
+/**
+ *  Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite)
+ *  or a connection string (MongoDB).
+ */
+export type Target = { kind: "network"; host: string; port: number; database: string; username: string } | { kind: "file"; path: string } | 
+/**
+ *  MongoDB connection string (mongodb:// or mongodb+srv://). The string itself
+ *  carries credentials, so it is the secret kept in the keychain; only the
+ *  database to open by default is stored here.
+ */
+{ kind: "uri"; database: string };
 
 export type TlsConfig = {
 	mode: TlsMode,
@@ -249,4 +293,14 @@ export type TlsConfig = {
 };
 
 export type TlsMode = "disable" | "prefer" | "require" | "verifyFull";
+
+export type WriteRequest = {
+	database: string,
+	collection: string,
+	write: DocumentWrite,
+};
+
+export type WriteResponse = 
+/**  `id` is the written document's _id, as Extended JSON */
+{ status: "written"; id: string } | { status: "needsConfirmation"; confirmation: Confirmation };
 

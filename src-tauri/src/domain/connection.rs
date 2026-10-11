@@ -36,7 +36,8 @@ pub struct TlsConfig {
     pub ca_cert_path: Option<String>,
 }
 
-/// Where the database lives: a server (Postgres, MySQL, Mongo, Redis) or a file (SQLite).
+/// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite)
+/// or a connection string (MongoDB).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Target {
@@ -49,6 +50,11 @@ pub enum Target {
     },
     #[serde(rename_all = "camelCase")]
     File { path: String },
+    /// MongoDB connection string (mongodb:// or mongodb+srv://). The string itself
+    /// carries credentials, so it is the secret kept in the keychain; only the
+    /// database to open by default is stored here.
+    #[serde(rename_all = "camelCase")]
+    Uri { database: String },
 }
 
 /// Connection metadata persisted in connections.json. The password never lives here:

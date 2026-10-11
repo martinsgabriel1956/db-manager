@@ -3,6 +3,7 @@
 #   docker compose -f dev/demo/compose.yml down -v   # stop and delete the data
 # Postgres: host localhost, port 55432, database demo, user demo, password demo.
 # MySQL:    host localhost, port 53306, database shop, user demo, password demo.
+# MongoDB:  host localhost, port 57017, database shop (no authentication).
 # SQLite:   python3 dev/demo/make-sqlite.py  →  dev/demo/demo.sqlite
 services:
   postgres:
@@ -40,6 +41,16 @@ services:
       interval: 2s
       retries: 60
 
+  mongo:
+    image: mongo:5.0.6
+    container_name: db-manager-demo-mongo
+    ports:
+      - "127.0.0.1:57017:27017"
+    volumes:
+      - ./seed-mongo.js:/docker-entrypoint-initdb.d/seed.js:ro
+      - demo-mongo-data:/data/db
+
 volumes:
   demo-data:
   demo-mysql-data:
+  demo-mongo-data:

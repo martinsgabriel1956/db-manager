@@ -195,3 +195,27 @@ test("non-postgres engines say navigation comes later", async () => {
     screen.queryByRole("button", { name: "Abrir editor SQL de Cache" })
   ).not.toBeInTheDocument();
 });
+
+test("a MongoDB connection can be saved with a connection string", async () => {
+  const calls = fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click(await screen.findByRole("button", { name: "Nova" }));
+  await user.type(screen.getByLabelText("Nome"), "Atlas");
+  await user.selectOptions(screen.getByLabelText("Banco"), "mongo");
+  await user.click(screen.getByLabelText("Connection string"));
+  expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
+  await user.type(screen.getByRole("textbox", { name: /Database padrão/ }), "shop");
+  await user.type(
+    screen.getByLabelText("Connection string", { selector: "input#uri" }),
+    "mongodb+srv://me:pw@c.example.net/"
+  );
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+  await waitFor(() => expect(callsTo(calls, "save_connection")).toHaveLength(1));
+  expect(callsTo(calls, "save_connection")[0]).toMatchObject({
+    config: { engine: "mongo", target: { kind: "uri", database: "shop" } },
+    secret: { action: "set", value: "mongodb+srv://me:pw@c.example.net/" }
+  });
+});

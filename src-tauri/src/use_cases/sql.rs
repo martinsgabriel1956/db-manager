@@ -2,13 +2,14 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use crate::adapters::SqlConnection;
+use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::sql_builder;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, CompletionTable, Confirmation, ConnectionConfig,
     Engine, Environment, FilterOp, RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome,
     StatementResult, TableChanges, TableStructure,
 };
-use crate::registry::{OpenConnection, Registry};
+use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
 use crate::storage::secrets::SecretStore;
 use crate::use_cases::guard;
@@ -25,16 +26,19 @@ pub async fn connect(
     if registry.is_connected(&config.id) {
         return Ok(());
     }
-    // a file database has no password to look up
-    let password = match config.engine {
+    // a file database has no password; MongoDB's secret may be a whole connection string
+    let secret = match config.engine {
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let adapter = SqlConnection::connect(&config, password, config.read_only).await?;
+    let live = match config.engine {
+        Engine::Mongo => Live::Mongo(MongoAdapter::connect(&config, secret).await?),
+        _ => Live::Sql(SqlConnection::connect(&config, secret, config.read_only).await?),
+    };
     registry.insert_connection(
         &config.id,
         OpenConnection {
-            adapter,
+            live,
             name: config.name,
             environment: config.environment,
             read_only: config.read_only,
@@ -45,7 +49,7 @@ pub async fn connect(
 
 pub async fn disconnect(registry: &Registry, connection_id: &str) {
     if let Some(connection) = registry.remove_connection(connection_id) {
-        connection.adapter.close().await;
+        connection.close().await;
     }
 }
 
@@ -53,11 +57,7 @@ pub async fn list_schemas(
     registry: &Registry,
     connection_id: &str,
 ) -> Result<Vec<SchemaInfo>, AppError> {
-    registry
-        .connection(connection_id)?
-        .adapter
-        .list_schemas()
-        .await
+    registry.connection(connection_id)?.list_schemas().await
 }
 
 pub async fn table_structure(
@@ -68,7 +68,7 @@ pub async fn table_structure(
 ) -> Result<TableStructure, AppError> {
     registry
         .connection(connection_id)?
-        .adapter
+        .sql()?
         .table_structure(schema, table)
         .await
 }
@@ -79,7 +79,7 @@ pub async fn completion_tables(
 ) -> Result<Vec<CompletionTable>, AppError> {
     registry
         .connection(connection_id)?
-        .adapter
+        .sql()?
         .completion_tables()
         .await
 }
@@ -92,7 +92,7 @@ pub async fn browse(
     validate_browse(&request)?;
     registry
         .connection(connection_id)?
-        .adapter
+        .sql()?
         .browse(&request)
         .await
 }
@@ -127,7 +127,7 @@ pub async fn run_script(
     confirmed: bool,
 ) -> Result<RunResponse, AppError> {
     let connection = registry.connection(connection_id)?;
-    let dialect = connection.adapter.dialect();
+    let dialect = connection.sql()?.dialect();
     let statements = dialect.split(sql);
     if statements.is_empty() {
         return Err(AppError::validation("nenhum comando para executar"));
@@ -148,7 +148,7 @@ pub async fn run_script(
 
     let started = Instant::now();
     let result = connection
-        .adapter
+        .sql()?
         .run_script(&statements, EDITOR_BATCH_SIZE, |pid| {
             registry.start_run(run_id, connection.clone(), pid)
         })
@@ -211,7 +211,7 @@ pub async fn apply_changes(
         return Err(AppError::validation("nenhuma alteração para salvar"));
     }
     let primary_key = connection
-        .adapter
+        .sql()?
         .primary_key(&changes.schema, &changes.table)
         .await?;
     validate_keys(&changes.changes, &primary_key)?;
@@ -221,7 +221,7 @@ pub async fn apply_changes(
         .iter()
         .map(|change| {
             sql_builder::change_sql(
-                connection.adapter.dialect(),
+                connection.sql()?.dialect(),
                 &changes.schema,
                 &changes.table,
                 change,
@@ -239,7 +239,7 @@ pub async fn apply_changes(
     }
 
     let started = Instant::now();
-    let result = connection.adapter.apply(&statements).await;
+    let result = connection.sql()?.apply(&statements).await;
     let sql = format!("{};", statements.join(";\n"));
     record(
         history,
@@ -278,7 +278,7 @@ fn validate_keys(changes: &[RowChange], primary_key: &[String]) -> Result<(), Ap
 }
 
 /// Best effort: failing to write history must not fail the query itself.
-async fn record(
+pub(crate) async fn record(
     history: &HistoryStore,
     connection_id: &str,
     connection: &OpenConnection,
@@ -297,7 +297,7 @@ async fn record(
         .await;
 }
 
-fn elapsed_ms(started: Instant) -> u32 {
+pub(crate) fn elapsed_ms(started: Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
@@ -330,10 +330,14 @@ pub fn close_cursor(registry: &Registry, cursor_id: &str) {
 /// Cancels a script that is still running (no-op if it already finished).
 pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppError> {
     match registry.running(run_id) {
-        Some((connection, session)) => {
-            connection.adapter.cancel(session).await;
-            Ok(())
-        }
+        Some((connection, session)) => match &connection.live {
+            Live::Sql(sql) => {
+                sql.cancel(session).await;
+                Ok(())
+            }
+            // MongoDB operations are tagged with the run id
+            Live::Mongo(mongo) => mongo.kill(run_id).await,
+        },
         None => Ok(()),
     }
 }
@@ -453,7 +457,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn document_stores_do_not_connect_yet() {
+    async fn redis_does_not_connect_yet() {
         let config = ConnectionConfig {
             id: "r".into(),
             name: "r".into(),

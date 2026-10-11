@@ -84,6 +84,9 @@ fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
         Target::File { path } => Target::File {
             path: path.trim().to_string(),
         },
+        Target::Uri { database } => Target::Uri {
+            database: database.trim().to_string(),
+        },
     };
     config.tls.ca_cert_path = non_empty(config.tls.ca_cert_path);
     // the separator is meaningful with spaces (" | "), so it is not trimmed
@@ -129,8 +132,28 @@ fn validate(
                 return invalid("SQLite não usa senha");
             }
         }
-        (Engine::Sqlite, Target::Network { .. }) => {
+        (Engine::Sqlite, Target::Network { .. } | Target::Uri { .. }) => {
             return invalid("SQLite precisa de um arquivo, não de host/porta");
+        }
+        (Engine::Mongo, Target::Uri { .. }) => {
+            let is_new = !existing.iter().any(|c| c.id == config.id);
+            match secret {
+                SecretChange::Set(uri) if !is_connection_string(uri) => {
+                    return invalid(
+                        "a connection string deve começar com mongodb:// ou mongodb+srv://",
+                    );
+                }
+                SecretChange::Keep | SecretChange::Clear if is_new => {
+                    return invalid("informe a connection string");
+                }
+                SecretChange::Clear => {
+                    return invalid("a conexão por connection string precisa dela salva");
+                }
+                _ => {}
+            }
+        }
+        (_, Target::Uri { .. }) => {
+            return invalid("connection string só se aplica ao MongoDB");
         }
         (_, Target::File { .. }) => {
             return invalid("este banco precisa de host/porta, não de arquivo");
@@ -161,6 +184,11 @@ fn validate(
         (Engine::Redis, Some(_)) | (_, None) => Ok(()),
         (_, Some(_)) => invalid("separador de chaves só se aplica ao Redis"),
     }
+}
+
+fn is_connection_string(uri: &str) -> bool {
+    let uri = uri.trim();
+    uri.starts_with("mongodb://") || uri.starts_with("mongodb+srv://")
 }
 
 fn is_valid_redis_db(database: &str) -> bool {
@@ -518,6 +546,90 @@ mod tests {
             let msg = validation_message(save(&store, &MemorySecrets::default(), config, secret));
             assert_eq!(msg, expected);
         }
+    }
+
+    fn mongo_uri(id: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            engine: Engine::Mongo,
+            target: Target::Uri {
+                database: " shop ".into(),
+            },
+            ..postgres(id, "atlas")
+        }
+    }
+
+    #[test]
+    fn mongo_connection_string_lives_in_the_keychain() {
+        let (dir, store) = store();
+        let secrets = MemorySecrets::default();
+        let uri = "mongodb+srv://me:s3cret@cluster0.example.net/?retryWrites=true";
+
+        save(
+            &store,
+            &secrets,
+            mongo_uri("1"),
+            SecretChange::Set(uri.into()),
+        )
+        .unwrap();
+        // editing later can keep it
+        save(&store, &secrets, mongo_uri("1"), SecretChange::Keep).unwrap();
+
+        assert_eq!(secrets.stored("1").as_deref(), Some(uri));
+        assert_eq!(
+            list(&store).unwrap()[0].target,
+            Target::Uri {
+                database: "shop".into()
+            }
+        );
+        let raw = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+        assert!(!raw.contains("s3cret"));
+    }
+
+    #[test]
+    fn mongo_connection_string_validation() {
+        let cases = [
+            (
+                mongo_uri("1"),
+                SecretChange::Keep,
+                "informe a connection string",
+            ),
+            (
+                mongo_uri("1"),
+                SecretChange::Set("http://x".into()),
+                "a connection string deve começar com mongodb:// ou mongodb+srv://",
+            ),
+            (
+                ConnectionConfig {
+                    target: Target::Uri {
+                        database: String::new(),
+                    },
+                    ..postgres("1", "pg")
+                },
+                SecretChange::Keep,
+                "connection string só se aplica ao MongoDB",
+            ),
+        ];
+        for (config, secret, expected) in cases {
+            let (_dir, store) = store();
+            assert_eq!(
+                validation_message(save(&store, &MemorySecrets::default(), config, secret)),
+                expected
+            );
+        }
+
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        save(
+            &store,
+            &secrets,
+            mongo_uri("1"),
+            SecretChange::Set("mongodb://h".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            validation_message(save(&store, &secrets, mongo_uri("1"), SecretChange::Clear)),
+            "a conexão por connection string precisa dela salva"
+        );
     }
 
     #[test]

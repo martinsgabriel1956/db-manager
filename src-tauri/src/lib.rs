@@ -43,6 +43,10 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::cancel_run,
             commands::sql::apply_changes,
             commands::sql::search_history,
+            commands::mongo::browse_collection,
+            commands::mongo::collection_indexes,
+            commands::mongo::run_aggregation,
+            commands::mongo::write_document,
         ])
 }
 

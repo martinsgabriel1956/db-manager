@@ -32,6 +32,10 @@ export type ConnectionFormValues = {
   tlsMode: TlsMode;
   caCertPath: string;
   keySeparator: string;
+  /** MongoDB only: host/port fields or a connection string */
+  mongoMode: "network" | "uri";
+  /** the connection string; kept in the keychain like a password */
+  uri: string;
 };
 
 export type FormErrors = Partial<Record<keyof ConnectionFormValues, string>>;
@@ -55,8 +59,12 @@ export const EMPTY_FORM: ConnectionFormValues = {
   filePath: "",
   tlsMode: "prefer",
   caCertPath: "",
-  keySeparator: DEFAULT_REDIS_SEPARATOR
+  keySeparator: DEFAULT_REDIS_SEPARATOR,
+  mongoMode: "network",
+  uri: ""
 };
+
+const CONNECTION_STRING = /^mongodb(\+srv)?:\/\//;
 
 const commonSchema = z.object({
   name: z.string().trim().min(1, "Informe um nome"),
@@ -103,8 +111,12 @@ function collect<T>(schema: z.ZodType<T>, input: unknown, errors: FormErrors): T
 
 function toTarget(
   file: z.infer<typeof fileSchema> | undefined,
-  network: z.infer<typeof networkSchema> | undefined
+  network: z.infer<typeof networkSchema> | undefined,
+  uriDatabase: string | undefined
 ): Target | undefined {
+  if (uriDatabase !== undefined) {
+    return { kind: "uri", database: uriDatabase };
+  }
   if (file) {
     return { kind: "file", path: file.filePath };
   }
@@ -114,9 +126,17 @@ function toTarget(
   return undefined;
 }
 
+function isUriMode(values: ConnectionFormValues): boolean {
+  return values.engine === "mongo" && values.mongoMode === "uri";
+}
+
 function secretChange(values: ConnectionFormValues): SecretChange {
   if (values.engine === "sqlite") {
     return { action: "keep" };
+  }
+  if (isUriMode(values)) {
+    const uri = values.uri.trim();
+    return uri === "" ? { action: "keep" } : { action: "set", value: uri };
   }
   if (values.clearPassword) {
     return { action: "clear" };
@@ -127,17 +147,27 @@ function secretChange(values: ConnectionFormValues): SecretChange {
   return { action: "keep" };
 }
 
-export function parseForm(values: ConnectionFormValues, id: string): ParsedForm {
+/** `isEditing`: an existing connection may leave secrets empty to keep the stored ones. */
+export function parseForm(values: ConnectionFormValues, id: string, isEditing = false): ParsedForm {
   const errors: FormErrors = {};
   const isSqlite = values.engine === "sqlite";
   const isRedis = values.engine === "redis";
+  const isUri = isUriMode(values);
 
   const common = collect(commonSchema, values, errors);
-  const network = isSqlite ? undefined : collect(networkSchema, values, errors);
+  const network = isSqlite || isUri ? undefined : collect(networkSchema, values, errors);
   const file = isSqlite ? collect(fileSchema, values, errors) : undefined;
   const redis = isRedis ? collect(redisSchema, values, errors) : undefined;
+  if (isUri) {
+    const uri = values.uri.trim();
+    if (uri === "" && !isEditing) {
+      errors.uri = "Informe a connection string";
+    } else if (uri !== "" && !CONNECTION_STRING.test(uri)) {
+      errors.uri = "Use mongodb:// ou mongodb+srv://";
+    }
+  }
 
-  const target = toTarget(file, network);
+  const target = toTarget(file, network, isUri ? values.database.trim() : undefined);
 
   if (!common || !target || Object.keys(errors).length > 0) {
     return { success: false, errors };
@@ -167,6 +197,7 @@ export function parseForm(values: ConnectionFormValues, id: string): ParsedForm 
 
 export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
   const network = config.target.kind === "network" ? config.target : null;
+  const uri = config.target.kind === "uri" ? config.target : null;
   return {
     ...EMPTY_FORM,
     name: config.name,
@@ -176,12 +207,13 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
     timeoutSecs: String(config.timeoutSecs),
     host: network?.host ?? "",
     port: network ? String(network.port) : "",
-    database: network?.database ?? "",
+    database: network?.database ?? uri?.database ?? "",
     username: network?.username ?? "",
     filePath: config.target.kind === "file" ? config.target.path : "",
     tlsMode: config.tls.mode,
     caCertPath: config.tls.caCertPath ?? "",
-    keySeparator: config.keySeparator ?? DEFAULT_REDIS_SEPARATOR
+    keySeparator: config.keySeparator ?? DEFAULT_REDIS_SEPARATOR,
+    mongoMode: uri ? "uri" : "network"
   };
 }
 
@@ -195,5 +227,6 @@ export function changeEngine(values: ConnectionFormValues, engine: Engine): Conn
   const tlsMode =
     engine === "sqlite" ? "disable" : values.tlsMode === "disable" ? "prefer" : values.tlsMode;
   const database = engine === "redis" && values.database === "" ? "0" : values.database;
-  return { ...values, engine, port, tlsMode, database };
+  const mongoMode = engine === "mongo" ? values.mongoMode : "network";
+  return { ...values, engine, port, tlsMode, database, mongoMode };
 }

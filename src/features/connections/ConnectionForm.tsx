@@ -34,7 +34,7 @@ export function ConnectionForm({ connection, onSaved, onDeleted }: ConnectionFor
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const parsed = parseForm(values, id);
+    const parsed = parseForm(values, id, isEditing);
     if (!parsed.success) {
       setErrors(parsed.errors);
       return;

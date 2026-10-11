@@ -35,6 +35,22 @@ export const devPostgres: ConnectionConfig = {
   readOnly: false
 };
 
+export const devMongo: ConnectionConfig = {
+  ...prodPostgres,
+  id: "mongo-1",
+  name: "Mongo dev",
+  engine: "mongo",
+  environment: "dev",
+  readOnly: false,
+  target: { kind: "network", host: "localhost", port: 27017, database: "shop", username: "" },
+  tls: { mode: "disable", caCertPath: null }
+};
+
+export const mongoDocuments = [
+  '{"_id":{"$oid":"65a1b2c3d4e5f60718293a4b"},"name":"Ana","visits":{"$numberLong":"9007199254740993"},"address":{"city":"São Paulo"}}',
+  '{"_id":{"$oid":"65a1b2c3d4e5f60718293a4c"},"name":"Bia","visits":{"$numberLong":"2"}}'
+];
+
 export const localRedis: ConnectionConfig = {
   ...prodPostgres,
   id: "redis-1",
@@ -133,6 +149,13 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     run_script: () => executed(rowsOutcome),
     apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
     search_history: () => [],
+    browse_collection: () => ({ documents: mongoDocuments, hasMore: true }),
+    collection_indexes: () => [{ name: "_id_", definition: '{"_id":1}' }],
+    run_aggregation: () => ({
+      status: "executed",
+      outcome: { documents: ['{"_id":"even","total":110}'], truncated: false, durationMs: 4 }
+    }),
+    write_document: () => ({ status: "written", id: '{"$oid":"65a1b2c3d4e5f60718293a4b"}' }),
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
     cancel_run: () => null

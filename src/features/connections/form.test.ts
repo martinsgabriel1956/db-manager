@@ -181,3 +181,45 @@ describe("changeEngine", () => {
     expect(changeEngine(form({ database: "5" }), "redis").database).toBe("5");
   });
 });
+
+describe("mongo connection string", () => {
+  const uriForm = form({ name: "atlas", engine: "mongo", mongoMode: "uri", database: " shop " });
+
+  test("builds a uri target and stores the string as the secret", () => {
+    const result = parseForm(
+      { ...uriForm, uri: " mongodb+srv://me:pw@cluster0.example.net/ " },
+      "1"
+    );
+
+    expect(result.success && result.config.target).toEqual({ kind: "uri", database: "shop" });
+    expect(result.success && result.secret).toEqual({
+      action: "set",
+      value: "mongodb+srv://me:pw@cluster0.example.net/"
+    });
+  });
+
+  test("requires the string for new connections, keeps it when editing", () => {
+    expect(parseForm(uriForm, "1")).toEqual({
+      success: false,
+      errors: { uri: "Informe a connection string" }
+    });
+    const editing = parseForm(uriForm, "1", true);
+    expect(editing.success && editing.secret).toEqual({ action: "keep" });
+    expect(parseForm({ ...uriForm, uri: "http://nope" }, "1")).toEqual({
+      success: false,
+      errors: { uri: "Use mongodb:// ou mongodb+srv://" }
+    });
+  });
+
+  test("round-trips through fromConfig and leaves the mode when the engine changes", () => {
+    const values = fromConfig({
+      ...postgresConfig,
+      engine: "mongo",
+      target: { kind: "uri", database: "shop" }
+    });
+
+    expect(values).toMatchObject({ mongoMode: "uri", database: "shop" });
+    expect(changeEngine(values, "postgres").mongoMode).toBe("network");
+    expect(changeEngine(values, "mongo").mongoMode).toBe("uri");
+  });
+});

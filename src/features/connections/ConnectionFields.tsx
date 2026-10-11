@@ -53,6 +53,8 @@ export function ConnectionFields({
 }: ConnectionFieldsProps) {
   const isSqlite = values.engine === "sqlite";
   const isRedis = values.engine === "redis";
+  const isMongo = values.engine === "mongo";
+  const isUri = isMongo && values.mongoMode === "uri";
 
   function textInput(
     id: keyof ConnectionFormValues,
@@ -92,10 +94,51 @@ export function ConnectionFields({
         </Field>
       </div>
 
+      {isMongo && (
+        <fieldset className="flex gap-4 text-sm">
+          <legend className="sr-only">Forma de conexão</legend>
+          {(["network", "uri"] as const).map(mode => (
+            <label key={mode} className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="mongoMode"
+                checked={values.mongoMode === mode}
+                onChange={() => onChange({ mongoMode: mode })}
+              />
+              {mode === "network" ? "Host e porta" : "Connection string"}
+            </label>
+          ))}
+        </fieldset>
+      )}
+
       {isSqlite ? (
         <Field id="filePath" label="Arquivo" error={errors.filePath}>
           {textInput("filePath", { placeholder: "/caminho/para/banco.db" })}
         </Field>
+      ) : isUri ? (
+        <>
+          <Field id="uri" label="Connection string" error={errors.uri}>
+            <Input
+              id="uri"
+              type="password"
+              autoComplete="off"
+              value={values.uri}
+              aria-invalid={errors.uri ? true : undefined}
+              placeholder={
+                isEditing
+                  ? "Deixe vazio para manter a salva"
+                  : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
+              }
+              onChange={event => onChange({ uri: event.target.value })}
+            />
+          </Field>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            Fica no keychain do sistema, como uma senha. TLS e autenticação vêm da própria string.
+          </p>
+          <Field id="database" label="Database padrão (opcional)" error={errors.database}>
+            {textInput("database")}
+          </Field>
+        </>
       ) : (
         <>
           <div className="grid grid-cols-[1fr_8rem] gap-4">

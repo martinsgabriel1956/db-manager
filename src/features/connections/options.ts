@@ -60,13 +60,19 @@ export function isSqlEngine(engine: Engine): boolean {
   return engine === "postgres" || engine === "mysql" || engine === "sqlite";
 }
 
-/** Schema opened by default in the tree and used for unqualified autocomplete. */
+/** Engines the explorer tree can open: SQL plus MongoDB (Redis comes later). */
+export function isBrowsable(engine: Engine): boolean {
+  return isSqlEngine(engine) || engine === "mongo";
+}
+
+/** Schema (MongoDB: database) opened by default in the tree, also used for autocomplete. */
 export function defaultSchemaFor(connection: ConnectionConfig): string {
-  if (connection.engine === "sqlite") {
+  const { engine, target } = connection;
+  if (engine === "sqlite") {
     return "main";
   }
-  if (connection.engine === "mysql" && connection.target.kind === "network") {
-    return connection.target.database;
+  if ((engine === "mysql" || engine === "mongo") && target.kind !== "file") {
+    return target.database;
   }
   return "public";
 }

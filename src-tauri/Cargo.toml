@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
@@ -28,10 +28,11 @@ tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 futures-util = "0.3"
 sqlparser = "0.63.0"
 tauri-plugin-store = "2"
+mongodb = "3.9"
 
 [dev-dependencies]
 tempfile = "3"
-testcontainers-modules = { version = "0.15", features = ["postgres", "mysql"] }
+testcontainers-modules = { version = "0.15", features = ["postgres", "mysql", "mongo"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 # https://tauri.app/concept/size/#cargo-configuration

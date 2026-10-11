@@ -3,7 +3,7 @@ import { commands, type BrowseRequest } from "@/bindings";
 
 // Every query reconnects first: connect is idempotent and cheap, and it keeps views
 // working after the backend dropped the session (connection edited, app restarted).
-async function connected<T>(connectionId: string, work: () => Promise<T>): Promise<T> {
+export async function connected<T>(connectionId: string, work: () => Promise<T>): Promise<T> {
   await commands.connectDatabase(connectionId);
   return work();
 }
