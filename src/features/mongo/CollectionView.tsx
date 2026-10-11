@@ -31,9 +31,10 @@ export function CollectionView({
 
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
-      <div className="flex items-center gap-4 border-b bg-muted px-3">
-        <h2 className="py-2 font-mono text-sm font-semibold">
-          {database}.{collection}
+      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
+        <h2 className="flex items-baseline py-2.5">
+          <span className="font-mono text-xs text-muted-foreground">{database}.</span>
+          <span className="display text-[1.75rem]">{collection}</span>
         </h2>
         <TabsList aria-label="Seções da coleção">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
@@ -42,7 +43,7 @@ export function CollectionView({
             </TabsTrigger>
           ))}
         </TabsList>
-        {readOnly && <Badge variant="outline">Somente leitura</Badge>}
+        {readOnly && <Badge variant="held">Somente leitura</Badge>}
       </div>
       {/* panels stay mounted so filters, results and editors survive switching */}
       <TabsContent value="documents" forceMount className="min-h-0 flex-1">
@@ -82,7 +83,7 @@ function IndexesPanel({
   return (
     <table className="m-4 border-collapse text-sm">
       <thead>
-        <tr className="h-7 border-b text-left label-caps text-muted-foreground">
+        <tr className="h-7 border-b text-left legend text-muted-foreground">
           <th className="py-1.5 pr-6 font-medium">Nome</th>
           <th className="py-1.5 font-medium">Chaves</th>
         </tr>

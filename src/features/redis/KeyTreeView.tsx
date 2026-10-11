@@ -11,7 +11,7 @@ type KeyTreeViewProps = {
 
 /** 28px rows like every other table; the open key gets the "where you are" marker. */
 const KEY_ROW =
-  "flex h-7 w-full items-center rounded-[2px] px-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+  "flex h-7 w-full items-center px-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 export function KeyTreeView({ nodes, selected, onSelect }: KeyTreeViewProps) {
   return (
@@ -36,10 +36,10 @@ function TreeLevel({ nodes, selected, onSelect }: KeyTreeViewProps) {
             KEY_ROW,
             "gap-2",
             node.entry.name === selected &&
-              "bg-select/10 font-medium shadow-[inset_3px_0_0_var(--select)] hover:bg-select/10"
+              "bg-select font-semibold text-select-foreground hover:bg-select [&_.legend]:text-select-foreground"
           )}
         >
-          <span className="w-11 shrink-0 label-caps text-muted-foreground">{node.entry.kind}</span>
+          <span className="w-11 shrink-0 legend text-muted-foreground">{node.entry.kind}</span>
           <span className="truncate font-mono text-xs">{node.name || "(vazio)"}</span>
         </button>
       </li>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>DB Manager · Manual com Divisórias</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--milk:#f4f6f1;--milk2:#e7eae3;--ink:#141414;--g6:#5a5f58;--pg:#2a3fb6;--my:#e8561e;--mg:#2f9e44;--rd:#6b3fa0;--lite:#8a6a3c;--yel:#f2c200;--err:#e0301e}
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 "Instrument Sans",sans-serif;color:var(--ink);background:var(--pg);display:grid;grid-template-columns:1fr 200px}
+.board{padding:20px 0 20px 20px;display:flex;flex-direction:column;gap:0}
+.leaf{background:var(--milk);flex:1;display:grid;grid-template-rows:64px 44px 1fr 40px;box-shadow:3px 3px 0 rgba(0,0,0,.25);position:relative}
+.leaf::before{content:"";position:absolute;left:10px;top:24px;width:10px;height:10px;border-radius:50%;background:var(--pg);box-shadow:0 40px 0 var(--pg)}
+.hd{display:flex;align-items:center;gap:16px;padding:0 24px 0 36px;border-bottom:1px solid var(--milk2)}
+.hd h1{font:600 24px "Source Serif 4",serif}
+.hd .s{color:var(--g6)}
+.sub{display:flex;gap:2px;margin-left:16px}
+.sub span{padding:6px 10px;font-weight:600;color:var(--g6)}
+.sub .on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.prod{margin-left:auto;background:var(--err);color:#fff;font-weight:700;font-size:12px;letter-spacing:.05em;padding:4px 10px}
+.tool{display:flex;align-items:center;gap:8px;padding:0 24px 0 36px;border-bottom:1px solid var(--milk2)}
+input,select{height:30px;border:1px solid #8b9088;padding:0 8px;font:13px "Instrument Sans";background:#fff}
+button{font:600 13px "Instrument Sans";height:30px;padding:0 12px;border:1px solid var(--ink);background:transparent}
+button.pri{background:var(--ink);color:#fff}
+table{width:100%;border-collapse:collapse;font:12px "Spline Sans Mono",monospace}
+th{height:30px;text-align:left;padding:0 10px;border-bottom:1px solid var(--ink);font:700 12px "Instrument Sans"}
+th:first-child,td:first-child{padding-left:36px}
+th small{color:var(--g6);font:11px "Spline Sans Mono";margin-left:6px}
+td{height:28px;padding:0 10px;border-bottom:1px solid var(--milk2);white-space:nowrap}
+td.r{text-align:right}td.null{color:var(--g6);font-style:italic}
+td.e{background:var(--yel)}
+.foot{display:flex;align-items:center;gap:12px;padding:0 24px 0 36px;border-top:1px solid var(--milk2);color:var(--g6)}
+.rail{display:flex;flex-direction:column;padding:20px 0}
+.t{display:flex;flex-direction:column;justify-content:center;padding:0 14px;color:#fff;margin-left:20px;border-bottom:1px solid rgba(0,0,0,.18)}
+.t b{font-size:14px}
+.t span{font:11px "Spline Sans Mono";opacity:.85}
+.t.on{margin-left:0;padding-left:34px}
+.env{display:inline-block;font:700 10.5px "Instrument Sans";letter-spacing:.05em;border:1.5px solid #fff;padding:1px 5px;margin-top:4px;width:max-content}
+.env.p{background:var(--err);border-color:var(--err)}
+.brand{color:#fff;font-weight:700;padding:0 14px 12px 20px;font-size:15px}
+.tabs{display:flex;gap:0;padding-left:36px;height:0}
+</style></head><body>
+<div class="board">
+  <div class="leaf">
+    <div class="hd"><h1>users</h1><span class="s">public · Postgres prod · 12.408 linhas</span><div class="sub"><span class="on">Dados</span><span>Estrutura</span><span>Consulta 1</span><span>Histórico</span></div><span class="prod">PRODUÇÃO</span></div>
+    <div class="tool"><select><option>id</option></select><select><option>=</option></select><input placeholder="valor" style="width:220px"><button>Aplicar</button><span style="margin-left:auto;color:var(--g6)">1 alteração pendente</span><button>Descartar</button><button class="pri">Salvar</button></div>
+    <div style="overflow:hidden"><table><thead><tr><th>id<small>int4</small></th><th>email<small>text</small></th><th>nome<small>text</small></th><th>saldo<small>numeric</small></th><th>criado_em<small>timestamptz</small></th><th>profile<small>jsonb</small></th></tr></thead><tbody>
+    <tr><td class="r">18</td><td>joao@exemplo.com</td><td>João Lima</td><td class="r">1.204,50</td><td>2026-09-02 14:11:08</td><td>{"tier": "gold"}</td></tr>
+    <tr><td class="r">19</td><td>marta@exemplo.com</td><td>Marta Reis</td><td class="r">0,00</td><td>2026-09-03 09:40:51</td><td class="null">NULL</td></tr>
+    <tr><td class="r">20</td><td class="e">ana@exemplo.com</td><td>Ana Souza</td><td class="r">88,10</td><td>2026-09-03 18:02:33</td><td>{"id": 9007199254740993}</td></tr>
+    <tr><td class="r">21</td><td>pedro@exemplo.com</td><td>Pedro Alves</td><td class="r">42,00</td><td>2026-09-04 07:15:12</td><td>{"tier": "free"}</td></tr>
+    <tr><td class="r">22</td><td>lia@exemplo.com</td><td>Lia Prado</td><td class="r">310,75</td><td>2026-09-05 22:48:00</td><td class="null">NULL</td></tr>
+    <tr><td class="r">23</td><td>caio@exemplo.com</td><td>Caio Melo</td><td class="r">5,90</td><td>2026-09-06 11:03:27</td><td>{"tier": "free"}</td></tr>
+    </tbody></table></div>
+    <div class="foot">Página 1 de 207 · 60 por página</div>
+  </div>
+</div>
+<nav class="rail">
+  <div class="brand">DB Manager</div>
+  <div class="t on" style="background:var(--pg);height:200px"><b>Postgres prod</b><span>db.interno:5432</span><span class="env p">PROD</span></div>
+  <div class="t" style="background:#5468d4;height:120px"><b>Postgres dev</b><span>localhost:5432</span><span class="env">DEV</span></div>
+  <div class="t" style="background:var(--my);height:140px"><b>Loja MySQL</b><span>staging.loja:3306</span><span class="env">STAGING</span></div>
+  <div class="t" style="background:var(--mg);height:110px"><b>Mongo dev</b><span>localhost:27017</span><span class="env">DEV</span></div>
+  <div class="t" style="background:var(--rd);height:90px"><b>Cache</b><span>localhost:6379</span><span class="env" style="border-style:dashed">LOCAL</span></div>
+</nav>
+</body></html>

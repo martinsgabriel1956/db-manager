@@ -66,5 +66,5 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
     }
   }, [value]);
 
-  return <div ref={hostRef} className="h-full overflow-hidden rounded-[3px] border border-input" />;
+  return <div ref={hostRef} className="h-full overflow-hidden border border-input" />;
 }

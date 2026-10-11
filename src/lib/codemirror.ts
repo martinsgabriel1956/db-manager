@@ -4,7 +4,11 @@ import { tags } from "@lezer/highlight";
 
 /** Colors come from the CSS tokens, so the editors follow the light/dark theme. */
 const highlight = HighlightStyle.define([
-  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--syntax-keyword)" },
+  {
+    tag: [tags.keyword, tags.operatorKeyword, tags.modifier],
+    color: "var(--syntax-keyword)",
+    fontWeight: "700"
+  },
   { tag: [tags.string, tags.special(tags.string)], color: "var(--syntax-string)" },
   { tag: [tags.number, tags.bool, tags.null], color: "var(--syntax-number)" },
   { tag: [tags.typeName, tags.standard(tags.name)], color: "var(--syntax-type)" },
@@ -24,8 +28,8 @@ const theme = EditorView.theme({
     outlineOffset: "-2px"
   },
   ".cm-scroller": { fontFamily: "var(--font-mono)" },
-  ".cm-content": { caretColor: "var(--foreground)" },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
+  ".cm-content": { caretColor: "var(--select)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--select)", borderLeftWidth: "2px" },
   ".cm-gutters": {
     backgroundColor: "var(--muted)",
     color: "var(--muted-foreground)",
@@ -38,12 +42,12 @@ const theme = EditorView.theme({
   ".cm-tooltip": {
     backgroundColor: "var(--popover)",
     color: "var(--popover-foreground)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius-md)"
+    border: "1px solid var(--foreground)",
+    borderRadius: "0"
   },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)"
+    backgroundColor: "var(--select)",
+    color: "var(--select-foreground)"
   },
   ".cm-panels": { backgroundColor: "var(--muted)", color: "var(--foreground)" },
   ".cm-panels input, .cm-panels button": { color: "inherit" }

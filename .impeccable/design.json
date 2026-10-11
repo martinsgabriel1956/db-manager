@@ -1,930 +1,163 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-11T19:07:55.386181+00:00",
+  "generatedAt": "2026-10-11T00:00:00Z",
   "title": "Design System: DB Manager",
   "extensions": {
     "colorMeta": {
-      "ink": {
-        "role": "primary",
-        "displayName": "Tinta Térmica",
-        "canonical": "oklch(21.2% 0.005 248.1)",
-        "tonalRamp": [
-          "oklch(15% 0.005 248.1)",
-          "oklch(26% 0.005 248.1)",
-          "oklch(38% 0.005 248.1)",
-          "oklch(50% 0.005 248.1)",
-          "oklch(62% 0.005 248.1)",
-          "oklch(74% 0.005 248.1)",
-          "oklch(85% 0.005 248.1)",
-          "oklch(95% 0.005 248.1)"
-        ]
-      },
-      "label-stock": {
-        "role": "neutral",
-        "displayName": "Etiqueta Térmica",
-        "canonical": "oklch(98.8% 0.003 106.4)",
-        "tonalRamp": [
-          "oklch(15% 0.003 106.4)",
-          "oklch(26% 0.003 106.4)",
-          "oklch(38% 0.003 106.4)",
-          "oklch(50% 0.003 106.4)",
-          "oklch(62% 0.003 106.4)",
-          "oklch(74% 0.003 106.4)",
-          "oklch(85% 0.003 106.4)",
-          "oklch(95% 0.003 106.4)"
-        ]
-      },
-      "paper": {
-        "role": "neutral",
-        "displayName": "Papel",
-        "canonical": "oklch(95.7% 0.004 121.6)",
-        "tonalRamp": [
-          "oklch(15% 0.004 121.6)",
-          "oklch(26% 0.004 121.6)",
-          "oklch(38% 0.004 121.6)",
-          "oklch(50% 0.004 121.6)",
-          "oklch(62% 0.004 121.6)",
-          "oklch(74% 0.004 121.6)",
-          "oklch(85% 0.004 121.6)",
-          "oklch(95% 0.004 121.6)"
-        ]
-      },
-      "paper-deep": {
-        "role": "neutral",
-        "displayName": "Papel Fundo",
-        "canonical": "oklch(93.4% 0.006 128.5)",
-        "tonalRamp": [
-          "oklch(15% 0.006 128.5)",
-          "oklch(26% 0.006 128.5)",
-          "oklch(38% 0.006 128.5)",
-          "oklch(50% 0.006 128.5)",
-          "oklch(62% 0.006 128.5)",
-          "oklch(74% 0.006 128.5)",
-          "oklch(85% 0.006 128.5)",
-          "oklch(95% 0.006 128.5)"
-        ]
-      },
-      "ink-muted": {
-        "role": "neutral",
-        "displayName": "Grafite",
-        "canonical": "oklch(47.8% 0.011 243.0)",
-        "tonalRamp": [
-          "oklch(15% 0.011 243.0)",
-          "oklch(26% 0.011 243.0)",
-          "oklch(38% 0.011 243.0)",
-          "oklch(50% 0.011 243.0)",
-          "oklch(62% 0.011 243.0)",
-          "oklch(74% 0.011 243.0)",
-          "oklch(85% 0.011 243.0)",
-          "oklch(95% 0.011 243.0)"
-        ]
-      },
-      "rule": {
-        "role": "neutral",
-        "displayName": "Filete",
-        "canonical": "oklch(89.8% 0.005 134.9)",
-        "tonalRamp": [
-          "oklch(15% 0.005 134.9)",
-          "oklch(26% 0.005 134.9)",
-          "oklch(38% 0.005 134.9)",
-          "oklch(50% 0.005 134.9)",
-          "oklch(62% 0.005 134.9)",
-          "oklch(74% 0.005 134.9)",
-          "oklch(85% 0.005 134.9)",
-          "oklch(95% 0.005 134.9)"
-        ]
-      },
-      "input-rule": {
-        "role": "neutral",
-        "displayName": "Filete de Campo",
-        "canonical": "oklch(82.9% 0.006 153.8)",
-        "tonalRamp": [
-          "oklch(15% 0.006 153.8)",
-          "oklch(26% 0.006 153.8)",
-          "oklch(38% 0.006 153.8)",
-          "oklch(50% 0.006 153.8)",
-          "oklch(62% 0.006 153.8)",
-          "oklch(74% 0.006 153.8)",
-          "oklch(85% 0.006 153.8)",
-          "oklch(95% 0.006 153.8)"
-        ]
-      },
-      "seal": {
-        "role": "primary",
-        "displayName": "Lacre Vermelho",
-        "canonical": "oklch(53.9% 0.194 26.7)",
-        "tonalRamp": [
-          "oklch(15% 0.194 26.7)",
-          "oklch(26% 0.194 26.7)",
-          "oklch(38% 0.194 26.7)",
-          "oklch(50% 0.194 26.7)",
-          "oklch(62% 0.194 26.7)",
-          "oklch(74% 0.194 26.7)",
-          "oklch(85% 0.194 26.7)",
-          "oklch(95% 0.194 26.7)"
-        ]
-      },
-      "seal-dark": {
-        "role": "primary",
-        "displayName": "Lacre Escuro",
-        "canonical": "oklch(46.4% 0.167 26.7)",
-        "tonalRamp": [
-          "oklch(15% 0.167 26.7)",
-          "oklch(26% 0.167 26.7)",
-          "oklch(38% 0.167 26.7)",
-          "oklch(50% 0.167 26.7)",
-          "oklch(62% 0.167 26.7)",
-          "oklch(74% 0.167 26.7)",
-          "oklch(85% 0.167 26.7)",
-          "oklch(95% 0.167 26.7)"
-        ]
-      },
-      "select": {
-        "role": "secondary",
-        "displayName": "Azul de Marcador",
-        "canonical": "oklch(51.0% 0.146 259.8)",
-        "tonalRamp": [
-          "oklch(15% 0.146 259.8)",
-          "oklch(26% 0.146 259.8)",
-          "oklch(38% 0.146 259.8)",
-          "oklch(50% 0.146 259.8)",
-          "oklch(62% 0.146 259.8)",
-          "oklch(74% 0.146 259.8)",
-          "oklch(85% 0.146 259.8)",
-          "oklch(95% 0.146 259.8)"
-        ]
-      },
-      "success": {
-        "role": "tertiary",
-        "displayName": "Success",
-        "canonical": "oklch(51.5% 0.110 156.8)",
-        "tonalRamp": [
-          "oklch(15% 0.110 156.8)",
-          "oklch(26% 0.110 156.8)",
-          "oklch(38% 0.110 156.8)",
-          "oklch(50% 0.110 156.8)",
-          "oklch(62% 0.110 156.8)",
-          "oklch(74% 0.110 156.8)",
-          "oklch(85% 0.110 156.8)",
-          "oklch(95% 0.110 156.8)"
-        ]
-      },
-      "warning": {
-        "role": "tertiary",
-        "displayName": "Warning",
-        "canonical": "oklch(53.0% 0.109 83.3)",
-        "tonalRamp": [
-          "oklch(15% 0.109 83.3)",
-          "oklch(26% 0.109 83.3)",
-          "oklch(38% 0.109 83.3)",
-          "oklch(50% 0.109 83.3)",
-          "oklch(62% 0.109 83.3)",
-          "oklch(74% 0.109 83.3)",
-          "oklch(85% 0.109 83.3)",
-          "oklch(95% 0.109 83.3)"
-        ]
-      },
-      "opened": {
-        "role": "tertiary",
-        "displayName": "Opened",
-        "canonical": "oklch(96.2% 0.062 95.4)",
-        "tonalRamp": [
-          "oklch(15% 0.062 95.4)",
-          "oklch(26% 0.062 95.4)",
-          "oklch(38% 0.062 95.4)",
-          "oklch(50% 0.062 95.4)",
-          "oklch(62% 0.062 95.4)",
-          "oklch(74% 0.062 95.4)",
-          "oklch(85% 0.062 95.4)",
-          "oklch(95% 0.062 95.4)"
-        ]
-      },
-      "opened-line": {
-        "role": "tertiary",
-        "displayName": "Opened Line",
-        "canonical": "oklch(88.0% 0.115 95.0)",
-        "tonalRamp": [
-          "oklch(15% 0.115 95.0)",
-          "oklch(26% 0.115 95.0)",
-          "oklch(38% 0.115 95.0)",
-          "oklch(50% 0.115 95.0)",
-          "oklch(62% 0.115 95.0)",
-          "oklch(74% 0.115 95.0)",
-          "oklch(85% 0.115 95.0)",
-          "oklch(95% 0.115 95.0)"
-        ]
-      },
-      "bench": {
-        "role": "neutral",
-        "displayName": "Epóxi de Bancada",
-        "canonical": "oklch(26.9% 0.010 242.1)",
-        "tonalRamp": [
-          "oklch(15% 0.010 242.1)",
-          "oklch(26% 0.010 242.1)",
-          "oklch(38% 0.010 242.1)",
-          "oklch(50% 0.010 242.1)",
-          "oklch(62% 0.010 242.1)",
-          "oklch(74% 0.010 242.1)",
-          "oklch(85% 0.010 242.1)",
-          "oklch(95% 0.010 242.1)"
-        ]
-      },
-      "bench-raised": {
-        "role": "neutral",
-        "displayName": "Epóxi Elevado",
-        "canonical": "oklch(31.3% 0.012 243.2)",
-        "tonalRamp": [
-          "oklch(15% 0.012 243.2)",
-          "oklch(26% 0.012 243.2)",
-          "oklch(38% 0.012 243.2)",
-          "oklch(50% 0.012 243.2)",
-          "oklch(62% 0.012 243.2)",
-          "oklch(74% 0.012 243.2)",
-          "oklch(85% 0.012 243.2)",
-          "oklch(95% 0.012 243.2)"
-        ]
-      },
-      "bench-foreground": {
-        "role": "neutral",
-        "displayName": "Osso",
-        "canonical": "oklch(91.4% 0.006 239.8)",
-        "tonalRamp": [
-          "oklch(15% 0.006 239.8)",
-          "oklch(26% 0.006 239.8)",
-          "oklch(38% 0.006 239.8)",
-          "oklch(50% 0.006 239.8)",
-          "oklch(62% 0.006 239.8)",
-          "oklch(74% 0.006 239.8)",
-          "oklch(85% 0.006 239.8)",
-          "oklch(95% 0.006 239.8)"
-        ]
-      },
-      "bench-muted": {
-        "role": "neutral",
-        "displayName": "Osso Fosco",
-        "canonical": "oklch(75.6% 0.012 240.0)",
-        "tonalRamp": [
-          "oklch(15% 0.012 240.0)",
-          "oklch(26% 0.012 240.0)",
-          "oklch(38% 0.012 240.0)",
-          "oklch(50% 0.012 240.0)",
-          "oklch(62% 0.012 240.0)",
-          "oklch(74% 0.012 240.0)",
-          "oklch(85% 0.012 240.0)",
-          "oklch(95% 0.012 240.0)"
-        ]
-      },
-      "bench-border": {
-        "role": "neutral",
-        "displayName": "Junta da Bancada",
-        "canonical": "oklch(38.5% 0.015 240.3)",
-        "tonalRamp": [
-          "oklch(15% 0.015 240.3)",
-          "oklch(26% 0.015 240.3)",
-          "oklch(38% 0.015 240.3)",
-          "oklch(50% 0.015 240.3)",
-          "oklch(62% 0.015 240.3)",
-          "oklch(74% 0.015 240.3)",
-          "oklch(85% 0.015 240.3)",
-          "oklch(95% 0.015 240.3)"
-        ]
-      },
-      "cap-postgres": {
-        "role": "tertiary",
-        "displayName": "Cap Postgres",
-        "canonical": "oklch(50.0% 0.131 298.6)",
-        "tonalRamp": [
-          "oklch(15% 0.131 298.6)",
-          "oklch(26% 0.131 298.6)",
-          "oklch(38% 0.131 298.6)",
-          "oklch(50% 0.131 298.6)",
-          "oklch(62% 0.131 298.6)",
-          "oklch(74% 0.131 298.6)",
-          "oklch(85% 0.131 298.6)",
-          "oklch(95% 0.131 298.6)"
-        ]
-      },
-      "cap-mysql": {
-        "role": "tertiary",
-        "displayName": "Cap Mysql",
-        "canonical": "oklch(70.5% 0.144 84.8)",
-        "tonalRamp": [
-          "oklch(15% 0.144 84.8)",
-          "oklch(26% 0.144 84.8)",
-          "oklch(38% 0.144 84.8)",
-          "oklch(50% 0.144 84.8)",
-          "oklch(62% 0.144 84.8)",
-          "oklch(74% 0.144 84.8)",
-          "oklch(85% 0.144 84.8)",
-          "oklch(95% 0.144 84.8)"
-        ]
-      },
-      "cap-sqlite": {
-        "role": "tertiary",
-        "displayName": "Cap Sqlite",
-        "canonical": "oklch(60.9% 0.012 243.8)",
-        "tonalRamp": [
-          "oklch(15% 0.012 243.8)",
-          "oklch(26% 0.012 243.8)",
-          "oklch(38% 0.012 243.8)",
-          "oklch(50% 0.012 243.8)",
-          "oklch(62% 0.012 243.8)",
-          "oklch(74% 0.012 243.8)",
-          "oklch(85% 0.012 243.8)",
-          "oklch(95% 0.012 243.8)"
-        ]
-      },
-      "cap-mongo": {
-        "role": "tertiary",
-        "displayName": "Cap Mongo",
-        "canonical": "oklch(51.5% 0.110 156.8)",
-        "tonalRamp": [
-          "oklch(15% 0.110 156.8)",
-          "oklch(26% 0.110 156.8)",
-          "oklch(38% 0.110 156.8)",
-          "oklch(50% 0.110 156.8)",
-          "oklch(62% 0.110 156.8)",
-          "oklch(74% 0.110 156.8)",
-          "oklch(85% 0.110 156.8)",
-          "oklch(95% 0.110 156.8)"
-        ]
-      },
-      "cap-redis": {
-        "role": "tertiary",
-        "displayName": "Cap Redis",
-        "canonical": "oklch(57.2% 0.174 356.6)",
-        "tonalRamp": [
-          "oklch(15% 0.174 356.6)",
-          "oklch(26% 0.174 356.6)",
-          "oklch(38% 0.174 356.6)",
-          "oklch(50% 0.174 356.6)",
-          "oklch(62% 0.174 356.6)",
-          "oklch(74% 0.174 356.6)",
-          "oklch(85% 0.174 356.6)",
-          "oklch(95% 0.174 356.6)"
-        ]
-      },
-      "syntax-keyword": {
-        "role": "tertiary",
-        "displayName": "Syntax Keyword",
-        "canonical": "oklch(50.0% 0.131 298.6)",
-        "tonalRamp": [
-          "oklch(15% 0.131 298.6)",
-          "oklch(26% 0.131 298.6)",
-          "oklch(38% 0.131 298.6)",
-          "oklch(50% 0.131 298.6)",
-          "oklch(62% 0.131 298.6)",
-          "oklch(74% 0.131 298.6)",
-          "oklch(85% 0.131 298.6)",
-          "oklch(95% 0.131 298.6)"
-        ]
-      },
-      "syntax-string": {
-        "role": "tertiary",
-        "displayName": "Syntax String",
-        "canonical": "oklch(51.5% 0.110 156.8)",
-        "tonalRamp": [
-          "oklch(15% 0.110 156.8)",
-          "oklch(26% 0.110 156.8)",
-          "oklch(38% 0.110 156.8)",
-          "oklch(50% 0.110 156.8)",
-          "oklch(62% 0.110 156.8)",
-          "oklch(74% 0.110 156.8)",
-          "oklch(85% 0.110 156.8)",
-          "oklch(95% 0.110 156.8)"
-        ]
-      },
-      "syntax-number": {
-        "role": "tertiary",
-        "displayName": "Syntax Number",
-        "canonical": "oklch(51.1% 0.161 355.5)",
-        "tonalRamp": [
-          "oklch(15% 0.161 355.5)",
-          "oklch(26% 0.161 355.5)",
-          "oklch(38% 0.161 355.5)",
-          "oklch(50% 0.161 355.5)",
-          "oklch(62% 0.161 355.5)",
-          "oklch(74% 0.161 355.5)",
-          "oklch(85% 0.161 355.5)",
-          "oklch(95% 0.161 355.5)"
-        ]
-      },
-      "syntax-type": {
-        "role": "tertiary",
-        "displayName": "Syntax Type",
-        "canonical": "oklch(53.0% 0.109 83.3)",
-        "tonalRamp": [
-          "oklch(15% 0.109 83.3)",
-          "oklch(26% 0.109 83.3)",
-          "oklch(38% 0.109 83.3)",
-          "oklch(50% 0.109 83.3)",
-          "oklch(62% 0.109 83.3)",
-          "oklch(74% 0.109 83.3)",
-          "oklch(85% 0.109 83.3)",
-          "oklch(95% 0.109 83.3)"
-        ]
-      },
-      "night-workspace": {
-        "role": "neutral",
-        "displayName": "Night Workspace",
-        "canonical": "oklch(23.6% 0.008 240.2)",
-        "tonalRamp": [
-          "oklch(15% 0.008 240.2)",
-          "oklch(26% 0.008 240.2)",
-          "oklch(38% 0.008 240.2)",
-          "oklch(50% 0.008 240.2)",
-          "oklch(62% 0.008 240.2)",
-          "oklch(74% 0.008 240.2)",
-          "oklch(85% 0.008 240.2)",
-          "oklch(95% 0.008 240.2)"
-        ]
-      },
-      "night-card": {
-        "role": "neutral",
-        "displayName": "Night Card",
-        "canonical": "oklch(27.4% 0.010 242.1)",
-        "tonalRamp": [
-          "oklch(15% 0.010 242.1)",
-          "oklch(26% 0.010 242.1)",
-          "oklch(38% 0.010 242.1)",
-          "oklch(50% 0.010 242.1)",
-          "oklch(62% 0.010 242.1)",
-          "oklch(74% 0.010 242.1)",
-          "oklch(85% 0.010 242.1)",
-          "oklch(95% 0.010 242.1)"
-        ]
-      },
-      "night-ink": {
-        "role": "neutral",
-        "displayName": "Night Ink",
-        "canonical": "oklch(92.9% 0.003 145.5)",
-        "tonalRamp": [
-          "oklch(15% 0.003 145.5)",
-          "oklch(26% 0.003 145.5)",
-          "oklch(38% 0.003 145.5)",
-          "oklch(50% 0.003 145.5)",
-          "oklch(62% 0.003 145.5)",
-          "oklch(74% 0.003 145.5)",
-          "oklch(85% 0.003 145.5)",
-          "oklch(95% 0.003 145.5)"
-        ]
-      },
-      "night-ink-muted": {
-        "role": "neutral",
-        "displayName": "Night Ink Muted",
-        "canonical": "oklch(73.7% 0.013 240.0)",
-        "tonalRamp": [
-          "oklch(15% 0.013 240.0)",
-          "oklch(26% 0.013 240.0)",
-          "oklch(38% 0.013 240.0)",
-          "oklch(50% 0.013 240.0)",
-          "oklch(62% 0.013 240.0)",
-          "oklch(74% 0.013 240.0)",
-          "oklch(85% 0.013 240.0)",
-          "oklch(95% 0.013 240.0)"
-        ]
-      },
-      "night-rule": {
-        "role": "neutral",
-        "displayName": "Night Rule",
-        "canonical": "oklch(32.1% 0.012 243.2)",
-        "tonalRamp": [
-          "oklch(15% 0.012 243.2)",
-          "oklch(26% 0.012 243.2)",
-          "oklch(38% 0.012 243.2)",
-          "oklch(50% 0.012 243.2)",
-          "oklch(62% 0.012 243.2)",
-          "oklch(74% 0.012 243.2)",
-          "oklch(85% 0.012 243.2)",
-          "oklch(95% 0.012 243.2)"
-        ]
-      },
-      "night-bench": {
-        "role": "neutral",
-        "displayName": "Epóxi à Noite",
-        "canonical": "oklch(19.3% 0.006 236.9)",
-        "tonalRamp": [
-          "oklch(15% 0.006 236.9)",
-          "oklch(26% 0.006 236.9)",
-          "oklch(38% 0.006 236.9)",
-          "oklch(50% 0.006 236.9)",
-          "oklch(62% 0.006 236.9)",
-          "oklch(74% 0.006 236.9)",
-          "oklch(85% 0.006 236.9)",
-          "oklch(95% 0.006 236.9)"
-        ]
-      },
-      "night-bench-raised": {
-        "role": "neutral",
-        "displayName": "Night Bench Raised",
-        "canonical": "oklch(24.5% 0.008 240.2)",
-        "tonalRamp": [
-          "oklch(15% 0.008 240.2)",
-          "oklch(26% 0.008 240.2)",
-          "oklch(38% 0.008 240.2)",
-          "oklch(50% 0.008 240.2)",
-          "oklch(62% 0.008 240.2)",
-          "oklch(74% 0.008 240.2)",
-          "oklch(85% 0.008 240.2)",
-          "oklch(95% 0.008 240.2)"
-        ]
-      },
-      "night-bench-border": {
-        "role": "neutral",
-        "displayName": "Night Bench Border",
-        "canonical": "oklch(30.5% 0.012 243.2)",
-        "tonalRamp": [
-          "oklch(15% 0.012 243.2)",
-          "oklch(26% 0.012 243.2)",
-          "oklch(38% 0.012 243.2)",
-          "oklch(50% 0.012 243.2)",
-          "oklch(62% 0.012 243.2)",
-          "oklch(74% 0.012 243.2)",
-          "oklch(85% 0.012 243.2)",
-          "oklch(95% 0.012 243.2)"
-        ]
-      },
-      "night-label": {
-        "role": "neutral",
-        "displayName": "Etiqueta sob Luz Noturna",
-        "canonical": "oklch(89.0% 0.009 128.6)",
-        "tonalRamp": [
-          "oklch(15% 0.009 128.6)",
-          "oklch(26% 0.009 128.6)",
-          "oklch(38% 0.009 128.6)",
-          "oklch(50% 0.009 128.6)",
-          "oklch(62% 0.009 128.6)",
-          "oklch(74% 0.009 128.6)",
-          "oklch(85% 0.009 128.6)",
-          "oklch(95% 0.009 128.6)"
-        ]
-      },
-      "night-label-muted": {
-        "role": "neutral",
-        "displayName": "Night Label Muted",
-        "canonical": "oklch(43.5% 0.011 243.1)",
-        "tonalRamp": [
-          "oklch(15% 0.011 243.1)",
-          "oklch(26% 0.011 243.1)",
-          "oklch(38% 0.011 243.1)",
-          "oklch(50% 0.011 243.1)",
-          "oklch(62% 0.011 243.1)",
-          "oklch(74% 0.011 243.1)",
-          "oklch(85% 0.011 243.1)",
-          "oklch(95% 0.011 243.1)"
-        ]
-      },
-      "night-select": {
-        "role": "secondary",
-        "displayName": "Azul de Marcador (noite)",
-        "canonical": "oklch(72.5% 0.114 261.7)",
-        "tonalRamp": [
-          "oklch(15% 0.114 261.7)",
-          "oklch(26% 0.114 261.7)",
-          "oklch(38% 0.114 261.7)",
-          "oklch(50% 0.114 261.7)",
-          "oklch(62% 0.114 261.7)",
-          "oklch(74% 0.114 261.7)",
-          "oklch(85% 0.114 261.7)",
-          "oklch(95% 0.114 261.7)"
-        ]
-      },
-      "night-destructive-text": {
-        "role": "neutral",
-        "displayName": "Night Destructive Text",
-        "canonical": "oklch(68.8% 0.164 22.3)",
-        "tonalRamp": [
-          "oklch(15% 0.164 22.3)",
-          "oklch(26% 0.164 22.3)",
-          "oklch(38% 0.164 22.3)",
-          "oklch(50% 0.164 22.3)",
-          "oklch(62% 0.164 22.3)",
-          "oklch(74% 0.164 22.3)",
-          "oklch(85% 0.164 22.3)",
-          "oklch(95% 0.164 22.3)"
-        ]
-      },
-      "night-success": {
-        "role": "tertiary",
-        "displayName": "Night Success",
-        "canonical": "oklch(74.5% 0.121 160.9)",
-        "tonalRamp": [
-          "oklch(15% 0.121 160.9)",
-          "oklch(26% 0.121 160.9)",
-          "oklch(38% 0.121 160.9)",
-          "oklch(50% 0.121 160.9)",
-          "oklch(62% 0.121 160.9)",
-          "oklch(74% 0.121 160.9)",
-          "oklch(85% 0.121 160.9)",
-          "oklch(95% 0.121 160.9)"
-        ]
-      },
-      "night-warning": {
-        "role": "tertiary",
-        "displayName": "Night Warning",
-        "canonical": "oklch(79.8% 0.134 88.8)",
-        "tonalRamp": [
-          "oklch(15% 0.134 88.8)",
-          "oklch(26% 0.134 88.8)",
-          "oklch(38% 0.134 88.8)",
-          "oklch(50% 0.134 88.8)",
-          "oklch(62% 0.134 88.8)",
-          "oklch(74% 0.134 88.8)",
-          "oklch(85% 0.134 88.8)",
-          "oklch(95% 0.134 88.8)"
-        ]
-      },
-      "night-opened": {
-        "role": "tertiary",
-        "displayName": "Night Opened",
-        "canonical": "oklch(32.0% 0.032 86.6)",
-        "tonalRamp": [
-          "oklch(15% 0.032 86.6)",
-          "oklch(26% 0.032 86.6)",
-          "oklch(38% 0.032 86.6)",
-          "oklch(50% 0.032 86.6)",
-          "oklch(62% 0.032 86.6)",
-          "oklch(74% 0.032 86.6)",
-          "oklch(85% 0.032 86.6)",
-          "oklch(95% 0.032 86.6)"
-        ]
-      },
-      "night-opened-line": {
-        "role": "tertiary",
-        "displayName": "Night Opened Line",
-        "canonical": "oklch(41.6% 0.061 87.8)",
-        "tonalRamp": [
-          "oklch(15% 0.061 87.8)",
-          "oklch(26% 0.061 87.8)",
-          "oklch(38% 0.061 87.8)",
-          "oklch(50% 0.061 87.8)",
-          "oklch(62% 0.061 87.8)",
-          "oklch(74% 0.061 87.8)",
-          "oklch(85% 0.061 87.8)",
-          "oklch(95% 0.061 87.8)"
-        ]
-      }
+      "z0": { "role": "neutral", "displayName": "Zona 0 · Tinta", "tonalRamp": ["#0f1011", "#1d1f22", "#2c2f33", "#3e4247", "#4f545a", "#5c6269", "#80868d", "#b4b9bf", "#dde0e5", "#eef0f3", "#f7f8fa"] },
+      "z10": { "role": "neutral", "displayName": "Zona 10 · Papel", "tonalRamp": ["#0f1011", "#1d1f22", "#2c2f33", "#3e4247", "#4f545a", "#5c6269", "#80868d", "#b4b9bf", "#dde0e5", "#eef0f3", "#f7f8fa"] },
+      "night-z0": { "role": "neutral", "displayName": "Câmara escura · Zona 0", "tonalRamp": ["#101113", "#1a1d20", "#2c3035", "#4a5057", "#6b737b", "#8d949c", "#9aa1a9", "#b0b6bd", "#c9cdd3", "#e2e5e9", "#f1f3f5"] },
+      "grid": { "role": "neutral", "displayName": "Grade de Construção", "tonalRamp": ["#222a38", "#e3e9f2"] },
+      "select": { "role": "primary", "displayName": "Azul Crouwel", "tonalRamp": ["#00226b", "#0035a3", "#0047d6", "#0057ff", "#3f7bff", "#6f9bff", "#a5c1ff", "#dbe6ff"] },
+      "filter": { "role": "secondary", "displayName": "Magenta Dicroico", "tonalRamp": ["#4a0029", "#7a0b4b", "#a30f63", "#c8137a", "#e23a93", "#ff5fae", "#ff9fcd", "#ffd9eb"] },
+      "safelight": { "role": "tertiary", "displayName": "Luz de Segurança", "tonalRamp": ["#4a0d08", "#7a170f", "#a32116", "#c4291c", "#e0472f", "#ff6a4d", "#ffa18c", "#ffd8cf"] },
+      "success": { "role": "tertiary", "displayName": "Revelado", "tonalRamp": ["#063b23", "#0f7446", "#4cc98a"] },
+      "warning": { "role": "tertiary", "displayName": "Âmbar", "tonalRamp": ["#4a3000", "#8f5c00", "#e0a640"] }
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Display do Termo",
-        "purpose": "Só o título \"Termo de custódia\": versalete condensado a 66%."
-      },
-      "title": {
-        "displayName": "Nome da Etiqueta",
-        "purpose": "Nome da conexão na etiqueta da bancada."
-      },
-      "body": {
-        "displayName": "Corpo",
-        "purpose": "Interface geral; números tabulares no app inteiro."
-      },
-      "label": {
-        "displayName": "Letreiro Impresso",
-        "purpose": "Utilitário label-caps: rótulos impressos, etiquetas de ambiente, badges, Label de formulário."
-      },
-      "data": {
-        "displayName": "Dado",
-        "purpose": "Células da grade, editores e o comando no termo; linha de 28px."
-      },
-      "data-meta": {
-        "displayName": "Dado Secundário",
-        "purpose": "Segunda linha da etiqueta (engine e alvo), contagens na bancada."
-      }
+      "display": { "displayName": "Display (identificador)", "purpose": "Nomes de tabela, coleção e db; caixa preservada porque são dado." },
+      "display-caps": { "displayName": "Display Caps", "purpose": "Títulos que não são identificadores e estados vazios." },
+      "legend": { "displayName": "Legenda", "purpose": "Rótulos, campos, etiquetas de ambiente, badges, código da engine." },
+      "title": { "displayName": "Título", "purpose": "Nome da conexão no registro." },
+      "body": { "displayName": "Corpo", "purpose": "Interface geral." },
+      "data": { "displayName": "Dado", "purpose": "Células da grade, editores, comando exato." },
+      "data-meta": { "displayName": "Dado meta", "purpose": "Alvo da conexão, contagens, contagem Δ." }
     },
     "shadows": [
-      {
-        "name": "label-edge",
-        "value": "0 1px 0 rgb(0 0 0 / 0.4)",
-        "purpose": "Etiqueta de conexão colada na bancada."
-      },
-      {
-        "name": "diagram-node-edge",
-        "value": "0 1px 0 rgb(0 0 0 / 0.25)",
-        "purpose": "Nós do diagrama ER."
-      },
-      {
-        "name": "custody-form",
-        "value": "0 20px 44px -14px rgb(0 0 0 / 0.5)",
-        "purpose": "Única sombra projetada: o Termo de custódia."
-      },
-      {
-        "name": "active-tab-marker",
-        "value": "inset 0 2px 0 var(--select)",
-        "purpose": "Aba ativa (marcador, não elevação)."
-      },
-      {
-        "name": "active-row-marker",
-        "value": "inset 3px 0 0 var(--select)",
-        "purpose": "Tabela ativa na bancada."
-      },
-      {
-        "name": "prod-ring",
-        "value": "inset 0 0 0 4px var(--seal)",
-        "purpose": "Anel da janela inteira quando a conexão ativa é prod."
-      }
+      { "name": "folha", "value": "0 18px 40px -16px rgb(0 0 0 / 0.45)", "purpose": "A única sombra projetada: todo diálogo, com anel de 1px em tinta." },
+      { "name": "aba-ativa", "value": "inset 0 3px 0 var(--select)", "purpose": "Filete azul no topo da aba ativa." },
+      { "name": "coluna-ordenada", "value": "inset 0 -2px 0 var(--filter)", "purpose": "Filete magenta sob a coluna ordenada." },
+      { "name": "celula-editada", "value": "inset 0 -2px 0 var(--foreground)", "purpose": "Filete de tinta sob a célula em stage." },
+      { "name": "campo-focado", "value": "inset 0 0 0 1px var(--ring)", "purpose": "Foco de campo e select nativo." }
     ],
     "motion": [
-      {
-        "name": "seal-enter",
-        "value": "120ms fade-in + slide-in-from-top (4px faixa, 8px termo)",
-        "purpose": "Só a faixa de lacre e o Termo de custódia entram; desligado por prefers-reduced-motion. Diálogos genéricos não animam."
-      },
-      {
-        "name": "control-transition",
-        "value": "transition-all (padrão 150ms)",
-        "purpose": "Mudança de cor em hover/focus de botões e campos."
-      }
+      { "name": "faixa-producao", "value": "120ms fade-in + slide-in-from-top-1", "purpose": "Entrada da faixa de produção; motion-reduce:animate-none." },
+      { "name": "ficha-exposicao", "value": "160ms ease-out fade-in + slide-in-from-top-3", "purpose": "Entrada da ficha Confirmar execução; motion-reduce:animate-none." },
+      { "name": "develop", "value": "120ms steps(2) both", "purpose": "Revelação da hachura ao salvar, na banda inferior; desligada com prefers-reduced-motion." }
     ],
     "breakpoints": [
-      {
-        "name": "window-min",
-        "value": "960px"
-      },
-      {
-        "name": "window-default",
-        "value": "1200px"
-      },
-      {
-        "name": "sm",
-        "value": "640px"
-      }
-    ],
-    "textures": [
-      {
-        "name": "seal-tape",
-        "value": "repeating-linear-gradient(135deg, var(--seal) 0 22px, var(--seal-dark) 22px 26px)",
-        "purpose": "Fita de lacre de produção, texto branco."
-      },
-      {
-        "name": "opened-hatch",
-        "value": "repeating-linear-gradient(135deg, var(--opened) 0 6px, var(--opened-line) 6px 7px)",
-        "purpose": "Amostra aberta: célula editada e não salva."
-      }
-    ],
-    "theme": {
-      "mode": "prefers-color-scheme",
-      "toggle": false,
-      "nightDecisions": [
-        "Bancada desce para #121517 para continuar mais escura que a área de trabalho #1b1f22 e ler como bancada.",
-        "Etiquetas baixam para #d9dcd6, a etiqueta sob a luz noturna, em vez do #fbfbf9 que ofuscaria."
-      ]
-    },
-    "review": {
-      "disposition": "ship",
-      "fixRounds": 1,
-      "fixesResolved": 8
-    }
+      { "name": "window-min", "value": "960px" },
+      { "name": "sm", "value": "640px" }
+    ]
   },
   "components": [
     {
-      "name": "Botão Primário",
+      "name": "Botão primário com Δ",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Ação primária (Salvar/Executar): tinta preta à direita da barra.",
-      "html": "<button class=\"ds-btn-primary\">Executar</button>",
-      "css": ".ds-btn-primary { font-family: 'Archivo Variable', sans-serif; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 3px; border: 1px solid transparent; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background 0.15s; background: var(--primary); color: var(--primary-foreground); } .ds-btn-primary:hover { background: color-mix(in oklch, var(--primary) 85%, transparent); } .ds-btn-primary:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); } .ds-btn-primary:active { transform: translateY(1px); }"
+      "description": "Salvar em tinta, com o segmento Δ das alterações em stage.",
+      "html": "<button class=\"ds-btn-primary\">Salvar<span class=\"ds-delta-seg\">Δ 3</span></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: stretch; height: 28px; padding: 0 0 0 10px; background: var(--z0, #0f1011); color: var(--z10, #f7f8fa); border: 1px solid transparent; border-radius: 0; font: 500 0.8rem 'Hanken Grotesk Variable', sans-serif; line-height: 26px; cursor: pointer; } .ds-btn-primary:hover { background: var(--z5, #5c6269); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ring, #0057ff); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); } .ds-delta-seg { margin-left: 6px; padding: 0 8px; border-left: 1px solid color-mix(in oklch, var(--z10, #f7f8fa) 40%, transparent); font: 400 0.75rem 'Spline Sans Mono Variable', monospace; }"
     },
     {
-      "name": "Botão Outline",
+      "name": "Botão outline",
       "kind": "button",
       "refersTo": "button-outline",
-      "description": "Ação secundária, Cancelar no termo.",
+      "description": "Ação secundária: Cancelar, Descartar, Nova.",
       "html": "<button class=\"ds-btn-outline\">Cancelar</button>",
-      "css": ".ds-btn-outline { font-family: 'Archivo Variable', sans-serif; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 3px; border: 1px solid transparent; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background 0.15s; background: var(--background); color: var(--foreground); border-color: var(--input); } .ds-btn-outline:hover { background: var(--muted); } .ds-btn-outline:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }"
+      "css": ".ds-btn-outline { height: 32px; padding: 0 10px; background: var(--background, #f7f8fa); color: var(--foreground, #0f1011); border: 1px solid var(--input, #80868d); border-radius: 0; font: 500 0.875rem 'Hanken Grotesk Variable', sans-serif; cursor: pointer; } .ds-btn-outline:hover { background: var(--muted, #eef0f3); } .ds-btn-outline:focus-visible { outline: 2px solid var(--ring, #0057ff); outline-offset: 2px; }"
     },
     {
-      "name": "Botão Romper Lacre",
+      "name": "Botão sob luz de segurança",
       "kind": "button",
-      "refersTo": "button-seal",
-      "description": "Variante destrutiva: só para confirmar escrita destrutiva ou em produção.",
-      "html": "<button class=\"ds-btn-seal\">Romper lacre e executar</button>",
-      "css": ".ds-btn-seal { font-family: 'Archivo Variable', sans-serif; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 3px; border: 1px solid transparent; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background 0.15s; background: var(--seal); color: #fff; font-weight: 600; } .ds-btn-seal:hover { background: color-mix(in oklch, var(--seal) 90%, transparent); } .ds-btn-seal:focus-visible { outline: none; border-color: var(--seal); box-shadow: 0 0 0 3px color-mix(in oklch, var(--seal) 40%, transparent); }"
+      "refersTo": "button-safelight",
+      "description": "Só para confirmar escrita destrutiva ou em produção.",
+      "html": "<button class=\"ds-btn-safelight\">Executar em produção</button>",
+      "css": ".ds-btn-safelight { height: 32px; padding: 0 10px; background: var(--safelight, #c4291c); color: #fff; border: 1px solid transparent; border-radius: 0; font: 600 0.875rem 'Hanken Grotesk Variable', sans-serif; cursor: pointer; } .ds-btn-safelight:hover { background: color-mix(in oklch, var(--safelight, #c4291c) 90%, transparent); } .ds-btn-safelight:focus-visible { outline: 2px solid var(--safelight, #c4291c); outline-offset: 2px; }"
     },
     {
       "name": "Campo",
       "kind": "input",
       "refersTo": "input",
-      "description": "Campo de texto de 32px com contorno de 1px.",
-      "html": "<input class=\"ds-input\" placeholder=\"Filtrar\" />",
-      "css": ".ds-input { font-family: 'Archivo Variable', sans-serif; height: 32px; padding: 4px 10px; border: 1px solid var(--input); border-radius: 3px; background: transparent; color: var(--foreground); font-size: 0.875rem; } .ds-input::placeholder { color: var(--muted-foreground); } .ds-input:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }"
+      "description": "Campo reto com contorno Z6 e foco azul de 2px.",
+      "html": "<input class=\"ds-input\" placeholder=\"valor\" />",
+      "css": ".ds-input { height: 32px; padding: 4px 10px; background: transparent; color: var(--foreground, #0f1011); border: 1px solid var(--input, #80868d); border-radius: 0; font: 400 0.875rem 'Hanken Grotesk Variable', sans-serif; outline: none; } .ds-input::placeholder { color: var(--muted-foreground, #5c6269); } .ds-input:focus-visible { border-color: var(--ring, #0057ff); box-shadow: inset 0 0 0 1px var(--ring, #0057ff); }"
     },
     {
-      "name": "Etiquetas de Ambiente",
+      "name": "Etiquetas de ambiente",
       "kind": "chip",
       "refersTo": "env-tag-prod",
-      "description": "Ambiente impresso em palavras; cor só reforça.",
-      "html": "<span class=\"ds-env ds-env-prod\">Prod</span> <span class=\"ds-env ds-env-staging\">Staging</span> <span class=\"ds-env ds-env-dev\">Dev</span> <span class=\"ds-env ds-env-local\">Local</span>",
-      "css": ".ds-env { font-family: 'Archivo Variable', sans-serif; font-stretch: 70%; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.6875rem; line-height: 1; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 2px; color: var(--tag-foreground); } .ds-env-prod { background: var(--seal); color: #fff; } .ds-env-staging { background: var(--warning); color: var(--primary-foreground); } .ds-env-dev { border: 1px solid currentColor; } .ds-env-local { border: 1px dashed currentColor; }"
+      "description": "LOCAL pontilhado, DEV contorno, STAGING casa hachurada, PROD luz de segurança.",
+      "html": "<span class=\"ds-env ds-env-local\">Local</span> <span class=\"ds-env\">Dev</span> <span class=\"ds-env ds-env-staging\"><i></i>Staging</span> <span class=\"ds-env ds-env-prod\">Prod</span>",
+      "css": ".ds-env { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid currentColor; color: var(--foreground, #0f1011); font: 600 0.6875rem/1 'Saira Variable', sans-serif; font-stretch: 75%; letter-spacing: 0.1em; text-transform: uppercase; } .ds-env-local { border-style: dotted; } .ds-env-staging { padding-left: 0; } .ds-env-staging i { width: 8px; height: 100%; margin-right: 6px; border-right: 1px solid currentColor; background-image: repeating-linear-gradient(135deg, color-mix(in oklch, #0f1011 38%, transparent) 0 1px, transparent 1px 6px); } .ds-env-prod { background: var(--safelight, #c4291c); border-color: var(--safelight, #c4291c); color: #fff; }"
     },
     {
-      "name": "Etiqueta de Conexão",
-      "kind": "card",
-      "refersTo": "connection-label",
-      "description": "Conexão na bancada: faixa de tampa, nome, alvo em mono, ambiente impresso.",
-      "html": "<div class=\"ds-bench\"><div class=\"ds-label\"><span class=\"ds-cap\"></span><div class=\"ds-label-body\"><span class=\"ds-label-name\">loja-prod <span class=\"ds-env-prod-mini\">Prod</span></span><span class=\"ds-label-meta\">PostgreSQL · db.internal:5432/loja</span></div></div></div>",
-      "css": ".ds-bench { background: var(--bench); padding: 12px; width: 264px; } .ds-label { font-family: 'Archivo Variable', sans-serif; display: flex; overflow: hidden; border-radius: 3px; background: var(--tag); color: var(--tag-foreground); box-shadow: 0 1px 0 rgb(0 0 0 / 0.4); } .ds-cap { width: 6px; background: var(--cap-postgres); } .ds-label-body { display: grid; gap: 2px; padding: 6px 4px 6px 6px; flex: 1; min-width: 0; } .ds-label-name { display: flex; align-items: center; font-size: 13px; font-weight: 600; } .ds-env-prod-mini { font-stretch: 70%; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.6875rem; line-height: 1; margin-left: auto; height: 18px; display: inline-flex; align-items: center; padding: 0 6px; border-radius: 2px; background: var(--seal); color: #fff; } .ds-label-meta { font-family: 'Red Hat Mono Variable', ui-monospace, monospace; font-size: 11px; color: var(--tag-muted); }"
+      "name": "Chip de filtro",
+      "kind": "chip",
+      "refersTo": "filter-chip",
+      "description": "Magenta só enquanto um filtro está aplicado.",
+      "html": "<span class=\"ds-filter-chip\">Filtro ativo</span>",
+      "css": ".ds-filter-chip { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; background: var(--filter, #c8137a); color: var(--background, #f7f8fa); font: 600 0.6875rem/1 'Saira Variable', sans-serif; font-stretch: 75%; letter-spacing: 0.1em; text-transform: uppercase; }"
     },
     {
-      "name": "Abas de Trabalho",
+      "name": "Aba ativa",
       "kind": "nav",
-      "refersTo": "tab-bar",
-      "description": "Aba ativa com filete azul superior; quadradinho de tampa por engine.",
-      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab-active\"><span class=\"ds-cap-sq\"></span>pedidos</button><button class=\"ds-tab\"><span class=\"ds-cap-sq ds-redis\"></span>db0</button></div>",
-      "css": ".ds-tabs { font-family: 'Archivo Variable', sans-serif; display: flex; border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--muted) 40%, transparent); } .ds-tab { display: flex; align-items: center; gap: 6px; padding: 6px 12px; font: inherit; font-size: 0.875rem; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--muted-foreground); cursor: pointer; } .ds-tab:hover { background: color-mix(in oklch, var(--background) 60%, transparent); } .ds-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); } .ds-tab-active { background: var(--background); color: var(--foreground); font-weight: 500; box-shadow: inset 0 2px 0 var(--select); } .ds-cap-sq { width: 8px; height: 8px; border-radius: 1px; background: var(--cap-postgres); } .ds-redis { background: var(--cap-redis); }"
+      "refersTo": "tab-active",
+      "description": "Filete azul interno de 3px e triângulo de canto; contagem Δ quando há stage.",
+      "html": "<div class=\"ds-tabs\"><span class=\"ds-tab ds-tab-active\"><b>PG</b>users<em>Δ 2</em></span><span class=\"ds-tab\"><b>MY</b>orders</span></div>",
+      "css": ".ds-tabs { display: flex; height: 36px; background: var(--muted, #eef0f3); border-bottom: 1px solid var(--foreground, #0f1011); } .ds-tab { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-right: 1px solid var(--border, #dde0e5); font: 400 0.875rem 'Hanken Grotesk Variable', sans-serif; color: var(--muted-foreground, #5c6269); } .ds-tab:hover { color: var(--foreground, #0f1011); } .ds-tab b { font: 600 0.6875rem 'Saira Variable', sans-serif; font-stretch: 75%; letter-spacing: 0.1em; } .ds-tab-active { background: var(--background, #f7f8fa); color: var(--foreground, #0f1011); font-weight: 600; box-shadow: inset 0 3px 0 var(--select, #0057ff); margin-bottom: -1px; } .ds-tab-active::after { content: ''; position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: var(--select, #0057ff); clip-path: polygon(0 0, 100% 0, 100% 100%); } .ds-tab em { font: normal 11px/18px 'Spline Sans Mono Variable', monospace; padding: 0 4px; background: var(--foreground, #0f1011); color: var(--background, #f7f8fa); }"
     },
     {
-      "name": "Fita de Lacre de Produção",
-      "kind": "custom",
-      "refersTo": "seal-tape",
-      "description": "Faixa de 28px no topo da janela em produção, sempre com texto.",
-      "html": "<p class=\"ds-seal\"><span class=\"ds-seal-caps\">Lacre de produção</span><span>loja-prod · toda escrita pede confirmação com o comando exato</span></p>",
-      "css": ".ds-seal { font-family: 'Archivo Variable', sans-serif; display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 16px; margin: 0; font-size: 0.75rem; background: repeating-linear-gradient(135deg, var(--seal) 0 22px, var(--seal-dark) 22px 26px); color: #fff; animation: ds-seal-in 120ms ease-out; } .ds-seal-caps { font-stretch: 70%; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.6875rem; line-height: 1; } @keyframes ds-seal-in { from { opacity: 0; transform: translateY(-4px); } } @media (prefers-reduced-motion: reduce) { .ds-seal { animation: none; } }"
+      "name": "Linha do registro de conexões",
+      "kind": "card",
+      "refersTo": "engine-code",
+      "description": "Casa da engine, nome, etiqueta de ambiente e alvo em mono, sobre papel.",
+      "html": "<div class=\"ds-ledger\"><span class=\"ds-code\">PG</span><span class=\"ds-name\">Postgres prod</span><span class=\"ds-prod\">Prod</span><span class=\"ds-target\">PostgreSQL · db:5432</span></div>",
+      "css": ".ds-ledger { display: grid; grid-template-columns: auto 1fr auto; column-gap: 10px; row-gap: 2px; align-items: center; width: 256px; padding: 8px 6px 8px 8px; background: var(--background, #f7f8fa); border: 1px solid var(--foreground, #0f1011); color: var(--foreground, #0f1011); } .ds-ledger:hover { background: var(--muted, #eef0f3); } .ds-code { grid-row: span 2; display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid currentColor; font: 600 0.75rem 'Saira Variable', sans-serif; font-stretch: 75%; letter-spacing: 0.02em; } .ds-name { font: 600 13px 'Hanken Grotesk Variable', sans-serif; } .ds-prod { height: 18px; padding: 0 6px; display: inline-flex; align-items: center; background: var(--safelight, #c4291c); color: #fff; font: 600 0.6875rem 'Saira Variable', sans-serif; font-stretch: 75%; letter-spacing: 0.1em; text-transform: uppercase; } .ds-target { grid-column: 2 / 4; font: 400 11px 'Spline Sans Mono Variable', monospace; color: var(--muted-foreground, #5c6269); }"
     },
     {
-      "name": "Célula de Grade",
+      "name": "Célula com banda de hachura",
       "kind": "custom",
       "refersTo": "grid-row",
-      "description": "Linha de 28px em mono; célula editada hachurada; selecionada com contorno azul.",
-      "html": "<div class=\"ds-row\"><div class=\"ds-cell\">42</div><div class=\"ds-cell ds-opened\">Ana Souza</div><div class=\"ds-cell ds-selected\">ana@ex.com</div><div class=\"ds-cell ds-null\">NULL</div></div>",
-      "css": ".ds-row { display: flex; height: 28px; border-bottom: 1px solid var(--border); font-family: 'Red Hat Mono Variable', ui-monospace, monospace; font-size: 0.75rem; font-variant-numeric: tabular-nums; } .ds-cell { width: 120px; padding: 0 8px; line-height: 28px; border-right: 1px solid var(--border); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } .ds-opened { background: repeating-linear-gradient(135deg, var(--opened) 0 6px, var(--opened-line) 6px 7px); } .ds-selected { background: color-mix(in oklch, var(--select) 10%, transparent); outline: 2px solid var(--select); outline-offset: -2px; } .ds-null { color: var(--muted-foreground); font-style: italic; }"
+      "description": "Δ de exposição na grade: banda de 7px sob o valor, filete de tinta; selecionada em azul.",
+      "html": "<div class=\"ds-row\"><span class=\"ds-cell ds-edited\">20</span><span class=\"ds-cell ds-selected\">NULL</span></div>",
+      "css": ".ds-row { display: flex; height: 28px; font: 400 0.75rem/28px 'Spline Sans Mono Variable', monospace; color: var(--foreground, #0f1011); border-bottom: 1px solid var(--border, #dde0e5); } .ds-cell { width: 120px; padding: 0 8px; border-right: 1px solid var(--border, #dde0e5); } .ds-edited { background-image: repeating-linear-gradient(135deg, color-mix(in oklch, #0f1011 38%, transparent) 0 1px, transparent 1px 5px); background-repeat: no-repeat; background-size: 100% 7px; background-position: bottom; box-shadow: inset 0 -2px 0 var(--foreground, #0f1011); text-align: right; } .ds-selected { color: var(--muted-foreground, #5c6269); font-style: italic; background: color-mix(in oklch, var(--select, #0057ff) 10%, transparent); outline: 2px solid var(--select, #0057ff); outline-offset: -2px; }"
     }
   ],
   "narrative": {
-    "northStar": "A Bancada de Custódia",
-    "overview": "**Creative North Star: \"A Bancada de Custódia\"**\n\nCada conexão e cada registro é uma amostra etiquetada na bancada do laboratório. A lateral é epóxi preto de bancada nos dois temas; as conexões são etiquetas térmicas brancas presas nela, com a cor da tampa do tubo por engine, nome impresso em negrito e o ambiente impresso por extenso. A área de trabalho é papel e etiqueta: densa, em filetes de 1px, cantos de 3px, dados em mono numa grade de 28px. Produção fica sob lacre vermelho hachurado, e escrever nela é assinar um termo de custódia que mostra o comando exato.\n\nO sistema é de operação, não de vitrine: compacto, legível de relance, sem sombras decorativas e sem movimento além do lacre e do termo. O perigo nunca depende só de cor; ambiente, estado editado e lacre sempre se dizem em palavras ou em textura. Recusa a lateral cinza com um azul de destaque típica da categoria e o tema escuro de IDE: o azul existe, mas só marca onde você está.\n\nO tema segue o sistema operacional (`prefers-color-scheme`), sem alternância no app. O escuro não é inversão: é a mesma bancada à noite.",
+    "northStar": "Ampliação em Grade",
+    "overview": "O banco é uma ampliação em andamento sobre uma grade de construção: a ficha de exposição do laboratório fotográfico fundida com o espécime tipográfico em grade de Wim Crouwel. Cada valor tem sua zona exata numa escala de 11 tons, a grade de construção aparece onde não há dado, cada alteração não salva é exposição a mais (hachura com contagem Δ) e produção trabalha sob luz de segurança.\n\nO sistema é de operação: denso, cantos retos, filetes de 1px, filete de tinta (Z0) nas divisões principais, sem desfoque. Estado se lê em textura e em palavras antes de cor: hachura diagonal é alterado, cruzada é excluído ou em conflito, contorno pontilhado é retido (somente leitura). Recusa a lateral cinza com um azul de destaque típica da categoria e o escuro de IDE com neon.\n\nO tema segue o sistema operacional (`prefers-color-scheme`), sem alternância no app. O escuro é a câmara escura: a mesma escala de zonas lida do outro lado, não uma paleta paralela.",
     "keyCharacteristics": [
-      "Bancada preta (lateral de 288px) com etiquetas claras; papel na área de trabalho.",
-      "Uma grotesca (Archivo Variable) com versalete condensado para rótulos impressos; Red Hat Mono só para dados e código.",
-      "Linhas de 28px em grades, tabelas e árvore da bancada.",
-      "Lacre vermelho hachurado como único sinal forte de produção, sempre acompanhado de texto.",
-      "Azul só para \"onde você está\".",
-      "Cantos de 3px (etiquetas de ambiente 2px), filetes de 1px, sem blur."
+      "Neutros só da escala de zonas Z0..Z10; nada de cinza avulso.",
+      "Grade de construção de 14px (duas células por linha de 28px) na lateral, estados vazios, cabeçalho da ficha de exposição e canvas do diagrama; nunca atrás de dados.",
+      "Três sinais com um papel cada: azul Crouwel (onde você está), magenta dicroico (filtração), luz de segurança (produção e destrutivo).",
+      "Saira com eixo de largura para letreiros e identificadores, Hanken Grotesk para interface, Spline Sans Mono tabular para dado.",
+      "O Δ de exposição: alterações em stage hachuradas, contadas no botão Salvar e na aba, reveladas ao salvar.",
+      "Cantos de 0px em tudo."
     ],
     "rules": [
-      {
-        "name": "The Where-You-Are Rule",
-        "body": "O azul (`--select`) marca só onde você está: seleção, anel de foco, aba ativa, tabela ativa. Nenhum dado usa azul: nem tipos do Redis, nem números no código, nem ícones.",
-        "section": "colors"
-      },
-      {
-        "name": "The Printed Environment Rule",
-        "body": "O ambiente é sempre impresso em palavras numa etiqueta: PROD em `--seal` cheio, STAGING em fundo `--warning`, DEV em contorno sólido, LOCAL em contorno tracejado. Nunca só cor.",
-        "section": "colors"
-      },
-      {
-        "name": "The Tube-Cap Rule",
-        "body": "Cor de engine aparece só como faixa ou quadradinho (`--cap-*`), nunca como cor de texto.",
-        "section": "colors"
-      },
-      {
-        "name": "The Opened-Sample Rule",
-        "body": "Célula editada e não salva leva a hachura âmbar (`opened-hatch`), para que o estado nunca dependa só de cor.",
-        "section": "colors"
-      },
-      {
-        "name": "The One Grotesque Rule",
-        "body": "Archivo é a única família de interface; o registro de display é o versalete condensado de `label-caps`, não uma segunda fonte.",
-        "section": "typography"
-      },
-      {
-        "name": "The Mono-Means-Data Rule",
-        "body": "Red Hat Mono só para dado e código; nunca para rótulos ou navegação.",
-        "section": "typography"
-      },
-      {
-        "name": "The 11px Floor Rule",
-        "body": "Texto funcional nunca abaixo de 11px.",
-        "section": "typography"
-      },
-      {
-        "name": "The 28px Row Rule",
-        "body": "Grade de resultados, tabelas de entradas e linhas da bancada usam a mesma altura de 28px.",
-        "section": "layout"
-      },
-      {
-        "name": "The No-Blur Rule",
-        "body": "Sem `backdrop-filter`. Diálogos genéricos usam anel de 1px (`foreground` a 15%) e não animam.",
-        "section": "elevation"
-      }
+      { "name": "The Zone Rule", "body": "Todo neutro sai da escala Z0..Z10. Um cinza fora da escala é um defeito.", "section": "colors" },
+      { "name": "The Where-You-Are Rule", "body": "O azul marca só onde você está (e desenha a diagonal da marca). Nenhum dado, ícone de tipo ou número de código é azul.", "section": "colors" },
+      { "name": "The Filtration Rule", "body": "Magenta só aparece quando algo filtra ou ordena as linhas. Sem filtro, sem magenta.", "section": "colors" },
+      { "name": "The Safelight Rule", "body": "Luz de segurança cheia só em produção e na confirmação destrutiva, sempre acompanhada de palavras (\"Produção\", \"Executar em produção\").", "section": "colors" },
+      { "name": "The Identifier-Keeps-Case Rule", "body": "Nome de tabela, coleção ou banco usa `display` com a caixa original; só títulos que não são dado usam `display-caps`.", "section": "typography" },
+      { "name": "The Mono-Means-Data Rule", "body": "Spline Sans Mono só para dado, código e quantidades; nunca para rótulos ou navegação.", "section": "typography" },
+      { "name": "The 11px Floor Rule", "body": "Texto funcional nunca abaixo de 11px.", "section": "typography" },
+      { "name": "The 28px Row Rule", "body": "Grade de resultados, linhas da árvore e tabelas de entradas usam 28px, exatamente duas células da grade.", "section": "layout" },
+      { "name": "The Grid-Where-No-Data Rule", "body": "A grade de construção aparece na lateral, nos estados vazios, no cabeçalho da ficha de exposição e no canvas do diagrama. Onde há dado (o registro de conexões, a grade, os cartões), o fundo é papel liso por cima da grade.", "section": "layout" },
+      { "name": "The No-Blur Rule", "body": "Sem `backdrop-filter` e sem sombras decorativas; a folha do diálogo é a única sombra.", "section": "elevation" }
     ],
     "dos": [
-      "**Do** reservar `--select` para seleção, anel de foco, aba ativa e tabela ativa.",
-      "**Do** imprimir o ambiente em palavras numa etiqueta: PROD `--seal` cheio, STAGING fundo `--warning`, DEV contorno sólido, LOCAL contorno tracejado.",
-      "**Do** usar a cor de tampa (`--cap-postgres/mysql/sqlite/mongo/redis`) só como faixa ou quadradinho.",
-      "**Do** usar o botão destrutivo (`--seal` cheio) só para confirmar escrita destrutiva ou em produção; em produção o botão do ConfirmDialog sempre diz \"Romper lacre e …\".",
-      "**Do** usar Archivo Variable para toda a interface, `label-caps` para rótulos impressos, Red Hat Mono só para dado e código.",
-      "**Do** manter linhas de 28px em grades e tabelas e texto funcional em 11px ou mais.",
-      "**Do** manter a bancada mais escura que a área de trabalho nos dois temas (#121517 contra #1b1f22 no escuro) e as etiquetas em #d9dcd6 à noite.",
-      "**Do** seguir o tema do SO (`prefers-color-scheme`)."
+      "**Do** tirar todo neutro da escala Z0..Z10 e trocar de tema só pelo nome da zona.",
+      "**Do** mostrar a grade de construção (14px, `grid`) só onde não há dado: lateral, estados vazios, cabeçalho da ficha, canvas do diagrama.",
+      "**Do** reservar o azul para onde você está e para a diagonal da marca; o magenta para filtração; a luz de segurança para produção e destrutivo.",
+      "**Do** imprimir o ambiente em palavras na notação LOCAL pontilhado, DEV contorno, STAGING casa hachurada, PROD luz de segurança cheia.",
+      "**Do** marcar somente leitura com o contorno pontilhado de \"retido\".",
+      "**Do** marcar estado por textura: hachura para alterado, cruzada para excluído, sempre em banda sob o valor na grade.",
+      "**Do** levar a contagem Δ no botão Salvar e na aba enquanto houver alterações em stage.",
+      "**Do** usar `display` com a caixa original para identificadores e `display-caps` para os demais títulos.",
+      "**Do** manter linhas de 28px, cantos de 0px e texto funcional em 11px ou mais.",
+      "**Do** limitar o movimento à faixa de produção (120ms), à ficha de exposição (160ms) e à revelação (120ms `steps(2)`), todos com `prefers-reduced-motion`."
     ],
     "donts": [
-      "**Don't** usar azul em dado: tipos do Redis, números no código, ícones.",
-      "**Don't** indicar ambiente, produção ou estado editado só por cor.",
-      "**Don't** pintar texto com cor de engine.",
-      "**Don't** usar `--seal` cheio para ações comuns.",
-      "**Don't** introduzir segunda família de interface nem mono fora de dado/código.",
-      "**Don't** animar nada além da faixa de lacre e do Termo de custódia (120ms, `motion-reduce`); diálogos genéricos não animam.",
-      "**Don't** usar `backdrop-filter`/blur nem sombras decorativas.",
+      "**Don't** pôr grade ou hachura atrás de dígitos ou de dado.",
+      "**Don't** usar azul em dado, ícone de tipo ou número de código.",
+      "**Don't** usar magenta sem filtro ou ordenação ativos.",
+      "**Don't** usar luz de segurança cheia para ações comuns.",
+      "**Don't** indicar ambiente, produção ou estado só por cor.",
+      "**Don't** arredondar cantos.",
+      "**Don't** usar `backdrop-filter` nem sombras além da folha do diálogo.",
+      "**Don't** usar mono fora de dado, código e quantidades.",
       "**Don't** adicionar alternância de tema no app."
     ]
   }

@@ -37,21 +37,26 @@ export const DEFAULT_PORT: Record<Exclude<Engine, "sqlite">, number> = {
   redis: 6379
 };
 
-/** Printed environment tag: the label always says it, colour only reinforces. */
+/** Environment legend: the word always says it; the outline and hatch reinforce. */
 export const ENVIRONMENT_STYLE: Record<Environment, { label: string; tagClass: string }> = {
-  local: { label: "Local", tagClass: "border border-dashed border-current" },
+  local: { label: "Local", tagClass: "border border-dotted border-current" },
   dev: { label: "Dev", tagClass: "border border-current" },
-  staging: { label: "Staging", tagClass: "bg-warning text-primary-foreground" },
-  prod: { label: "Prod", tagClass: "bg-seal text-white" }
+  // the hatch sits in its own cell so it never runs behind the letters
+  staging: {
+    label: "Staging",
+    tagClass:
+      "border border-current pl-0 before:mr-1.5 before:h-full before:w-2 before:border-r before:border-current before:hatch before:content-['']"
+  },
+  prod: { label: "Prod", tagClass: "border border-safelight bg-safelight text-white" }
 };
 
-/** Tube-cap colour per engine, used on connection labels and tabs. */
-export const ENGINE_CAP: Record<Engine, string> = {
-  postgres: "bg-cap-postgres",
-  mysql: "bg-cap-mysql",
-  sqlite: "bg-cap-sqlite",
-  mongo: "bg-cap-mongo",
-  redis: "bg-cap-redis"
+/** Two-letter engine code, set in the legend face on connections and tabs. */
+export const ENGINE_CODE: Record<Engine, string> = {
+  postgres: "PG",
+  mysql: "MY",
+  sqlite: "SL",
+  mongo: "MG",
+  redis: "RD"
 };
 
 export const TLS_LABEL: Record<TlsMode, string> = {

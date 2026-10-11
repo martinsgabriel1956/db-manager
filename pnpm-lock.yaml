@@ -181,11 +181,14 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.14
         version: 6.43.14
-      '@fontsource-variable/archivo':
-        specifier: ^5.3.0
+      '@fontsource-variable/hanken-grotesk':
+        specifier: 5.3.0
         version: 5.3.0
-      '@fontsource-variable/red-hat-mono':
-        specifier: ^5.3.0
+      '@fontsource-variable/saira':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource-variable/spline-sans-mono':
+        specifier: 5.3.0
         version: 5.3.0
       '@lezer/highlight':
         specifier: 1.2.5
@@ -548,11 +551,14 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@fontsource-variable/archivo@5.3.0':
-    resolution: {integrity: sha512-HogK8FJelrD1o7TlZlkIVtHgc20bO5PZRWE7mUeUTdMN055alznQV6/00J00IBeu8FQAH4s3zW9UJNvKExXf+g==}
+  '@fontsource-variable/hanken-grotesk@5.3.0':
+    resolution: {integrity: sha512-DOd0FqL+3cH2dfNy0JtSq9tUfxBz5mLmHMjTU0DOr3E9Zo6wxuatCl53DIPNrSPgCsnuKyM739BTIG5glCLirw==}
 
-  '@fontsource-variable/red-hat-mono@5.3.0':
-    resolution: {integrity: sha512-/mEvTCcruJY64xRgx1gsmsYuGR7MtOduOsuyeHVJ07p+2gGvCqROauIwaTCcVHL4eBGi+Lns4EUIjrPZLCn5gQ==}
+  '@fontsource-variable/saira@5.3.0':
+    resolution: {integrity: sha512-C1rm7n1OuEx4Se/SAB/5EeUuCviGFFnYTr5vxuQQm2YIOfgbQWx/P6qqhdXlVCBRm/1UzNWCtDK5jNbVmO6W2w==}
+
+  '@fontsource-variable/spline-sans-mono@5.3.0':
+    resolution: {integrity: sha512-dH/qBj/MCE4ObiuCwlA9X1o3AftMO9dwfFgoRVYjy6VCPYkpWAlEtK/RjeyICgsR8rW763IAQARskVgShBY5JA==}
 
   '@hono/node-server@2.1.4':
     resolution: {integrity: sha512-2g1qeHl4BduwDn6L8nkAvDrPUWPMlkQ//a5NhP/zIyaXKMjZNRV+cG9Csu+BiJFf6+68pqzjf4Hi5sJGKHuS1g==}
@@ -3799,9 +3805,11 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@fontsource-variable/archivo@5.3.0': {}
+  '@fontsource-variable/hanken-grotesk@5.3.0': {}
 
-  '@fontsource-variable/red-hat-mono@5.3.0': {}
+  '@fontsource-variable/saira@5.3.0': {}
+
+  '@fontsource-variable/spline-sans-mono@5.3.0': {}
 
   '@hono/node-server@2.1.4(hono@4.13.13)':
     dependencies:

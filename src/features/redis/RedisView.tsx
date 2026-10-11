@@ -22,9 +22,10 @@ export function RedisView({ connection, db }: RedisViewProps) {
 
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
-      <div className="flex items-center gap-4 border-b bg-muted px-3">
-        <h2 className="py-2 font-mono text-sm font-semibold">
-          {connection.name} · db{db}
+      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
+        <h2 className="flex items-baseline gap-1.5 py-2.5">
+          <span className="text-xs text-muted-foreground">{connection.name} ·</span>
+          <span className="display text-[1.75rem]">db{db}</span>
         </h2>
         <TabsList aria-label="Seções do Redis">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
@@ -33,7 +34,7 @@ export function RedisView({ connection, db }: RedisViewProps) {
             </TabsTrigger>
           ))}
         </TabsList>
-        {connection.readOnly && <Badge variant="outline">Somente leitura</Badge>}
+        {connection.readOnly && <Badge variant="held">Somente leitura</Badge>}
       </div>
       {/* panels stay mounted so the selected key and the console scrollback survive switching */}
       <TabsContent value="keys" forceMount className="min-h-0 flex-1">

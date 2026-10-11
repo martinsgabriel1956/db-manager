@@ -72,7 +72,10 @@ export function SqlWorkspace({
         <Panel defaultSize="45" minSize={80}>
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5">
-              <h2 className="text-sm font-semibold">SQL · {connectionName}</h2>
+              <h2 className="flex items-baseline gap-1.5">
+                <span className="display-caps text-lg">SQL</span>
+                <span className="text-sm font-semibold">· {connectionName}</span>
+              </h2>
               <span className="text-xs text-muted-foreground">
                 {RUN_SHORTCUT} executa a seleção ou tudo
               </span>
@@ -134,7 +137,12 @@ function ResultsPanel({ connectionId, sql, state, onLoadMore }: ResultsPanelProp
 
   if (state.status === "idle") {
     return (
-      <p className="p-3 text-sm text-muted-foreground">Execute uma query para ver o resultado.</p>
+      <div className="grid h-full content-center justify-items-start gap-2 px-8 grid-paper">
+        <p aria-hidden className="display-caps text-3xl">
+          Sem resultado
+        </p>
+        <p className="text-sm text-muted-foreground">Execute uma query para ver o resultado.</p>
+      </div>
     );
   }
   if (state.status === "running") {

@@ -110,7 +110,7 @@ export function DocumentsPanel({
       <form onSubmit={apply} className="grid gap-2 border-b bg-muted px-3 py-2">
         <div className="grid grid-cols-[2fr_1fr_1fr_auto] items-end gap-2">
           {(Object.keys(FIELD_LABEL) as (keyof Query)[]).map(field => (
-            <label key={field} className="grid gap-1.5 label-caps text-muted-foreground">
+            <label key={field} className="grid gap-1.5 legend text-muted-foreground">
               {FIELD_LABEL[field]}
               <Input
                 aria-label={FIELD_LABEL[field]}
@@ -135,7 +135,7 @@ export function DocumentsPanel({
 
       <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5 text-sm">
         {/* a toggle between two renderings of the same documents, not tabs with panels */}
-        <div role="group" aria-label="Visualização" className="flex rounded-lg border p-0.5">
+        <div role="group" aria-label="Visualização" className="flex border border-foreground">
           {(["tree", "json"] as const).map(option => (
             <button
               key={option}
@@ -143,8 +143,9 @@ export function DocumentsPanel({
               aria-pressed={view === option}
               onClick={() => setView(option)}
               className={cn(
-                "rounded-md px-2 py-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-                view === option && "bg-muted font-medium text-foreground"
+                "px-2.5 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                view === option &&
+                  "bg-foreground font-semibold text-background hover:text-background"
               )}
             >
               {option === "tree" ? "Árvore" : "JSON"}
@@ -175,7 +176,7 @@ export function DocumentsPanel({
         </p>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-3">
+      <div className="min-h-0 flex-1 overflow-auto bg-muted p-3">
         {documents.data?.documents.length === 0 && (
           <p className="text-sm text-muted-foreground">Nenhum documento.</p>
         )}
@@ -236,7 +237,7 @@ export function DocumentsPanel({
       <ConfirmDialog
         connectionId={connectionId}
         confirmation={writer.confirmation}
-        confirmLabel="Romper lacre e executar"
+        confirmLabel="Executar"
         pending={writer.isPending}
         onConfirm={writer.confirm}
         onCancel={writer.dismiss}

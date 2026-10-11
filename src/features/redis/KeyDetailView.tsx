@@ -247,7 +247,7 @@ function StringEditor({ initial, editable, pending, onSave }: StringEditorProps)
       <textarea
         aria-label="Valor"
         readOnly={!editable}
-        className="min-h-48 w-full rounded-[3px] border border-input bg-transparent p-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        className="min-h-48 w-full border border-input bg-transparent p-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
         value={text}
         onChange={event => setText(event.target.value)}
       />
@@ -269,7 +269,7 @@ function StreamTable({ entries }: { entries: StreamEntry[] }) {
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
-        <tr className="h-7 border-b text-left label-caps text-muted-foreground">
+        <tr className="h-7 border-b text-left legend text-muted-foreground">
           <th className="px-2 py-1.5 font-medium">ID</th>
           <th className="px-2 py-1.5 font-medium">Campos</th>
         </tr>

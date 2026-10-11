@@ -19,7 +19,7 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   return (
-    <article className="group relative rounded-md border bg-background p-3">
+    <article className="group relative border border-foreground bg-background p-3">
       {(onEdit || onDelete) && (
         <div className="absolute top-2 right-2 flex gap-1 opacity-60 group-hover:opacity-100">
           {onEdit && (

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>DB Manager · Ficha de Compensação</title>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Martian+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--t0:#fdfcf8;--t1:#f6f5f0;--t2:#ecebe4;--t3:#d9d8d0;--t5:#9a9990;--t7:#5f5e57;--t10:#141414;--pg:#1d4f9c;--my:#e08a00;--lite:#55626e;--mg:#138a4a;--rd:#c2185b;--prod:#d6261c;--sel:#ffcc00}
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 "Schibsted Grotesk",sans-serif;color:var(--t10);background:var(--t0);display:grid;grid-template-columns:288px 1fr}
+.mono{font-family:"Martian Mono",monospace}
+aside{border-right:1px solid var(--t10);background:var(--t1);display:flex;flex-direction:column}
+.brand{height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--t10)}
+.brand b{font-weight:800;font-size:15px;letter-spacing:-.01em}
+.code{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-left:2px solid currentColor;border-right:2px solid currentColor;font:700 12px "Martian Mono",monospace}
+.lbl{font-size:11px;font-weight:600;color:var(--t7)}
+.sec{padding:12px 16px 6px;display:flex;justify-content:space-between}
+.conn{border-top:1px solid var(--t3);padding:10px 16px;display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center}
+.conn .n{font-weight:700}
+.conn .s{grid-column:2;font:11px "Martian Mono",monospace;color:var(--t7)}
+.env{font:700 11px "Schibsted Grotesk";letter-spacing:.04em;padding:2px 6px;border:1.5px solid var(--t10)}
+.env.prod{background:var(--prod);border-color:var(--prod);color:#fff}
+.env.local{border-style:dashed}
+.tree{padding:2px 0 8px 52px}
+.tree div{height:28px;display:flex;align-items:center;gap:8px;color:var(--t7)}
+.tree .on{background:var(--sel);color:var(--t10);font-weight:600;margin-left:-8px;padding-left:8px;margin-right:16px}
+.mag{margin-left:auto;margin-right:16px;height:6px;background:var(--t10)}
+main{display:grid;grid-template-rows:56px 36px 64px 1fr 214px;min-width:0}
+.band{background:var(--pg);color:#fff;display:flex;align-items:center;gap:14px;padding:0 20px}
+.band .code{color:#fff;height:28px;font-size:14px}
+.band h1{font-size:18px;font-weight:700}
+.band .env{margin-left:auto;font-size:12px;padding:4px 10px;border:2px solid #fff;background:var(--prod)}
+.tabs{display:flex;border-bottom:1px solid var(--t10);background:var(--t1)}
+.tab{padding:0 16px;display:flex;align-items:center;gap:8px;border-right:1px solid var(--t3);color:var(--t7)}
+.tab.on{background:var(--t0);color:var(--t10);font-weight:600;box-shadow:inset 0 -3px 0 var(--sel)}
+.sw{width:10px;height:10px}
+.fields{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.4fr;border-bottom:1px solid var(--t10)}
+.f{border-right:1px solid var(--t10);padding:8px 12px}
+.f:last-child{border:0;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.f .v{font-size:15px;font-weight:600;margin-top:2px}
+.f .v.r{text-align:right;font-family:"Martian Mono";font-size:14px}
+button{font:600 13px "Schibsted Grotesk";height:32px;padding:0 14px;border:1.5px solid var(--t10);background:var(--t0)}
+button.pri{background:var(--t10);color:var(--t0)}
+table{width:100%;border-collapse:collapse;font:12px "Martian Mono",monospace}
+th{position:sticky;top:0;height:30px;text-align:left;padding:0 10px;background:var(--t1);border-bottom:1px solid var(--t10);border-right:1px solid var(--t3);font:600 12px "Schibsted Grotesk"}
+th small{color:var(--t5);font:11px "Martian Mono";margin-left:6px}
+td{height:28px;padding:0 10px;border-bottom:1px solid var(--t2);border-right:1px solid var(--t2);white-space:nowrap}
+td.r{text-align:right}
+td.null{color:var(--t5);font-style:italic}
+tr.edit td.e{background:repeating-linear-gradient(135deg,#fff3b0 0 6px,#f3dd6a 6px 7px);outline:2px solid var(--t10);outline-offset:-2px}
+.ficha{border-top:2px dashed var(--t10);position:relative;padding:18px 20px 16px;background:var(--t0);display:grid;grid-template-columns:1fr 300px;gap:0 24px}
+.cut{position:absolute;top:-11px;left:20px;background:var(--t0);padding:0 8px;font-size:11px;font-weight:600;color:var(--t7)}
+.fh{display:flex;align-items:center;gap:12px;border-bottom:2px solid var(--t10);padding-bottom:8px}
+.fh .code{color:var(--pg);height:30px;font-size:15px}
+.fh h2{font-size:15px;font-weight:800}
+.ld{font:700 19px/1.5 "Martian Mono",monospace;letter-spacing:.02em;padding:12px 0;word-spacing:.3em}
+.ld em{font-style:normal;background:var(--sel)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--t10);border-bottom:0}
+.grid2 .f{border-bottom:1px solid var(--t10)}
+.grid2 .f:nth-child(2n){border-right:0}
+.act{grid-column:2;display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.act .go{background:var(--prod);border-color:var(--prod);color:#fff}
+</style></head><body>
+<aside>
+  <div class="brand"><span class="code">DB</span><b>DB Manager</b><span class="lbl" style="margin-left:auto">5 conexões</span></div>
+  <div class="sec"><span class="lbl">Conexões</span><span class="lbl">+ Nova</span></div>
+  <div class="conn" style="color:var(--pg)"><span class="code">PG</span><span class="n" style="color:var(--t10)">Postgres prod</span><span class="env prod">PRODUÇÃO</span><span class="s">db.interno:5432</span></div>
+  <div class="tree">
+    <div>public <span class="mag" style="width:40px"></span></div>
+    <div class="on">users <span class="mag" style="width:64px"></span></div>
+    <div>orders <span class="mag" style="width:112px"></span></div>
+    <div>active_users <span class="mag" style="width:24px"></span></div>
+  </div>
+  <div class="conn" style="color:var(--pg)"><span class="code">PG</span><span class="n" style="color:var(--t10)">Postgres dev</span><span class="env">DEV</span><span class="s">localhost:5432</span></div>
+  <div class="conn" style="color:var(--my)"><span class="code">MY</span><span class="n" style="color:var(--t10)">Loja MySQL</span><span class="env">STAGING</span><span class="s">staging.loja:3306</span></div>
+  <div class="conn" style="color:var(--mg)"><span class="code">MG</span><span class="n" style="color:var(--t10)">Mongo dev</span><span class="env">DEV</span><span class="s">localhost:27017</span></div>
+  <div class="conn" style="color:var(--rd)"><span class="code">RD</span><span class="n" style="color:var(--t10)">Cache</span><span class="env local">LOCAL</span><span class="s">localhost:6379 · db0</span></div>
+</aside>
+<main>
+  <div class="band"><span class="code">PG</span><h1>Postgres prod</h1><span style="opacity:.85">public.users</span><span class="env">PRODUÇÃO · TODA ESCRITA PEDE CONFIRMAÇÃO</span></div>
+  <div class="tabs"><div class="tab on"><span class="sw" style="background:var(--pg)"></span>users</div><div class="tab"><span class="sw" style="background:var(--pg)"></span>Consulta 1</div><div class="tab"><span class="sw" style="background:var(--mg)"></span>events</div><div class="tab">Histórico</div></div>
+  <div class="fields">
+    <div class="f"><div class="lbl">Tabela</div><div class="v">public.users</div></div>
+    <div class="f"><div class="lbl">Linhas</div><div class="v r">12.408</div></div>
+    <div class="f"><div class="lbl">Chave primária</div><div class="v">id</div></div>
+    <div class="f"><div class="lbl">Pendentes</div><div class="v r">1 alteração</div></div>
+    <div class="f"><button>Descartar</button><button class="pri">Salvar</button></div>
+  </div>
+  <div style="overflow:hidden">
+    <table><thead><tr><th>id<small>int4</small></th><th>email<small>text</small></th><th>nome<small>text</small></th><th>saldo<small>numeric</small></th><th>criado_em<small>timestamptz</small></th><th>profile<small>jsonb</small></th></tr></thead><tbody>
+    <tr><td class="r">18</td><td>joao@exemplo.com</td><td>João Lima</td><td class="r">1.204,50</td><td>2026-09-02 14:11:08</td><td>{"tier": "gold"}</td></tr>
+    <tr><td class="r">19</td><td>marta@exemplo.com</td><td>Marta Reis</td><td class="r">0,00</td><td>2026-09-03 09:40:51</td><td class="null">NULL</td></tr>
+    <tr class="edit"><td class="r">20</td><td class="e">ana@exemplo.com</td><td>Ana Souza</td><td class="r">88,10</td><td>2026-09-03 18:02:33</td><td>{"id": 9007199254740993}</td></tr>
+    <tr><td class="r">21</td><td>pedro@exemplo.com</td><td>Pedro Alves</td><td class="r">42,00</td><td>2026-09-04 07:15:12</td><td>{"tier": "free"}</td></tr>
+    <tr><td class="r">22</td><td>lia@exemplo.com</td><td>Lia Prado</td><td class="r">310,75</td><td>2026-09-05 22:48:00</td><td class="null">NULL</td></tr>
+    <tr><td class="r">23</td><td>caio@exemplo.com</td><td>Caio Melo</td><td class="r">5,90</td><td>2026-09-06 11:03:27</td><td>{"tier": "free"}</td></tr>
+    </tbody></table>
+  </div>
+  <section class="ficha">
+    <span class="cut">✂ confira antes de executar</span>
+    <div>
+      <div class="fh"><span class="code">PG</span><h2>Ficha de execução</h2><span class="lbl">Postgres prod · 1 comando</span></div>
+      <div class="lbl" style="margin-top:10px">Linha digitável</div>
+      <div class="ld">UPDATE public.users SET email = <em>'ana@exemplo.com'</em> WHERE id = 20;</div>
+    </div>
+    <div>
+      <div class="grid2">
+        <div class="f"><div class="lbl">Conexão</div><div class="v">Postgres prod</div></div>
+        <div class="f"><div class="lbl">Ambiente</div><div class="v"><span class="env prod">PRODUÇÃO</span></div></div>
+        <div class="f"><div class="lbl">Linhas afetadas</div><div class="v r">1</div></div>
+        <div class="f"><div class="lbl">Timeout</div><div class="v r">30 s</div></div>
+      </div>
+      <div class="act"><button>Cancelar</button><button class="go">Confirmar execução</button></div>
+    </div>
+  </section>
+</main>
+</body></html>

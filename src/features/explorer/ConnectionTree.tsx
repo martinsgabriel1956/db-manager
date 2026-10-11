@@ -13,14 +13,9 @@ import {
 } from "lucide-react";
 import type { ConnectionConfig, SchemaInfo } from "@/bindings";
 import { Button } from "@/components/ui/button";
-import { EnvTag } from "@/features/connections/EnvTag";
+import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
 import { useDisconnect, useSchemas } from "@/features/explorer/queries";
-import {
-  defaultSchemaFor,
-  ENGINE_CAP,
-  ENGINE_LABEL,
-  isSqlEngine
-} from "@/features/connections/options";
+import { defaultSchemaFor, ENGINE_LABEL, isSqlEngine } from "@/features/connections/options";
 import { useRedisDatabases } from "@/features/redis/queries";
 import type { DiagramTarget, RedisTarget, TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
@@ -48,12 +43,12 @@ type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   onOpenDiagram?: (target: DiagramTarget) => void;
 };
 
-/** Rows that sit directly on the bench (schemas, tables, Redis databases). */
-const BENCH_ROW =
-  "flex w-full items-center gap-1.5 rounded-[2px] px-1.5 h-7 text-left text-[13px] outline-none hover:bg-bench-raised focus-visible:ring-2 focus-visible:ring-ring";
+/** Rows on the grid paper under a connection (schemas, tables, Redis databases). */
+const TREE_ROW =
+  "flex w-full items-center gap-1.5 px-1.5 h-7 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
-const ACTIVE_ROW =
-  "bg-tag text-tag-foreground font-semibold shadow-[inset_3px_0_0_var(--tag-select)] hover:bg-tag";
+/** Where you are: the table open in the active tab, filled in Crouwel blue. */
+const ACTIVE_ROW = "bg-select text-select-foreground font-semibold hover:bg-select";
 
 /** Second line of the label: where the connection points, as stored. */
 export function targetSummary(connection: ConnectionConfig): string {
@@ -69,10 +64,14 @@ export function targetSummary(connection: ConnectionConfig): string {
 
 export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps) {
   if (connections.length === 0) {
-    return <p className="px-3 text-sm text-bench-muted">Nenhuma conexão cadastrada.</p>;
+    return <p className="px-4 text-sm text-muted-foreground">Nenhuma conexão cadastrada.</p>;
   }
   return (
-    <ul aria-label="Conexões" className="grid grid-cols-1 gap-2 px-3">
+    // one ruled ledger: shared rules, ink rules around an open connection's tree
+    <ul
+      aria-label="Conexões"
+      className="mx-4 mb-4 grid grid-cols-1 border border-foreground bg-background"
+    >
       {connections.map(connection => (
         <ConnectionNode key={connection.id} connection={connection} {...actions} />
       ))}
@@ -101,35 +100,38 @@ function ConnectionNode({
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
   return (
-    <li>
-      {/* the sample label stuck on the bench: cap colour, name, environment, target */}
-      <div className="group flex overflow-hidden rounded-[3px] bg-tag text-tag-foreground shadow-[0_1px_0_rgb(0_0_0/0.4)] [--ring:var(--tag-select)]">
-        <span aria-hidden className={cn("w-1.5 shrink-0", ENGINE_CAP[connection.engine])} />
+    <li className={cn("border-b border-border last:border-b-0", expanded && "border-b-foreground")}>
+      {/* the record line: engine code, name, environment, target */}
+      <div className="group relative flex items-stretch">
         <button
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded(prev => !prev)}
-          className="grid min-w-0 flex-1 gap-0.5 py-1.5 pr-1 pl-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          className="grid min-w-0 flex-1 grid-cols-[auto_1fr] items-center gap-x-2.5 gap-y-0.5 py-2 pr-1.5 pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
+          <EngineCode engine={connection.engine} className="row-span-2" />
           <span className="flex min-w-0 items-center gap-1.5">
-            <Chevron className="size-3.5 shrink-0 text-tag-muted" />
             <span className="min-w-0 truncate text-[13px] font-semibold">{connection.name}</span>
             <EnvTag environment={connection.environment} className="ml-auto" />
           </span>
-          <span className="flex min-w-0 items-center gap-1.5 pl-5 font-mono text-[11px] text-tag-muted">
-            <span className="min-w-0 truncate">
-              {ENGINE_LABEL[connection.engine]} · {targetSummary(connection)}
-            </span>
+          <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+            <Chevron aria-hidden className="-ml-0.5 size-3 shrink-0" />
+            {/* the engine is already in the code cell; screen readers still hear it */}
+            <span className="sr-only">{ENGINE_LABEL[connection.engine]} · </span>
+            <span className="min-w-0 truncate">{targetSummary(connection)}</span>
             {connection.readOnly && (
-              <span title="Somente leitura" className="ml-auto shrink-0">
+              <span
+                title="Somente leitura"
+                className="ml-auto shrink-0 border border-dotted border-current p-px"
+              >
                 <Lock aria-hidden className="size-3" />
                 <span className="sr-only">somente leitura</span>
               </span>
             )}
           </span>
         </button>
-        {/* collapsed (not removed) at rest: still tabbable and announced, opens on hover or focus */}
-        <div className="flex max-w-0 shrink-0 items-center gap-0.5 overflow-hidden group-focus-within:max-w-24 group-focus-within:pr-1 group-hover:max-w-24 group-hover:pr-1">
+        {/* laid over the end of the target line, never over the name or the environment: hidden at rest but still tabbable */}
+        <div className="pointer-events-none absolute right-1 bottom-1 flex items-center gap-0.5 bg-background pl-1 opacity-0 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
           {hasSqlEditor && (
             <Button
               size="icon-xs"
@@ -165,11 +167,12 @@ function ConnectionNode({
       </div>
 
       {expanded && (
-        <div className="mt-1 ml-1.5 border-l border-bench-border pl-2">
-          {listing.isPending && <p className="px-1.5 py-1 text-xs text-bench-muted">Conectando…</p>}
+        <div className="mb-2 ml-5 border-l border-foreground py-0.5 pl-2">
+          {listing.isPending && (
+            <p className="px-1.5 py-1 text-xs text-muted-foreground">Conectando…</p>
+          )}
           {listing.isError && (
-            // an error slip on the bench, so the red stays readable on black
-            <div className="my-1 grid gap-1.5 rounded-[2px] bg-tag p-2 text-tag-foreground [--ring:var(--tag-select)]">
+            <div className="my-1 grid gap-1.5 border border-destructive bg-background p-2">
               <p role="alert" className="text-xs text-destructive">
                 {errorMessage(listing.error)}
               </p>
@@ -197,8 +200,8 @@ function ConnectionNode({
                         onOpenRedis({ connectionId: connection.id, db: database.index })
                       }
                       className={cn(
-                        BENCH_ROW,
-                        database.keys === 0 && "text-bench-muted",
+                        TREE_ROW,
+                        database.keys === 0 && "text-muted-foreground",
                         isActive && ACTIVE_ROW
                       )}
                     >
@@ -247,12 +250,12 @@ function SchemaNode({
 
   return (
     <li>
-      <div className="group flex items-center rounded-[2px] hover:bg-bench-raised">
+      <div className="group flex items-center hover:bg-muted">
         <button
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded(prev => !prev)}
-          className={cn(BENCH_ROW, "min-w-0 flex-1 text-bench-muted hover:bg-transparent")}
+          className={cn(TREE_ROW, "min-w-0 flex-1 text-muted-foreground hover:bg-transparent")}
         >
           <Chevron className="size-3.5 shrink-0" />
           <span className="truncate">{schema.name}</span>
@@ -263,7 +266,7 @@ function SchemaNode({
             size="icon-xs"
             variant="ghost"
             aria-label={`Diagrama ER de ${schema.name}`}
-            className="mr-0.5 text-bench-foreground opacity-0 group-hover:opacity-100 hover:bg-bench hover:text-bench-foreground focus-visible:opacity-100"
+            className="mr-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             onClick={() => onOpenDiagram({ connectionId, schema: schema.name })}
           >
             <Network />
@@ -273,7 +276,7 @@ function SchemaNode({
       {expanded && (
         <ul className="grid grid-cols-1 pl-4">
           {schema.relations.length === 0 && (
-            <li className="px-1.5 py-1 text-xs text-bench-muted">Sem tabelas</li>
+            <li className="px-1.5 py-1 text-xs text-muted-foreground">Sem tabelas</li>
           )}
           {schema.relations.map(relation => {
             const isActive =
@@ -289,7 +292,7 @@ function SchemaNode({
                   onClick={() =>
                     onOpenTable({ connectionId, schema: schema.name, table: relation.name })
                   }
-                  className={cn(BENCH_ROW, isActive && ACTIVE_ROW)}
+                  className={cn(TREE_ROW, isActive && ACTIVE_ROW)}
                 >
                   <Icon className="size-3.5 shrink-0 opacity-70" />
                   <span className="truncate">{relation.name}</span>

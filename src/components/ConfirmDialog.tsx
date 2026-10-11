@@ -17,8 +17,8 @@ type ConfirmDialogProps = {
 };
 
 /**
- * The custody form: shows exactly what will run, so the user signs for the command
- * and not for a vague warning. Confirming is breaking the seal.
+ * The exposure record: shows exactly what will run, so the user confirms the
+ * command and not a vague warning. In production it works under the safelight.
  */
 export function ConfirmDialog({
   connectionId,
@@ -31,56 +31,55 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const count = confirmation?.statements.length ?? 0;
   const connection = useConnections().data?.find(c => c.id === connectionId);
-  // in production, confirming always reads as breaking the seal, whichever screen asked
-  const label =
-    connection?.environment === "prod" && !confirmLabel.startsWith("Romper lacre")
-      ? "Romper lacre e executar"
-      : confirmLabel;
+  // in production, confirming always names where it runs, whichever screen asked
+  const isProd = connection?.environment === "prod";
+  const label = isProd ? "Executar em produção" : confirmLabel;
 
   return (
     <Dialog open={confirmation !== null} onOpenChange={open => !open && onCancel()}>
       <DialogContent
         showCloseButton={false}
-        className="gap-0 overflow-hidden rounded-[3px] p-0 shadow-[0_20px_44px_-14px_rgb(0_0_0/0.5)] duration-[120ms] data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-2 motion-reduce:animate-none sm:max-w-2xl"
+        className="gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl"
       >
-        <div className="border-b-2 border-foreground px-5 pt-4 pb-3">
-          <DialogTitle className="text-[1.75rem] leading-none font-extrabold tracking-[0.05em] uppercase [font-stretch:66%]">
-            Termo de custódia
-          </DialogTitle>
+        <div className="flex items-end justify-between gap-4 border-b border-foreground px-5 pt-6 pb-3 grid-paper">
+          <DialogTitle className="display-caps text-[2rem]">Confirmar execução</DialogTitle>
+          <svg aria-hidden viewBox="0 0 16 24" className="mb-0.5 h-8 w-5 text-select">
+            <line x1="2" y1="23" x2="14" y2="1" stroke="currentColor" strokeWidth="2.5" />
+          </svg>
         </div>
-        {/* the printed fields of the form */}
+        {/* the record's fields */}
         <dl className="grid grid-cols-[2fr_1fr_1fr] border-b">
           <div className="border-r px-5 py-2.5">
-            <dt className="label-caps text-muted-foreground">Conexão</dt>
-            <dd className="mt-1 truncate text-sm font-semibold">{connection?.name ?? "—"}</dd>
+            <dt className="legend text-muted-foreground">Conexão</dt>
+            <dd className="mt-1.5 truncate text-sm font-semibold">{connection?.name ?? "—"}</dd>
           </div>
           <div className="border-r px-4 py-2.5">
-            <dt className="label-caps text-muted-foreground">Ambiente</dt>
-            <dd className="mt-1">
+            <dt className="legend text-muted-foreground">Ambiente</dt>
+            <dd className="mt-1.5">
               {connection ? <EnvTag environment={connection.environment} /> : "—"}
             </dd>
           </div>
           <div className="px-4 py-2.5">
-            <dt className="label-caps text-muted-foreground">Comandos</dt>
-            <dd className="mt-1 font-mono text-sm font-semibold">{count}</dd>
+            <dt className="legend text-muted-foreground">Comandos</dt>
+            <dd className="mt-1.5 font-mono text-sm font-semibold">{count}</dd>
           </div>
         </dl>
         <div className="border-b px-5 py-2.5">
-          <p className="label-caps text-muted-foreground">Motivo</p>
-          <DialogDescription className="mt-1 text-sm text-foreground">
+          <p className="legend text-muted-foreground">Motivo</p>
+          <DialogDescription className="mt-1.5 text-sm text-foreground">
             {confirmation?.reason}
           </DialogDescription>
         </div>
-        <pre className="mx-5 my-4 max-h-80 overflow-auto rounded-[2px] border bg-muted px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
+        <pre className="mx-5 my-4 max-h-80 overflow-auto border border-foreground bg-background px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
           {confirmation?.statements.map(statement => `${statement}${statementSuffix}`).join("\n\n")}
         </pre>
-        <div
-          aria-hidden
-          className="flex h-6 items-center justify-center label-caps tracking-[0.14em] seal-tape"
-        >
-          Lacre · rompa só depois de conferir o comando · Lacre
-        </div>
-        <div className="flex flex-col-reverse gap-2 bg-muted px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {isProd && (
+          <p className="flex h-7 items-center gap-2 bg-safelight px-5 text-xs text-white">
+            <span className="legend text-[0.75rem]">Produção</span>
+            <span>este comando roda no banco de produção</span>
+          </p>
+        )}
+        <div className="flex flex-col-reverse gap-2 border-t border-foreground bg-muted px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
             Confira o comando exato antes de confirmar.
           </p>

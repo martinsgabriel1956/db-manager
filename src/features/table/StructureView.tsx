@@ -15,7 +15,7 @@ function Section({ title, headers, children, empty }: SectionProps) {
       ) : (
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="h-7 border-b text-left label-caps text-muted-foreground">
+            <tr className="h-7 border-b text-left legend text-muted-foreground">
               {headers.map(header => (
                 <th key={header} className="py-1.5 pr-4 font-medium">
                   {header}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Undo2 } from "lucide-react";
 import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -12,6 +12,7 @@ import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
 import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
+import { tableKey, useTabs } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 
 type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
@@ -41,15 +42,16 @@ export function TableView(props: TableViewProps) {
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
-      <div className="flex items-center gap-4 border-b bg-muted px-3">
-        <h2 className="py-2 font-mono text-sm font-semibold">
-          {props.schema}.{props.table}
+      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
+        <h2 className="flex items-baseline py-2.5">
+          <span className="font-mono text-xs text-muted-foreground">{props.schema}.</span>
+          <span className="display text-[1.75rem]">{props.table}</span>
         </h2>
         <TabsList aria-label="Seções da tabela">
           <TabsTrigger value="data">Dados</TabsTrigger>
           <TabsTrigger value="structure">Estrutura</TabsTrigger>
         </TabsList>
-        {props.readOnly && <Badge variant="outline">Somente leitura</Badge>}
+        {props.readOnly && <Badge variant="held">Somente leitura</Badge>}
         <div className="ml-auto">
           <ExportButton
             baseName={props.table}
@@ -128,6 +130,14 @@ function TableData({
     structure.data?.columns.filter(column => column.isPrimaryKey).map(column => column.name) ?? [];
   const edit = useTableEditing({ connectionId, schema, table, readOnly, batch, primaryKey });
   const dirty = edit.count > 0;
+  const setPending = useTabs(state => state.setPending);
+
+  // the tab shows the same Δ as the save button; closing the view clears it
+  useEffect(() => {
+    const key = tableKey({ connectionId, schema, table });
+    setPending(key, edit.count);
+    return () => setPending(key, 0);
+  }, [connectionId, schema, table, edit.count, setPending]);
 
   const selectedCell = selected && edit.rows[selected.row]?.[selected.column];
   const selectedEditable = selected !== null && edit.editing.canEdit(selected.row, selected.column);
@@ -189,13 +199,20 @@ function TableData({
               <Button size="sm" variant="outline" disabled={edit.saving} onClick={edit.discard}>
                 Descartar
               </Button>
-              <Button size="sm" disabled={edit.saving} onClick={edit.save}>
+              {/* the save carries the exposure: how many staged changes it will develop */}
+              <Button size="sm" disabled={edit.saving} onClick={edit.save} className="pr-0">
                 Salvar
+                <span
+                  aria-hidden
+                  className="ml-1.5 flex h-full items-center border-l border-primary-foreground/40 px-2 font-mono text-xs"
+                >
+                  Δ {edit.count}
+                </span>
               </Button>
             </div>
           )}
           {edit.notice && !dirty && (
-            <span role="status" className="ml-auto text-xs text-success">
+            <span role="status" className="ml-auto text-xs text-success developed">
               {edit.notice}
             </span>
           )}
@@ -279,7 +296,7 @@ function TableData({
       <ConfirmDialog
         connectionId={connectionId}
         confirmation={edit.confirmation}
-        confirmLabel="Romper lacre e salvar"
+        confirmLabel="Salvar"
         pending={edit.saving}
         onConfirm={edit.confirm}
         onCancel={edit.dismiss}

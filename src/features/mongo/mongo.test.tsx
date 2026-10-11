@@ -180,7 +180,7 @@ test("delete asks first; on prod the statement is confirmed", async () => {
   await user.click(screen.getAllByRole("button", { name: "Excluir documento" })[1]);
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   expect(await screen.findByRole("dialog")).toHaveTextContent("deleteOne");
-  await user.click(screen.getByRole("button", { name: "Romper lacre e executar" }));
+  await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
   await waitFor(() => expect(callsTo(calls, "write_document")).toHaveLength(2));
   const writes = callsTo(calls, "write_document") as WriteArgs[];

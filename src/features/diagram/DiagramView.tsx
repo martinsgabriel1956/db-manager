@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Background,
+  BackgroundVariant,
   Controls,
   Handle,
   MiniMap,
@@ -90,7 +91,7 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
             }
           }}
         >
-          <Background />
+          <Background variant={BackgroundVariant.Lines} gap={16} />
           <Controls showInteractive={false} />
           <MiniMap pannable zoomable />
         </ReactFlow>
@@ -103,12 +104,12 @@ function TableNodeView({ data }: NodeProps<TableNode>) {
   return (
     <div
       aria-label={`Tabela ${data.name}`}
-      className="overflow-hidden rounded-[3px] border bg-card text-xs shadow-[0_1px_0_rgb(0_0_0/0.25)]"
+      className="overflow-hidden border border-foreground bg-card text-xs"
       style={{ width: NODE_WIDTH }}
     >
       <Handle type="target" position={Position.Left} className="opacity-0" />
       <div
-        className="truncate border-b bg-muted px-2 font-mono font-semibold leading-8"
+        className="truncate border-b border-foreground bg-muted px-2 font-mono font-semibold leading-8"
         style={{ height: HEADER_HEIGHT }}
       >
         {data.name}

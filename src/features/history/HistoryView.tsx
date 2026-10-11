@@ -52,7 +52,7 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-2">
-        <h2 className="mr-2 label-caps">Histórico</h2>
+        <h2 className="mr-2 display-caps text-xl">Histórico</h2>
         <Input
           aria-label="Buscar no histórico"
           placeholder="Buscar no SQL…"
@@ -81,9 +81,16 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
         </p>
       )}
       {history.data?.length === 0 && (
-        <p className="p-3 text-sm text-muted-foreground">Nada no histórico.</p>
+        <div className="grid flex-1 content-center justify-items-start gap-2 px-10 grid-paper">
+          <p className="display-caps text-4xl">Nada no histórico</p>
+          <p className="max-w-[46ch] text-sm text-muted-foreground">
+            Cada query, edição salva e comando executado aparece aqui.
+          </p>
+        </div>
       )}
-      <ul className="min-h-0 flex-1 divide-y overflow-auto">
+      <ul
+        className={`min-h-0 flex-1 divide-y overflow-auto ${history.data?.length === 0 ? "hidden" : ""}`}
+      >
         {history.data?.map(entry => (
           <li key={entry.id} className="grid gap-1 px-3 py-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -99,7 +106,7 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
               <span className="flex items-center gap-1.5">
                 <span
                   aria-hidden
-                  className="h-1.5 rounded-[1px] bg-foreground/60"
+                  className="h-1.5 bg-foreground/60"
                   style={{ width: Math.max(2, (entry.durationMs / longest) * DURATION_BAR_PX) }}
                 />
                 {entry.durationMs} ms

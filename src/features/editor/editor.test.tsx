@@ -244,9 +244,9 @@ test("destructive scripts wait for confirmation and run only after it", async ()
   expect(dialog).toHaveTextContent("Comando destrutivo: DELETE sem WHERE");
   expect(dialog).toHaveTextContent("DELETE FROM t;");
 
-  // the workspace runs on a prod connection, so confirming reads as breaking the seal
+  // the workspace runs on a prod connection, so confirming names production
   expect(dialog).toHaveTextContent("Postgres prod");
-  await user.click(screen.getByRole("button", { name: "Romper lacre e executar" }));
+  await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
   expect(await screen.findByRole("status")).toHaveTextContent("7 linhas afetadas");
   const runs = callsTo(calls, "run_script") as { confirmed: boolean; sql: string }[];

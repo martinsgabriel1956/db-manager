@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { commands, type Confirmation, type ResultColumn, type RowBatch } from "@/bindings";
 import type { GridEditing } from "@/features/results/ResultGrid";
@@ -42,7 +42,17 @@ export function useTableEditing({
   const [staged, setStaged] = useState<Staged>(EMPTY_STAGED);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** cells just saved, kept for one beat so their hatch develops away */
+  const [developed, setDeveloped] = useState<Record<number, string[]> | null>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!developed) {
+      return;
+    }
+    const timer = setTimeout(() => setDeveloped(null), 400);
+    return () => clearTimeout(timer);
+  }, [developed]);
 
   const columns: ResultColumn[] = batch?.columns ?? [];
   const pageRows = batch?.rows ?? [];
@@ -69,6 +79,11 @@ export function useTableEditing({
         return;
       }
       setConfirmation(null);
+      setDeveloped(
+        Object.fromEntries(
+          Object.entries(staged.updates).map(([row, values]) => [row, Object.keys(values)])
+        )
+      );
       setStaged(EMPTY_STAGED);
       setNotice(
         `${response.rowsChanged} ${response.rowsChanged === 1 ? "alteração salva" : "alterações salvas"}`
@@ -110,7 +125,8 @@ export function useTableEditing({
       const name = columns[column].name;
       const inserted = newRowAt(row);
       return name in (inserted ? inserted.values : (staged.updates[row] ?? {}));
-    }
+    },
+    isDeveloping: (row, column) => developed?.[row]?.includes(columns[column].name) ?? false
   };
 
   return {

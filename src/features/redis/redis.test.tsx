@@ -200,7 +200,7 @@ test("on prod an edit shows the Redis command and waits for confirmation", async
   const dialog = await screen.findByRole("dialog");
   // no SQL terminator after a Redis command
   expect(within(dialog).getByText("HSET user:1 name Bia")).toBeInTheDocument();
-  await user.click(within(dialog).getByRole("button", { name: "Romper lacre e executar" }));
+  await user.click(within(dialog).getByRole("button", { name: "Executar em produção" }));
 
   await waitFor(() => expect(edits(calls).map(call => call.confirmed)).toEqual([false, true]));
   await waitFor(() => expect(screen.queryByLabelText("Campo")).not.toBeInTheDocument());

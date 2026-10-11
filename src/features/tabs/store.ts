@@ -36,7 +36,15 @@ type TabsState = {
   /** drops tabs of connections that no longer exist (deleted, or stale persisted state) */
   keepConnections: (connectionIds: string[]) => void;
   setSql: (id: string, sql: string) => void;
+  /** staged edit count per table (not persisted: staged edits die with the window) */
+  pending: Record<string, number>;
+  setPending: (key: string, count: number) => void;
 };
+
+/** Identifies a table across tabs and the editing view. */
+export function tableKey(target: TableTarget): string {
+  return `${target.connectionId}/${target.schema}/${target.table}`;
+}
 
 export const INITIAL_TABS = { tabs: [] as Tab[], activeId: null };
 
@@ -139,6 +147,13 @@ export const useTabs = create<TabsState>()(
           const activeStillOpen = tabs.some(tab => tab.id === state.activeId);
           return { tabs, activeId: activeStillOpen ? state.activeId : (tabs[0]?.id ?? null) };
         }),
+      pending: {},
+      setPending: (key, count) =>
+        set(state =>
+          (state.pending[key] ?? 0) === count
+            ? state
+            : { pending: { ...state.pending, [key]: count } }
+        ),
       setSql: (id, sql) =>
         set(state => ({
           tabs: state.tabs.map(tab =>

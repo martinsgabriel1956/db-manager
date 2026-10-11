@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { History, TriangleAlert } from "lucide-react";
+import { History, Plus, TriangleAlert } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
@@ -85,14 +85,14 @@ export function App() {
         "relative flex h-screen flex-col bg-background text-foreground",
         // drawn above the panels, whose own backgrounds would hide an inset ring
         isProd &&
-          "after:pointer-events-none after:absolute after:inset-0 after:z-40 after:ring-4 after:ring-seal after:ring-inset"
+          "after:pointer-events-none after:absolute after:inset-0 after:z-40 after:ring-4 after:ring-safelight after:ring-inset"
       )}
     >
-      {/* production sits under a seal: the ring is a colour cue, the tape says it in words */}
+      {/* production works under the safelight: the ring is a colour cue, the band says it in words */}
       {isProd && active && (
-        <p className="flex h-7 shrink-0 animate-in items-center gap-3 px-4 text-xs duration-[120ms] fade-in-0 slide-in-from-top-1 seal-tape motion-reduce:animate-none">
+        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
           <TriangleAlert className="size-3.5" aria-hidden />
-          <span className="label-caps">Lacre de produção</span>
+          <span className="legend text-[0.75rem]">Produção</span>
           <span>
             {active.name} ·{" "}
             {active.readOnly
@@ -102,14 +102,16 @@ export function App() {
         </p>
       )}
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto bg-bench py-4 text-bench-foreground [--ring:var(--bench-select)] [color-scheme:dark] [scrollbar-color:var(--bench-border)_var(--bench)]">
-          <div className="flex items-center justify-between gap-2 px-3">
-            <h1 className="label-caps text-bench-foreground">Conexões</h1>
+        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-foreground grid-paper">
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-foreground bg-background px-4">
+            <Wordmark />
+          </div>
+          <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+            <h1 className="legend text-muted-foreground">Conexões</h1>
             <div className="flex gap-1">
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-bench-foreground hover:bg-bench-raised hover:text-bench-foreground"
                 onClick={() => {
                   showTabs();
                   openHistory();
@@ -120,19 +122,23 @@ export function App() {
               <Button
                 size="sm"
                 variant="outline"
-                className="border-bench-border bg-transparent text-bench-foreground hover:bg-bench-raised hover:text-bench-foreground dark:bg-transparent"
                 onClick={() => {
                   setNotice(null);
                   setForm({ connectionId: null });
                 }}
               >
-                Nova
+                <Plus /> Nova
               </Button>
             </div>
           </div>
-          {connections.isPending && <p className="px-3 text-sm text-bench-muted">Carregando…</p>}
+          {connections.isPending && (
+            <p className="px-4 text-sm text-muted-foreground">Carregando…</p>
+          )}
           {connections.isError && (
-            <p role="alert" className="mx-3 rounded-[2px] bg-tag p-2 text-sm text-destructive">
+            <p
+              role="alert"
+              className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
+            >
               {errorMessage(connections.error)}
             </p>
           )}
@@ -169,7 +175,7 @@ export function App() {
           {notice && (
             <p
               role="status"
-              className="m-4 mb-0 rounded-[3px] border border-warning/50 bg-opened p-3 text-sm text-foreground"
+              className="m-4 mb-0 border border-foreground bg-background p-3 text-sm text-foreground"
             >
               {notice}
             </p>
@@ -205,11 +211,14 @@ export function App() {
             <>
               {tabs.length > 0 && <TabBar connections={list} />}
               {tabs.length === 0 && (
-                <p className="p-6 text-sm text-muted-foreground">
-                  Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
-                </p>
+                <div className="grid flex-1 content-center justify-items-start gap-3 px-12 grid-paper">
+                  <h2 className="display-caps text-6xl">Nenhuma aba aberta</h2>
+                  <p className="max-w-[46ch] text-sm text-muted-foreground">
+                    Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
+                  </p>
+                </div>
               )}
-              <div className="relative min-h-0 flex-1">
+              <div className={cn("relative min-h-0 flex-1", tabs.length === 0 && "hidden")}>
                 {/* every tab stays mounted so results and staged edits survive switching */}
                 {tabs.map(tab => (
                   <div
@@ -228,6 +237,21 @@ export function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+/** DB/MANAGER: the gridded name and the system's one diagonal. */
+function Wordmark() {
+  return (
+    <p className="flex items-center display text-[1.375rem]" aria-label="DB Manager">
+      <span aria-hidden>DB</span>
+      <svg aria-hidden viewBox="0 0 16 24" className="mx-0.5 h-6 w-4 text-select">
+        <line x1="2" y1="23" x2="14" y2="1" stroke="currentColor" strokeWidth="2.5" />
+      </svg>
+      <span aria-hidden className="[font-stretch:60%] tracking-[0.08em]">
+        MANAGER
+      </span>
+    </p>
   );
 }
 

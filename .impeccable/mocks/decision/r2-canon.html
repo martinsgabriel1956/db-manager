@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>DB Manager · Padrão da categoria</title>
+<style>
+:root{--bg:#fff;--side:#f3f4f6;--b:#e5e7eb;--t:#111827;--m:#6b7280;--a:#2563eb;--r:#dc2626}
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 system-ui,sans-serif;color:var(--t);background:var(--bg);display:grid;grid-template-columns:260px 1fr}
+aside{background:var(--side);border-right:1px solid var(--b);padding:12px 8px}
+.h{font-size:11px;font-weight:600;color:var(--m);text-transform:uppercase;padding:8px}
+.row{height:28px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:6px}
+.row.on{background:#dbeafe;color:var(--a);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%}
+.pill{margin-left:auto;font-size:10.5px;padding:1px 6px;border-radius:999px;background:#e5e7eb;color:var(--m)}
+.pill.p{background:#fee2e2;color:var(--r)}
+main{display:grid;grid-template-rows:36px 48px 44px 1fr}
+.tabs{display:flex;border-bottom:1px solid var(--b)}
+.tab{padding:0 14px;display:flex;align-items:center;border-right:1px solid var(--b);color:var(--m)}
+.tab.on{color:var(--t);box-shadow:inset 0 -2px 0 var(--a)}
+.hd{display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--b)}
+.hd h1{font-size:16px}
+.tool{display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--b)}
+input,select{height:30px;border:1px solid #d1d5db;border-radius:6px;padding:0 8px}
+button{height:30px;padding:0 12px;border:1px solid #d1d5db;border-radius:6px;background:#fff}
+button.pri{background:var(--a);border-color:var(--a);color:#fff}
+table{width:100%;border-collapse:collapse;font:12px ui-monospace,monospace}
+th{height:30px;text-align:left;padding:0 10px;background:#f9fafb;border-bottom:1px solid var(--b);font:600 12px system-ui}
+td{height:28px;padding:0 10px;border-bottom:1px solid #f3f4f6}
+td.e{background:#fef9c3}
+</style></head><body>
+<aside>
+  <div class="h">Conexões</div>
+  <div class="row"><span class="dot" style="background:#336791"></span>Postgres prod<span class="pill p">prod</span></div>
+  <div class="row" style="padding-left:24px">public</div>
+  <div class="row on" style="padding-left:40px">users</div>
+  <div class="row" style="padding-left:40px">orders</div>
+  <div class="row"><span class="dot" style="background:#336791"></span>Postgres dev<span class="pill">dev</span></div>
+  <div class="row"><span class="dot" style="background:#f29111"></span>Loja MySQL<span class="pill">staging</span></div>
+  <div class="row"><span class="dot" style="background:#47a248"></span>Mongo dev<span class="pill">dev</span></div>
+  <div class="row"><span class="dot" style="background:#dc382d"></span>Cache<span class="pill">local</span></div>
+</aside>
+<main>
+  <div class="tabs"><div class="tab on">users</div><div class="tab">Consulta 1</div><div class="tab">events</div></div>
+  <div class="hd"><h1>public.users</h1><span style="color:var(--m)">12.408 linhas</span></div>
+  <div class="tool"><select><option>id</option></select><select><option>=</option></select><input placeholder="valor"><button>Aplicar</button><span style="margin-left:auto;color:var(--m)">1 alteração pendente</span><button>Descartar</button><button class="pri">Salvar</button></div>
+  <div><table><thead><tr><th>id</th><th>email</th><th>nome</th><th>saldo</th><th>criado_em</th><th>profile</th></tr></thead><tbody>
+  <tr><td>18</td><td>joao@exemplo.com</td><td>João Lima</td><td>1.204,50</td><td>2026-09-02 14:11:08</td><td>{"tier": "gold"}</td></tr>
+  <tr><td>19</td><td>marta@exemplo.com</td><td>Marta Reis</td><td>0,00</td><td>2026-09-03 09:40:51</td><td>NULL</td></tr>
+  <tr><td>20</td><td class="e">ana@exemplo.com</td><td>Ana Souza</td><td>88,10</td><td>2026-09-03 18:02:33</td><td>{"id": 9007199254740993}</td></tr>
+  <tr><td>21</td><td>pedro@exemplo.com</td><td>Pedro Alves</td><td>42,00</td><td>2026-09-04 07:15:12</td><td>{"tier": "free"}</td></tr>
+  </tbody></table></div>
+</main>
+</body></html>

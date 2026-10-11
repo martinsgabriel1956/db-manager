@@ -48,7 +48,14 @@ export function BrowseToolbar({
       onSubmit={handleSubmit}
       className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-2"
     >
-      <span className="label-caps text-muted-foreground">Filtro</span>
+      {/* filtration is the only magenta: it lights up while a filter scopes the rows */}
+      {active ? (
+        <span className="inline-flex h-[18px] items-center bg-filter px-1.5 legend text-background">
+          Filtro ativo
+        </span>
+      ) : (
+        <span className="legend text-muted-foreground">Filtro</span>
+      )}
       <NativeSelect
         aria-label="Coluna do filtro"
         className="h-7"

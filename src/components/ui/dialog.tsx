@@ -48,7 +48,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[3px] bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/15 outline-none sm:max-w-sm",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 bg-popover p-4 text-sm text-popover-foreground shadow-[0_18px_40px_-16px_rgb(0_0_0/0.45)] ring-1 ring-foreground outline-none sm:max-w-sm",
           className
         )}
         {...props}
@@ -104,7 +104,7 @@ function DialogTitle({ className, ...props }: React.ComponentProps<typeof Dialog
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("font-heading text-base leading-none font-semibold", className)}
+      className={cn("display text-xl", className)}
       {...props}
     />
   );

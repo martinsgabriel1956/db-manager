@@ -1,34 +1,28 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/archivo/wdth.css";
-@import "@fontsource-variable/red-hat-mono";
+@import "@fontsource-variable/saira/wdth.css";
+@import "@fontsource-variable/hanken-grotesk";
+@import "@fontsource-variable/spline-sans-mono";
 
 /* follows the OS theme; there is no in-app toggle */
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: "Archivo Variable", sans-serif;
-  --font-mono: "Red Hat Mono Variable", ui-monospace, monospace;
-  --color-bench: var(--bench);
-  --color-bench-raised: var(--bench-raised);
-  --color-bench-foreground: var(--bench-foreground);
-  --color-bench-muted: var(--bench-muted);
-  --color-bench-border: var(--bench-border);
-  --color-tag: var(--tag);
-  --color-tag-foreground: var(--tag-foreground);
-  --color-tag-muted: var(--tag-muted);
-  --color-seal: var(--seal);
+  --font-heading: "Saira Variable", sans-serif;
+  --font-display: "Saira Variable", sans-serif;
+  --font-sans: "Hanken Grotesk Variable", sans-serif;
+  --font-mono: "Spline Sans Mono Variable", ui-monospace, monospace;
+  --color-z0: var(--z0);
+  --color-z5: var(--z5);
+  --color-z8: var(--z8);
+  --color-z9: var(--z9);
+  --color-z10: var(--z10);
+  --color-grid: var(--grid);
   --color-select: var(--select);
-  --color-bench-select: var(--bench-select);
-  --color-tag-select: var(--tag-select);
-  --color-opened: var(--opened);
-  --color-cap-postgres: var(--cap-postgres);
-  --color-cap-mysql: var(--cap-mysql);
-  --color-cap-sqlite: var(--cap-sqlite);
-  --color-cap-mongo: var(--cap-mongo);
-  --color-cap-redis: var(--cap-redis);
+  --color-select-foreground: var(--select-foreground);
+  --color-filter: var(--filter);
+  --color-safelight: var(--safelight);
   --color-syntax-keyword: var(--syntax-keyword);
   --color-syntax-string: var(--syntax-string);
   --color-syntax-number: var(--syntax-number);
@@ -53,136 +47,192 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
 /*
- * The lab bench: work area is label stock and paper, the sidebar is black epoxy
- * in both themes, engines carry their tube-cap colour, production sits under a
- * red seal, and blue is reserved for "where you are" (selection, focus, active tab).
+ * The gridded enlargement: neutrals come only from an eleven-step zone ramp,
+ * the construction grid shows where there is no data, Crouwel blue marks
+ * "where you are", dichroic magenta marks filtration only, and production
+ * works under the safelight. Staged changes are extra exposure: hatched.
  */
 :root {
   color-scheme: light dark;
-  --radius: 0.1875rem;
-  --background: #fbfbf9;
-  --foreground: #17191b;
-  --card: #fbfbf9;
-  --card-foreground: #17191b;
-  --popover: #fbfbf9;
-  --popover-foreground: #17191b;
-  --primary: #17191b;
-  --primary-foreground: #fbfbf9;
-  --secondary: #e8eae6;
-  --secondary-foreground: #17191b;
-  /* paper: toolbars, headers, the ground behind labels */
-  --muted: #f0f1ee;
-  --muted-foreground: #585e63;
-  --accent: #e8eae6;
-  --accent-foreground: #17191b;
-  /* text/icon red; fills use --seal */
-  --destructive: #c62828;
-  --seal: #c62828;
-  --seal-dark: #a21f1f;
-  --success: #1f7a4d;
-  --warning: #8a6500;
-  /* an opened sample: edited, not yet saved */
-  --opened: #fff3c4;
-  --opened-line: #efd77c;
-  --border: #dcdedb;
-  /* field outline: at least 3:1 on label stock and paper (WCAG 1.4.11) */
-  --input: #868c89;
-  --select: #2f63b8;
-  --ring: #2f63b8;
-  /* "where you are" on the black bench and on a label, in both themes */
-  --bench-select: #7ea6ee;
-  --tag-select: #2f63b8;
-  --bench: #22272b;
-  --bench-raised: #2c3237;
-  --bench-foreground: #dfe3e6;
-  --bench-muted: #a9b1b7;
-  --bench-border: #3d454b;
-  --tag: #fbfbf9;
-  --tag-foreground: #17191b;
-  --tag-muted: #585e63;
-  --cap-postgres: #6e4fa3;
-  --cap-mysql: #c99700;
-  --cap-sqlite: #7d848a;
-  --cap-mongo: #1f7a4d;
-  --cap-redis: #c2407a;
-  /* shared by CodeMirror and the Mongo document tree */
-  --syntax-keyword: #6e4fa3;
-  --syntax-string: #1f7a4d;
-  /* never blue: blue is reserved for "where you are" */
-  --syntax-number: #a8336a;
-  --syntax-type: #8a6500;
+  --radius: 0px;
+  /* zone ramp, Z0 (deepest) to Z10 (paper white) */
+  --z0: #0f1011;
+  --z1: #1d1f22;
+  --z2: #2c2f33;
+  --z3: #3e4247;
+  --z4: #4f545a;
+  --z5: #5c6269;
+  --z6: #80868d;
+  --z7: #b4b9bf;
+  --z8: #dde0e5;
+  --z9: #eef0f3;
+  --z10: #f7f8fa;
+  /* construction grid hairline */
+  --grid: #e3e9f2;
+  --background: var(--z10);
+  --foreground: var(--z0);
+  --card: var(--z10);
+  --card-foreground: var(--z0);
+  --popover: var(--z10);
+  --popover-foreground: var(--z0);
+  --primary: var(--z0);
+  --primary-foreground: var(--z10);
+  --secondary: var(--z9);
+  --secondary-foreground: var(--z0);
+  --muted: var(--z9);
+  --muted-foreground: var(--z5);
+  --accent: var(--z9);
+  --accent-foreground: var(--z0);
+  --border: var(--z8);
+  /* field outline: at least 3:1 on paper and grid (WCAG 1.4.11) */
+  --input: var(--z6);
+  /* where you are */
+  --select: #0057ff;
+  --select-foreground: #ffffff;
+  --ring: #0057ff;
+  /* filtration only: filters, sort, SCAN pattern */
+  --filter: #c8137a;
+  /* production and destructive fills; --destructive is the text tone */
+  --safelight: #c4291c;
+  --destructive: #c4291c;
+  --success: #0f7446;
+  --warning: #8f5c00;
+  /* hatch ink for staged changes */
+  --hatch: color-mix(in oklch, var(--z0) 38%, transparent);
+  --syntax-keyword: var(--z0);
+  --syntax-string: #0f7446;
+  --syntax-number: #8f5c00;
+  --syntax-type: var(--z5);
 }
 
 @media (prefers-color-scheme: dark) {
+  /* the darkroom: the same ramp read from the other end */
   :root {
-    --background: #1b1f22;
-    --foreground: #e6e8e6;
-    --card: #23282c;
-    --card-foreground: #e6e8e6;
-    --popover: #23282c;
-    --popover-foreground: #e6e8e6;
-    --primary: #e6e8e6;
-    --primary-foreground: #17191b;
-    --secondary: #2c3237;
-    --secondary-foreground: #e6e8e6;
-    --muted: #23282c;
-    --muted-foreground: #a3abb1;
-    --accent: #2c3237;
-    --accent-foreground: #e6e8e6;
-    --destructive: #ef6b6b;
-    --success: #5cc493;
-    --warning: #e0b84a;
-    --opened: #3a3220;
-    --opened-line: #5a4a22;
-    --border: #2e3439;
-    --input: #6b747a;
-    --select: #7ea6ee;
-    --ring: #7ea6ee;
-    --bench: #121517;
-    --bench-raised: #1d2124;
-    --bench-foreground: #dfe3e6;
-    --bench-muted: #9aa3a9;
-    --bench-border: #2a3035;
-    /* labels dim under the night lamp but stay labels */
-    --tag: #d9dcd6;
-    --tag-foreground: #17191b;
-    --tag-muted: #4c5257;
-    --syntax-keyword: #b9a3e8;
-    --syntax-string: #6fcf9c;
-    --syntax-number: #f08cb4;
-    --syntax-type: #e0b84a;
+    --z0: #f1f3f5;
+    --z1: #e2e5e9;
+    --z2: #c9cdd3;
+    --z3: #b0b6bd;
+    --z4: #9aa1a9;
+    --z5: #8d949c;
+    --z6: #6b737b;
+    --z7: #4a5057;
+    --z8: #2c3035;
+    --z9: #1a1d20;
+    --z10: #101113;
+    --grid: #222a38;
+    --select: #6f9bff;
+    --select-foreground: #101113;
+    --ring: #6f9bff;
+    --filter: #ff5fae;
+    --destructive: #ff6a4d;
+    --success: #4cc98a;
+    --warning: #e0a640;
+    --hatch: color-mix(in oklch, var(--z0) 34%, transparent);
+    --syntax-string: #4cc98a;
+    --syntax-number: #e0a640;
   }
 }
 
-/* printed label lettering: condensed caps, the only display voice */
-@utility label-caps {
-  font-stretch: 70%;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+/* tracked condensed caps: legends, field names, environment tags */
+@utility legend {
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   font-size: 0.6875rem;
   line-height: 1;
 }
 
-/* production seal tape */
-@utility seal-tape {
-  background: repeating-linear-gradient(135deg, var(--seal) 0 22px, var(--seal-dark) 22px 26px);
-  color: #fff;
+/* titles that are not identifiers: condensed tracked caps */
+@utility display-caps {
+  font-family: var(--font-display);
+  font-stretch: 60%;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1;
 }
 
-/* an opened sample: hatched so the state never depends on colour alone */
-@utility opened-hatch {
-  background: repeating-linear-gradient(135deg, var(--opened) 0 6px, var(--opened-line) 6px 7px);
+/* identifiers (tables, collections, databases) keep their case: they are data */
+@utility display {
+  font-family: var(--font-display);
+  font-stretch: 80%;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+/* the construction grid, shown only where there is no data */
+@utility grid-paper {
+  background-color: var(--z9);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  /* 14px cells: two per 28px row, four per 56px header */
+  background-size: 14px 14px;
+  background-position: -1px -1px;
+}
+
+/* +Δ: staged, not yet saved */
+@utility hatch {
+  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 6px);
+}
+
+/* crossed hatch: marked for deletion or in conflict */
+@utility cross-hatch {
+  background-image:
+    repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 6px);
+}
+
+/* in the grid the hatch stays in a band under the value, never behind the digits */
+@utility hatch-band {
+  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px);
+  background-repeat: no-repeat;
+  background-size: 100% 7px;
+  background-position: bottom;
+}
+
+@utility cross-hatch-band {
+  background-image:
+    repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 5px);
+  background-repeat: no-repeat;
+  background-size: 100% 7px;
+  background-position: bottom;
+}
+
+/* saving develops the hatch away in two steps; the band stays under the value */
+@keyframes develop {
+  from {
+    background-color: color-mix(in oklch, var(--z0) 12%, transparent);
+    background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px);
+    background-repeat: no-repeat;
+    background-size: 100% 7px;
+    background-position: bottom;
+  }
+  to {
+    background-color: transparent;
+    background-image: none;
+  }
+}
+
+@utility developed {
+  animation: develop 120ms steps(2) both;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
 @layer base {
@@ -196,18 +246,20 @@
   }
   body {
     @apply bg-background text-foreground;
-    scrollbar-color: var(--input) var(--muted);
+    scrollbar-color: var(--z7) transparent;
+    caret-color: var(--select);
   }
   ::selection {
-    background-color: color-mix(in oklch, var(--select) 30%, transparent);
+    background-color: color-mix(in oklch, var(--select) 28%, transparent);
   }
 }
 
 .react-flow {
-  --xy-background-color: var(--muted);
-  --xy-background-pattern-color: color-mix(in oklch, var(--input) 45%, var(--muted));
+  --xy-background-color: var(--z9);
+  --xy-background-pattern-color: var(--grid);
   --xy-node-background-color: var(--card);
-  --xy-edge-stroke: var(--muted-foreground);
+  --xy-node-border-radius: 0;
+  --xy-edge-stroke: var(--z5);
   --xy-controls-button-background-color: var(--popover);
   --xy-controls-button-color: var(--popover-foreground);
   --xy-controls-button-border-color: var(--border);

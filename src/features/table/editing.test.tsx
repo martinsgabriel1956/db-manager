@@ -169,7 +169,7 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
 
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toHaveTextContent(`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2';`);
-  await user.click(screen.getByRole("button", { name: "Romper lacre e salvar" }));
+  await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
   expect(await screen.findByText("1 alteração salva")).toBeInTheDocument();
   expect(applied(calls).map(call => call.confirmed)).toEqual([false, true]);

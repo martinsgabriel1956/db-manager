@@ -1,149 +1,157 @@
 ---
 name: DB Manager
-description: Cliente desktop de bancos (Postgres, MySQL, SQLite, MongoDB, Redis) desenhado como bancada de laboratório com cadeia de custódia.
+description: Cliente desktop de bancos (Postgres, MySQL, SQLite, MongoDB, Redis) desenhado como ampliação em andamento sobre uma grade de construção.
 colors:
-  ink: "#17191b"
-  label-stock: "#fbfbf9"
-  paper: "#f0f1ee"
-  paper-deep: "#e8eae6"
-  ink-muted: "#585e63"
-  rule: "#dcdedb"
-  input-rule: "#868c89"
-  seal: "#c62828"
-  seal-dark: "#a21f1f"
-  select: "#2f63b8"
-  success: "#1f7a4d"
-  warning: "#8a6500"
-  opened: "#fff3c4"
-  opened-line: "#efd77c"
-  bench: "#22272b"
-  bench-raised: "#2c3237"
-  bench-foreground: "#dfe3e6"
-  bench-muted: "#a9b1b7"
-  bench-border: "#3d454b"
-  cap-postgres: "#6e4fa3"
-  cap-mysql: "#c99700"
-  cap-sqlite: "#7d848a"
-  cap-mongo: "#1f7a4d"
-  cap-redis: "#c2407a"
-  syntax-keyword: "#6e4fa3"
-  syntax-string: "#1f7a4d"
-  syntax-number: "#a8336a"
-  syntax-type: "#8a6500"
-  night-workspace: "#1b1f22"
-  night-card: "#23282c"
-  night-ink: "#e6e8e6"
-  night-ink-muted: "#a3abb1"
-  night-rule: "#2e3439"
-  night-bench: "#121517"
-  night-bench-raised: "#1d2124"
-  night-bench-border: "#2a3035"
-  night-label: "#d9dcd6"
-  night-label-muted: "#4c5257"
-  night-select: "#7ea6ee"
-  night-input-rule: "#6b747a"
-  bench-select: "#7ea6ee"
-  tag-select: "#2f63b8"
-  night-destructive-text: "#ef6b6b"
-  night-success: "#5cc493"
-  night-warning: "#e0b84a"
-  night-opened: "#3a3220"
-  night-opened-line: "#5a4a22"
+  z0: "#0f1011"
+  z1: "#1d1f22"
+  z2: "#2c2f33"
+  z3: "#3e4247"
+  z4: "#4f545a"
+  z5: "#5c6269"
+  z6: "#80868d"
+  z7: "#b4b9bf"
+  z8: "#dde0e5"
+  z9: "#eef0f3"
+  z10: "#f7f8fa"
+  night-z0: "#f1f3f5"
+  night-z1: "#e2e5e9"
+  night-z2: "#c9cdd3"
+  night-z3: "#b0b6bd"
+  night-z4: "#9aa1a9"
+  night-z5: "#8d949c"
+  night-z6: "#6b737b"
+  night-z7: "#4a5057"
+  night-z8: "#2c3035"
+  night-z9: "#1a1d20"
+  night-z10: "#101113"
+  grid: "#e3e9f2"
+  night-grid: "#222a38"
+  select: "#0057ff"
+  select-foreground: "#ffffff"
+  night-select: "#6f9bff"
+  filter: "#c8137a"
+  night-filter: "#ff5fae"
+  safelight: "#c4291c"
+  night-destructive-text: "#ff6a4d"
+  success: "#0f7446"
+  night-success: "#4cc98a"
+  warning: "#8f5c00"
+  night-warning: "#e0a640"
 typography:
   display:
-    fontFamily: "Archivo Variable, sans-serif"
+    fontFamily: "Saira Variable, sans-serif"
     fontSize: "1.75rem"
-    fontWeight: 800
+    fontWeight: 600
+    lineHeight: 1
+    letterSpacing: "-0.01em"
+    fontVariation: "'wdth' 80"
+  display-caps:
+    fontFamily: "Saira Variable, sans-serif"
+    fontSize: "2rem"
+    fontWeight: 600
     lineHeight: 1
     letterSpacing: "0.05em"
-    fontVariation: "'wdth' 66"
+    fontVariation: "'wdth' 60"
+  legend:
+    fontFamily: "Saira Variable, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 600
+    lineHeight: 1
+    letterSpacing: "0.1em"
+    fontVariation: "'wdth' 75"
   title:
-    fontFamily: "Archivo Variable, sans-serif"
+    fontFamily: "Hanken Grotesk Variable, sans-serif"
     fontSize: "13px"
     fontWeight: 600
   body:
-    fontFamily: "Archivo Variable, sans-serif"
+    fontFamily: "Hanken Grotesk Variable, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.43
     fontFeature: "'tnum'"
-  label:
-    fontFamily: "Archivo Variable, sans-serif"
-    fontSize: "0.6875rem"
-    fontWeight: 700
-    lineHeight: 1
-    letterSpacing: "0.08em"
-    fontVariation: "'wdth' 70"
   data:
-    fontFamily: "Red Hat Mono Variable, ui-monospace, monospace"
+    fontFamily: "Spline Sans Mono Variable, ui-monospace, monospace"
     fontSize: "0.75rem"
     fontWeight: 400
     lineHeight: "28px"
+    fontFeature: "'tnum'"
   data-meta:
-    fontFamily: "Red Hat Mono Variable, ui-monospace, monospace"
+    fontFamily: "Spline Sans Mono Variable, ui-monospace, monospace"
     fontSize: "11px"
     fontWeight: 400
-    lineHeight: 1.25
 rounded:
-  tag: "2px"
-  sm: "3px"
-  cap: "1px"
+  none: "0px"
 spacing:
+  grid-cell: "14px"
   row: "28px"
   tag-height: "18px"
+  engine-cell: "24px"
   control: "32px"
   control-sm: "28px"
-  bench-width: "288px"
-  cap-strip: "6px"
-  cap-square: "8px"
+  tab-bar: "36px"
+  header: "56px"
+  sidebar-width: "288px"
 components:
   button-primary:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.label-stock}"
-    rounded: "{rounded.sm}"
+    backgroundColor: "{colors.z0}"
+    textColor: "{colors.z10}"
+    rounded: "{rounded.none}"
     height: "32px"
     padding: "0 10px"
+  button-primary-hover:
+    backgroundColor: "{colors.z5}"
   button-outline:
-    backgroundColor: "{colors.label-stock}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
+    backgroundColor: "{colors.z10}"
+    textColor: "{colors.z0}"
+    rounded: "{rounded.none}"
     height: "32px"
     padding: "0 10px"
   button-ghost:
-    textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
+    textColor: "{colors.z0}"
+    rounded: "{rounded.none}"
     height: "32px"
     padding: "0 10px"
-  button-seal:
-    backgroundColor: "{colors.seal}"
+  button-safelight:
+    backgroundColor: "{colors.safelight}"
     textColor: "#ffffff"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.none}"
     height: "32px"
     padding: "0 10px"
   env-tag-prod:
-    backgroundColor: "{colors.seal}"
+    backgroundColor: "{colors.safelight}"
     textColor: "#ffffff"
-    typography: "{typography.label}"
-    rounded: "{rounded.tag}"
+    typography: "{typography.legend}"
+    rounded: "{rounded.none}"
     height: "18px"
     padding: "0 6px"
-  env-tag-staging:
-    backgroundColor: "{colors.warning}"
-    textColor: "{colors.label-stock}"
-    typography: "{typography.label}"
-    rounded: "{rounded.tag}"
+  filter-chip:
+    backgroundColor: "{colors.filter}"
+    textColor: "{colors.z10}"
+    typography: "{typography.legend}"
+    rounded: "{rounded.none}"
     height: "18px"
     padding: "0 6px"
-  connection-label:
-    backgroundColor: "{colors.label-stock}"
-    textColor: "{colors.ink}"
-    typography: "{typography.title}"
-    rounded: "{rounded.sm}"
+  delta-count:
+    backgroundColor: "{colors.z0}"
+    textColor: "{colors.z10}"
+    typography: "{typography.data-meta}"
+    rounded: "{rounded.none}"
+    height: "18px"
+    padding: "0 4px"
+  engine-code:
+    typography: "{typography.legend}"
+    rounded: "{rounded.none}"
+    size: "24px"
   input:
-    textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
+    textColor: "{colors.z0}"
+    rounded: "{rounded.none}"
     height: "32px"
     padding: "4px 10px"
+  tree-row-active:
+    backgroundColor: "{colors.select}"
+    textColor: "{colors.select-foreground}"
+    height: "28px"
+    padding: "0 6px"
   grid-row:
     typography: "{typography.data}"
     height: "28px"
@@ -154,199 +162,203 @@ components:
 
 ## Overview
 
-**Creative North Star: "A Bancada de Custódia"**
+**Creative North Star: "Ampliação em Grade"**
 
-Cada conexão e cada registro é uma amostra etiquetada na bancada do laboratório. A lateral é epóxi preto de bancada nos dois temas; as conexões são etiquetas térmicas brancas presas nela, com a cor da tampa do tubo por engine, nome impresso em negrito e o ambiente impresso por extenso. A área de trabalho é papel e etiqueta: densa, em filetes de 1px, cantos de 3px, dados em mono numa grade de 28px. Produção fica sob lacre vermelho hachurado, e escrever nela é assinar um termo de custódia que mostra o comando exato.
+O banco é uma ampliação em andamento sobre uma grade de construção: a ficha de exposição do laboratório fotográfico fundida com o espécime tipográfico em grade de Wim Crouwel. Cada valor tem sua zona exata numa escala de 11 tons, a grade de construção aparece onde não há dado, cada alteração não salva é exposição a mais (hachura com contagem Δ) e produção trabalha sob luz de segurança.
 
-O sistema é de operação, não de vitrine: compacto, legível de relance, sem sombras decorativas e sem movimento além do lacre e do termo. O perigo nunca depende só de cor; ambiente, estado editado e lacre sempre se dizem em palavras ou em textura. Recusa a lateral cinza com um azul de destaque típica da categoria e o tema escuro de IDE: o azul existe, mas só marca onde você está.
+O sistema é de operação: denso, cantos retos, filetes de 1px, filete de tinta (Z0) nas divisões principais, sem desfoque. Estado se lê em textura e em palavras antes de cor: hachura diagonal é alterado, cruzada é excluído ou em conflito, contorno pontilhado é retido (somente leitura). Recusa a lateral cinza com um azul de destaque típica da categoria e o escuro de IDE com neon.
 
-O tema segue o sistema operacional (`prefers-color-scheme`), sem alternância no app. O escuro não é inversão: é a mesma bancada à noite.
+O tema segue o sistema operacional (`prefers-color-scheme`), sem alternância no app. O escuro é a câmara escura: a mesma escala de zonas lida do outro lado, não uma paleta paralela.
 
 **Key Characteristics:**
 
-- Bancada preta (lateral de 288px) com etiquetas claras; papel na área de trabalho.
-- Uma grotesca (Archivo Variable) com versalete condensado para rótulos impressos; Red Hat Mono só para dados e código.
-- Linhas de 28px em grades, tabelas e árvore da bancada.
-- Lacre vermelho hachurado como único sinal forte de produção, sempre acompanhado de texto.
-- Azul só para "onde você está".
-- Cantos de 3px (etiquetas de ambiente 2px), filetes de 1px, sem blur.
+- Neutros só da escala de zonas Z0..Z10; nada de cinza avulso.
+- Grade de construção de 14px (duas células por linha de 28px) na lateral, estados vazios, cabeçalho da ficha de exposição e canvas do diagrama; nunca atrás de dados.
+- Três sinais com um papel cada: azul Crouwel (onde você está), magenta dicroico (filtração), luz de segurança (produção e destrutivo).
+- Saira com eixo de largura para letreiros e identificadores, Hanken Grotesk para interface, Spline Sans Mono tabular para dado.
+- O Δ de exposição: alterações em stage hachuradas, contadas no botão Salvar e na aba, reveladas ao salvar.
+- Cantos de 0px em tudo.
 
 ## Colors
 
-Neutros quase sem croma (tinta, papel, etiqueta, epóxi) com três sinais de alta carga: lacre vermelho, azul de marcador e as cores de tampa por engine.
+Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais de alta carga, cada um preso a um único significado.
 
 ### Primary
 
-- **Tinta Térmica** (`ink`): texto, ação primária (Salvar/Executar é botão de tinta preta) e o filete grosso do Termo de custódia.
-- **Lacre Vermelho** (`seal`, com `seal-dark` nas listras): faixa de lacre de produção, anel interno de 4px da janela em produção, etiqueta PROD e o botão destrutivo. Texto de erro usa `--destructive` (mesmo valor no claro, `night-destructive-text` no escuro); preenchimentos usam `--seal`, que não muda entre temas.
+- **Azul Crouwel** (`select`; `night-select` no escuro): onde você está. Tabela ativa na lateral (linha cheia em azul com texto `select-foreground`), chave aberta do Redis (idem), aba ativa (filete interno de 3px no topo + triângulo de canto), sublinhado de 2px das tabs internas, célula selecionada (contorno de 2px + fundo a 10%), anel de foco (`--ring`), cursor e `caret-color`, `accent-color`, `::selection` a 28%. Também é a cor da única diagonal do sistema (marca DB/MANAGER, cabeçalho da ficha de exposição, ícone do app).
 
 ### Secondary
 
-- **Azul de Marcador** (`select`; `night-select` no escuro): seleção, anel de foco (`--ring` tem o mesmo valor), aba ativa (filete superior de 2px), tabela ativa na bancada (filete esquerdo de 3px), célula selecionada (contorno de 2px + fundo a 10%), `accent-color` e `::selection` a 30%. O anel de foco é sempre sólido, 2px, sem alfa: a 50% ele caía para ~2:1. Duas superfícies trocam o `--ring` por escopo, porque o azul do papel não lê nelas: a bancada usa `bench-select` (#7ea6ee, 6,2:1 sobre o epóxi claro) e a etiqueta usa `tag-select` (#2f63b8, 4,2:1 sobre a etiqueta noturna), nos dois temas.
+- **Magenta Dicroico** (`filter`; `night-filter` no escuro): só filtração. Chip FILTRO ATIVO cheio, setas de ordenação e filete inferior de 2px no cabeçalho da coluna ordenada, contorno do campo de padrão SCAN do Redis quando difere de `*`.
 
 ### Tertiary
 
-- **Tampas de Tubo** (`cap-postgres` lavanda, `cap-mysql` ouro, `cap-sqlite` cinza, `cap-mongo` verde, `cap-redis` rosa): faixa de 6px à esquerda da etiqueta de conexão e quadradinho de 8px na aba. Também no ícone do app (faixa lavanda).
-- **Amostra Aberta** (`opened` + `opened-line`; `night-opened` + `night-opened-line`): célula editada e ainda não salva, sempre hachurada.
-- **Sintaxe** (`syntax-keyword`, `syntax-string`, `syntax-number`, `syntax-type`): CodeMirror e árvore de documentos Mongo. Números em magenta, nunca azul.
-- **Estados** (`success`, `warning`): ícones de sucesso no histórico, linha nova na grade a 10%, etiqueta STAGING e medidor de limite do Redis.
+- **Luz de Segurança** (`safelight`): produção e destrutivo. Faixa de produção de 28px no topo da janela, anel interno de 4px em volta da janela, etiqueta PROD cheia, faixa da ficha de exposição em produção, botão destrutivo. Preenchimentos usam `--safelight` (igual nos dois temas); texto de erro usa `--destructive`, que no escuro sobe para `night-destructive-text`.
+- **Estados** (`success`, `warning`, com versões `night-`): linha nova na grade (`success` a 10% + hachura), aviso salvo, ícones do histórico; também são as cores de string e número na sintaxe.
 
 ### Neutral
 
-- **Etiqueta Térmica** (`label-stock`): fundo da área de trabalho, cartões, popovers e as etiquetas da bancada (`--tag`).
-- **Papel** (`paper`): barras de ferramentas, cabeçalhos de grade, gutter do editor, rodapé do termo. Diverge do contrato (#f2f3f1); vale o valor do build.
-- **Papel Fundo** (`paper-deep`): secondary e accent.
-- **Grafite** (`ink-muted`): texto secundário e segunda linha das etiquetas.
-- **Filete** (`rule`) e **Filete de Campo** (`input-rule`; `night-input-rule` no escuro): bordas de 1px e contorno de campos. O filete é decorativo; o de campo é o único limite de um campo transparente e fica em 3:1 ou mais sobre etiqueta e papel (WCAG 1.4.11).
-- **Epóxi** (`bench`, `bench-raised`, `bench-border`, `bench-foreground`, `bench-muted`): a lateral, sempre com `color-scheme: dark`.
-
-### Tema escuro: a bancada à noite
-
-- **Área de trabalho** `night-workspace`, cartões e popovers `night-card`, tinta `night-ink`, texto secundário `night-ink-muted`, filetes `night-rule`.
-- **A bancada desce para `night-bench` (#121517)**, com `night-bench-raised` e `night-bench-border`, para continuar mais escura que a área de trabalho (#1b1f22) e ainda ler como bancada. Se mantivesse #22272b, ficaria mais clara que o trabalho e a hierarquia se inverteria.
-- **As etiquetas baixam para `night-label` (#d9dcd6)**, a etiqueta sob a luz noturna, em vez do #fbfbf9 que ofuscaria sobre o epóxi escuro. A tinta da etiqueta continua `ink` (#17191b) e o texto secundário dela vira `night-label-muted`.
-- Azul, sucesso, aviso e sintaxe sobem de luminosidade (`night-select`, `night-success`, `night-warning`, tons claros de sintaxe) para manter AA.
+- **Escala de Zonas Z0..Z10**: Z0 é tinta (texto, botão primário, filetes principais, contagem Δ), Z10 é papel (fundo de trabalho, cartões, popovers), Z9 é o fundo da grade e de barras (`muted`, `secondary`, `accent`), Z8 é o filete comum (`border`), Z6 é o contorno de campo (`input`, 3:1 ou mais sobre papel e grade, WCAG 1.4.11), Z5 é texto secundário (`muted-foreground`), Z7 é a barra de rolagem. No escuro, `night-z0..night-z10` ocupam os mesmos papéis pelo mesmo nome de zona.
+- **Grade de Construção** (`grid`; `night-grid`): só o desenho da grade, em hairline de 1px.
+- **Tinta da Hachura** (`--hatch`, Z0 a 38% no claro e 34% no escuro): derivada da zona, não é cor própria.
 
 ### Named Rules
 
-**The Where-You-Are Rule.** O azul (`--select`) marca só onde você está: seleção, anel de foco, aba ativa, tabela ativa. Nenhum dado usa azul: nem tipos do Redis, nem números no código, nem ícones.
+**The Zone Rule.** Todo neutro sai da escala Z0..Z10. Um cinza fora da escala é um defeito.
 
-**The Printed Environment Rule.** O ambiente é sempre impresso em palavras numa etiqueta: PROD em `--seal` cheio, STAGING em fundo `--warning`, DEV em contorno sólido, LOCAL em contorno tracejado. Nunca só cor.
+**The Where-You-Are Rule.** O azul marca só onde você está (e desenha a diagonal da marca). Nenhum dado, ícone de tipo ou número de código é azul.
 
-**The Tube-Cap Rule.** Cor de engine aparece só como faixa ou quadradinho (`--cap-*`), nunca como cor de texto.
+**The Filtration Rule.** Magenta só aparece quando algo filtra ou ordena as linhas. Sem filtro, sem magenta.
 
-**The Opened-Sample Rule.** Célula editada e não salva leva a hachura âmbar (`opened-hatch`), para que o estado nunca dependa só de cor.
+**The Safelight Rule.** Luz de segurança cheia só em produção e na confirmação destrutiva, sempre acompanhada de palavras ("Produção", "Executar em produção").
 
 ## Typography
 
-**Display/Body Font:** Archivo Variable (com eixo de largura; fallback sans-serif)
-**Data/Code Font:** Red Hat Mono Variable (fallback ui-monospace, monospace)
+**Display Font:** Saira Variable (eixo `wdth`; fallback sans-serif)
+**Body Font:** Hanken Grotesk Variable (fallback sans-serif)
+**Label/Mono Font:** Spline Sans Mono Variable (fallback ui-monospace, monospace)
 
-**Character:** Uma só grotesca com dois registros: texto corrido normal e letreiro impresso de etiqueta (versalete condensado). O mono é a voz do dado gravado e só aparece onde há dado ou código. Números são tabulares no app inteiro (`font-variant-numeric: tabular-nums` no `html`).
+**Character:** Saira condensada é o letreiro do espécime: versal espaçada para legendas e títulos, caixa preservada para identificadores. Hanken Grotesk carrega a interface sem chamar atenção; Spline Sans Mono é a voz do dado gravado. Números são tabulares no app inteiro (`font-variant-numeric: tabular-nums` no `html`).
 
 ### Hierarchy
 
-- **Display** (800, 1.75rem, largura 66%, versalete, 0.05em): só o título "Termo de custódia".
-- **Title** (600, 13px): nome da conexão na etiqueta; linhas da bancada em 13px regular.
-- **Body** (400, 0.875rem): interface geral, botões (500), diálogos. Títulos de diálogo genéricos em 1rem/600.
-- **Label** (700, 0.6875rem, largura 70%, 0.08em, versalete, utilitário `label-caps`): rótulos impressos: CONEXÕES, campos do termo, etiquetas de ambiente, badges, `Label` de formulário, cabeçalho de seção como HISTÓRICO.
-- **Data** (Red Hat Mono, 0.75rem, linha de 28px): células da grade, editores, comando no termo.
-- **Data Meta** (Red Hat Mono, 11px): segunda linha da etiqueta (engine e alvo), contagens na bancada.
+- **Display** (Saira 600, largura 80%, -0.01em, caixa preservada, utilitário `display`): identificadores, que são dado. Nome da tabela, coleção ou db do Redis no cabeçalho da view (1.75rem), marca DB (1.375rem), título de diálogos genéricos (1.25rem).
+- **Display Caps** (Saira 600, largura 60%, 0.05em, versal, utilitário `display-caps`): títulos que não são identificadores. "Confirmar execução" (2rem), estados vazios ("Nenhuma aba aberta" 3.75rem, "Nada no histórico" 2.25rem, "Sem resultado" 1.875rem), "Histórico" (1.25rem), "SQL" (1.125rem), MANAGER na marca.
+- **Legend** (Saira 600, 0.6875rem, largura 75%, 0.1em, versal, utilitário `legend`): CONEXÕES, campos da ficha, `Label` de formulário, etiquetas de ambiente, badges, chip de filtro, código da engine (0.75rem), palavra "Produção" na faixa (0.75rem).
+- **Title** (Hanken 600, 13px): nome da conexão no registro; linhas da árvore em 13px regular.
+- **Body** (Hanken 400, 0.875rem; botões 500): interface geral e diálogos. Parágrafos de estado vazio limitados a 46ch.
+- **Data** (Spline Sans Mono, 0.75rem, linha de 28px): células da grade, editores, comando exato na ficha.
+- **Data Meta** (Spline Sans Mono, 11px): alvo da conexão, contagens na árvore, contagem Δ, tipo da coluna no cabeçalho.
 
 ### Named Rules
 
-**The One Grotesque Rule.** Archivo é a única família de interface; o registro de display é o versalete condensado de `label-caps`, não uma segunda fonte.
+**The Identifier-Keeps-Case Rule.** Nome de tabela, coleção ou banco usa `display` com a caixa original; só títulos que não são dado usam `display-caps`.
 
-**The Mono-Means-Data Rule.** Red Hat Mono só para dado e código; nunca para rótulos ou navegação.
+**The Mono-Means-Data Rule.** Spline Sans Mono só para dado, código e quantidades; nunca para rótulos ou navegação.
 
 **The 11px Floor Rule.** Texto funcional nunca abaixo de 11px.
 
 ## Layout
 
-Janela padrão 1200×800, mínimo 960×600. Lateral fixa de 288px (`w-72`) em epóxi, área de trabalho com barra de abas, barra de ferramentas em papel e conteúdo. Em produção, a faixa de lacre (28px de altura) ocupa o topo da janela inteira e um anel interno de 4px em `--seal` contorna tudo, desenhado acima dos painéis.
+Janela padrão 1200×800, mínimo 960×600. Lateral fixa de 288px sobre a grade de construção visível, separada da área de trabalho por filete de tinta; cabeçalho da marca de 56px (quatro células da grade) em papel. Área de trabalho em Z10 limpa: barra de abas de 36px em Z9 com filete de tinta inferior, cabeçalho da view com filete de tinta, barra de ferramentas, conteúdo. Em produção, faixa de 28px no topo da janela inteira e anel interno de 4px desenhado acima dos painéis.
 
-Densidade compacta: controles de 32px (28px no tamanho `sm`, 24px no `xs`), etiqueta de ambiente de 18px. Ritmo base de 4px (gaps de 4, 6, 8, 12, 16px).
+Densidade compacta: controles de 32px (28px `sm`, 24px `xs`), etiquetas de 18px, casa da engine de 24px. Ritmo base de 4px.
 
-**The 28px Row Rule.** Grade de resultados, tabelas de entradas e linhas da bancada usam a mesma altura de 28px.
+**The 28px Row Rule.** Grade de resultados, linhas da árvore e tabelas de entradas usam 28px, exatamente duas células da grade.
 
-Escalas de medida preenchida: barras de duração no histórico (até 96px, proporcionais à maior duração, mínimo 2px, `foreground` a 60%) e o medidor de limite do Redis (128×6px, trilho `--border`, preenchimento `--warning`) mostram limites reais como medida, sempre acompanhados do número ou da frase.
+**The Grid-Where-No-Data Rule.** A grade de construção aparece na lateral, nos estados vazios, no cabeçalho da ficha de exposição e no canvas do diagrama. Onde há dado (o registro de conexões, a grade, os cartões), o fundo é papel liso por cima da grade.
 
 ## Elevation & Depth
 
-Plano por padrão; profundidade por tom (bancada escura, etiqueta clara, papel) e por filetes de 1px. Não há desfoque de fundo; o overlay de diálogo é `black/30` liso.
+Plano. Profundidade vem de zona (Z10 sobre Z9), de filetes de 1px e do filete de tinta Z0 nas divisões principais. O overlay de diálogo é `black/30` liso, sem desfoque.
 
 ### Shadow Vocabulary
 
-- **Borda de etiqueta** (`box-shadow: 0 1px 0 rgb(0 0 0 / 0.4)`): a etiqueta de conexão colada na bancada. Nos nós do diagrama ER, `0 1px 0 rgb(0 0 0 / 0.25)`.
-- **Termo de custódia** (`box-shadow: 0 20px 44px -14px rgb(0 0 0 / 0.5)`): a única sombra projetada, o formulário sobre a bancada.
-- **Marcadores internos** (`inset 0 2px 0 var(--select)` na aba ativa, `inset 3px 0 0 var(--select)` na tabela ativa): não são elevação, são o azul de "onde você está".
+- **Folha sobre a mesa** (`box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.45)`, com anel de 1px em tinta): a única sombra projetada, em todo diálogo.
+- **Marcadores internos** (`inset 0 3px 0 var(--select)` na aba ativa; `inset 0 -2px 0 var(--filter)` na coluna ordenada; `inset 0 -2px 0 var(--foreground)` na célula editada; `inset 0 0 0 1px var(--ring)` em campo focado; `inset 0 2px 0 var(--ring)` no console Redis focado): não são elevação, são filetes de estado.
 
 ### Named Rules
 
-**The No-Blur Rule.** Sem `backdrop-filter`. Diálogos genéricos usam anel de 1px (`foreground` a 15%) e não animam.
+**The No-Blur Rule.** Sem `backdrop-filter` e sem sombras decorativas; a folha do diálogo é a única sombra.
 
 ## Shapes
 
-Cantos de 3px (`--radius: 0.1875rem`; botões, campos, diálogos, etiquetas de conexão), 2px nas etiquetas de ambiente, badges e linhas da bancada, 1px nos quadradinhos de tampa e nas barras de duração. Filetes de 1px; o único filete grosso é o de 2px sob o título do termo. Duas texturas recorrentes, ambas listras a 135°: a fita de lacre (`seal-tape`, 22px de `--seal` + 4px de `--seal-dark`, texto branco) e a amostra aberta (`opened-hatch`, 6px de `--opened` + 1px de `--opened-line`).
+Cantos de 0px em tudo (`--radius: 0px`, todas as escalas de raio zeradas). Filetes de 1px; em tinta nas divisões principais, Z8 nas internas. A única diagonal é a linha azul da marca, repetida no cabeçalho da ficha de exposição e no ícone do app; o triângulo azul de canto da aba ativa é o corte dessa diagonal.
 
-O ícone do app (`src-tauri/icons/icon.svg`) repete o mundo: fundo `bench`, etiqueta `label-stock` com faixa lavanda de Postgres, linhas em `ink` e `ink-muted`, fita de lacre na base.
+Texturas de estado, todas em `--hatch`:
+
+- **Hachura** (`hatch`, 135°, 1px a cada 6px): alterado/em stage; também a casa hachurada da etiqueta STAGING.
+- **Hachura cruzada** (`cross-hatch`, 135° + 45°): excluído ou em conflito.
+- **Banda de hachura** (`hatch-band` / `cross-hatch-band`, 7px na base da célula, 1px a cada 5px): na grade a hachura fica numa banda sob o valor, nunca atrás dos dígitos.
+- **Pontilhado** (`border-dotted`): retido. Etiqueta LOCAL, badge "Somente leitura", cadeado da conexão somente leitura.
+
+O ícone do app (`src-tauri/icons/icon.svg`) é o mesmo mundo: papel branco com grade, moldura e "DB" em tinta #0f1011 com cantos cortados, diagonal em azul Crouwel.
 
 ## Components
 
 ### Buttons
 
-Tinta sobre papel, sem enfeite.
+Tinta sobre papel, reto.
 
-- **Shape:** 3px, altura 32px (sm 28px, xs 24px), padding horizontal 10px, texto 0.875rem/500.
-- **Primary:** fundo `ink`, texto `label-stock`; hover a 85%.
-- **Outline:** contorno `input-rule`, fundo de etiqueta (transparente no escuro); hover em papel.
-- **Ghost:** sem fundo; hover em papel. Na bancada, outline e ghost trocam para `bench-border`/`bench-raised`.
-- **Destructive (romper lacre):** `--seal` cheio, texto branco 600. Reservado para confirmar escrita destrutiva ou em produção.
-- **Focus:** borda `--ring` + anel de 3px em `--ring` a 50% (no destrutivo, `--seal` a 40%). Active desce 1px.
+- **Shape:** 0px, altura 32px (`sm` 28px, `xs` 24px), padding horizontal 10px, texto 0.875rem/500.
+- **Primary:** fundo Z0, texto Z10; hover desce para Z5 (Z4 no escuro).
+- **Outline:** contorno `input` (Z6), fundo papel (transparente no escuro); hover em Z9.
+- **Ghost:** sem fundo; hover em Z9.
+- **Destructive:** `--safelight` cheio, texto branco 600, hover a 90%. Reservado para confirmar escrita destrutiva ou em produção.
+- **Focus:** contorno sólido de 2px em `--ring` com 2px de afastamento (no destrutivo, em `--safelight`). Active desce 1px.
 
-### Chips (etiquetas de ambiente e badges)
+### Chips
 
-- **Style:** 18px de altura, 2px de canto, `label-caps`. PROD `--seal` + branco; STAGING `--warning` + `primary-foreground`; DEV contorno sólido `currentColor`; LOCAL contorno tracejado `currentColor`.
-- **State:** estáticos; o texto é o significado.
+- **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto branco.
+- **Badge retido:** contorno pontilhado `currentColor`, "Somente leitura".
+- **Chip de filtro:** FILTRO ATIVO em `--filter` cheio com texto papel, só enquanto um filtro está aplicado.
+- **Contagem Δ:** 18px, fundo Z0, texto Z10, mono 11px ("Δ 2").
 
 ### Cards / Containers
 
-- **Etiqueta de conexão:** 3px, `--tag` sobre a bancada, faixa de tampa de 6px à esquerda, nome 13px/600, segunda linha mono 11px em `--tag-muted`, etiqueta de ambiente à direita, cadeado para somente leitura. Ações aparecem no hover/focus-within.
-- **Linhas da bancada:** 28px, 13px, texto `bench-muted`/`bench-foreground`; hover `bench-raised`; ativa vira fatia de etiqueta (`--tag`, 600) com marcador azul de 3px.
+- **Registro de conexões:** um único livro-razão pautado, papel sobre a grade, contorno de tinta, conexões separadas por filete Z8 (filete de tinta quando expandida). Cada linha: casa quadrada de 24px com o código da engine (PG, MY, SL, MG, RD) em `legend`, nome 13px/600, etiqueta de ambiente à direita, segunda linha em mono 11px com o alvo e cadeado pontilhado se somente leitura. As ações de hover/foco sobrepõem só a linha do alvo, no canto inferior direito, sobre papel; nunca cobrem o nome nem a etiqueta.
+- **Árvore:** sob a conexão expandida, recuo com filete esquerdo de tinta; linhas de 28px, 13px, hover Z9; a tabela ativa é preenchida em azul.
 
 ### Inputs / Fields
 
-- **Style:** 32px, 3px, contorno `input-rule`, fundo transparente (no escuro `input` a 30%). Select nativo idêntico.
-- **Focus:** borda `--ring` + anel de 3px a 50%.
-- **Error / Disabled:** borda `--destructive` + anel a 20%; desabilitado a 50% de opacidade.
-- **Label:** `label-caps` em `muted-foreground`.
+- **Style:** 32px, 0px, contorno `input` (Z6), fundo transparente (Z9 no escuro). Select nativo idêntico.
+- **Focus:** borda `--ring` + filete interno de 1px em `--ring` (contorno de 2px no total).
+- **Error / Disabled:** borda `--destructive` + anel a 20%; desabilitado em Z9 a 50%.
+- **Label:** `legend` em `muted-foreground`.
 
 ### Navigation
 
-- **Abas de trabalho:** barra em papel a 40%, cada aba separada por filete; ativa em `background`, 500, filete azul superior de 2px; quadradinho de tampa de 8px antes do ícone.
+- **Abas de trabalho:** barra Z9 com filete de tinta, abas separadas por filete; cada aba leva o código da engine em `legend`, ícone, rótulo e, se houver alterações em stage, a contagem Δ. Ativa em papel, 600, filete interno azul de 3px no topo e triângulo azul de 10px no canto superior direito.
 - **Tabs internas:** sublinhado de 2px em `--select` no ativo, 600.
-- **Árvore de chaves do Redis:** lista de botões com `aria-expanded` nas pastas (não `role="tree"`), linhas de 28px, cantos de 2px; a chave aberta leva `--select` a 10% e marcador de 3px, como a tabela ativa.
+- **Árvore de chaves do Redis:** linhas de 28px; a chave aberta é preenchida em azul como a tabela ativa.
 
 ### Grade de resultados
 
-Mono 0.75rem, linhas de 28px, colunas com filete direito, cabeçalho fixo em papel (nome 600 + tipo em `muted-foreground`). Números à direita; `null` em itálico secundário; linha nova `success` a 10%; excluída `destructive` a 10% riscada; editada com `opened-hatch`; selecionada com contorno azul de 2px.
+Mono 0.75rem, linhas de 28px, colunas com filete direito, cabeçalho fixo em Z9 com filete de tinta (nome 600 + tipo em `muted-foreground`). Números à direita; `null` em itálico secundário; coluna ordenada com seta e filete inferior magenta; linha nova `success` a 10% com banda de hachura; excluída com banda cruzada, texto secundário riscado; editada com banda de hachura e filete inferior de tinta de 2px; selecionada com contorno azul de 2px e fundo azul a 10%.
 
-### Termo de custódia (assinatura)
+### O Δ de exposição (assinatura)
 
-O diálogo de confirmação. Título em display, filete de 2px em tinta, campos impressos (Conexão, Ambiente com etiqueta, Comandos) em grade 2fr/1fr/1fr, Motivo, o comando exato em mono sobre papel, fita de lacre ("Lacre · rompa só depois de conferir o comando · Lacre") e rodapé em papel com Cancelar (outline) e o botão destrutivo. Em produção o botão sempre diz "Romper lacre e …". Entra em 120ms com fade e slide curto, protegido por `motion-reduce`.
+Cada alteração em stage hachura a célula e soma no segmento Δ do botão Salvar ("Salvar | Δ 3", segmento mono separado por filete a 40%) e na contagem Δ da aba. Ao salvar, a célula revela em dois passos: a banda de hachura na base, sobre um fundo Z0 a 12%, some em 120ms `steps(2)` (`developed`); o aviso de salvo usa a mesma revelação. Sem animação com `prefers-reduced-motion`.
 
-### Faixa de lacre de produção
+### Ficha de exposição: "Confirmar execução" (assinatura)
 
-28px no topo da janela, `seal-tape`, ícone de alerta, "LACRE DE PRODUÇÃO" em `label-caps`, nome da conexão e o regime (somente leitura ou confirmação de escrita). Entra em 120ms com `motion-reduce` guardado. Acompanhada do anel de 4px em `--seal`.
+O diálogo de confirmação (máx. 672px). Cabeçalho sobre a grade de construção com título `display-caps` 2rem e a diagonal azul, filete de tinta. Campos pautados em grade 2fr/1fr/1fr (Conexão, Ambiente com etiqueta, Comandos em mono), Motivo, o comando exato em mono com contorno de tinta, e em produção a faixa de luz de segurança "Produção · este comando roda no banco de produção". Rodapé em Z9 com filete de tinta, Cancelar (outline) e o botão destrutivo; em produção ele sempre diz "Executar em produção". Entra em 160ms com fade e deslize curto do topo, como uma folha, com `motion-reduce`.
+
+### Faixa de produção
+
+28px no topo da janela, `--safelight` cheio, ícone de alerta, "Produção" em `legend`, nome da conexão e o regime (somente leitura imposta pelo banco, ou escrita com confirmação do comando exato). Entra em 120ms com fade e deslize de 4px, com `motion-reduce`. Acompanhada do anel interno de 4px.
 
 ### Editor (CodeMirror)
 
-Fundo `background`, gutter em papel com filete, linha ativa em papel a 60%, seleção em `--ring` a 40%, foco com contorno de 2px em `--ring` a 50%, cores de sintaxe pelos tokens `--syntax-*`.
+Fundo papel, gutter Z9 com filete, linha ativa Z9 a 60%, cursor azul de 2px, seleção em `--ring` a 40%, foco com contorno de 2px em `--ring`, painel de autocompletar com contorno de tinta e item ativo em azul. Sintaxe: palavras-chave em Z0, strings `success`, números `warning`, tipos Z5, propriedades em tinta 600.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** reservar `--select` para seleção, anel de foco, aba ativa e tabela ativa.
-- **Do** imprimir o ambiente em palavras numa etiqueta: PROD `--seal` cheio, STAGING fundo `--warning`, DEV contorno sólido, LOCAL contorno tracejado.
-- **Do** usar a cor de tampa (`--cap-postgres/mysql/sqlite/mongo/redis`) só como faixa ou quadradinho.
-- **Do** usar o botão destrutivo (`--seal` cheio) só para confirmar escrita destrutiva ou em produção; em produção o botão do ConfirmDialog sempre diz "Romper lacre e …".
-- **Do** usar Archivo Variable para toda a interface, `label-caps` para rótulos impressos, Red Hat Mono só para dado e código.
-- **Do** manter linhas de 28px em grades e tabelas e texto funcional em 11px ou mais.
-- **Do** manter a bancada mais escura que a área de trabalho nos dois temas (#121517 contra #1b1f22 no escuro) e as etiquetas em #d9dcd6 à noite.
-- **Do** seguir o tema do SO (`prefers-color-scheme`).
+- **Do** tirar todo neutro da escala Z0..Z10 e trocar de tema só pelo nome da zona.
+- **Do** mostrar a grade de construção (14px, `grid`) só onde não há dado: lateral, estados vazios, cabeçalho da ficha, canvas do diagrama.
+- **Do** reservar o azul para onde você está e para a diagonal da marca; o magenta para filtração; a luz de segurança para produção e destrutivo.
+- **Do** imprimir o ambiente em palavras na notação LOCAL pontilhado, DEV contorno, STAGING casa hachurada, PROD luz de segurança cheia.
+- **Do** marcar somente leitura com o contorno pontilhado de "retido".
+- **Do** marcar estado por textura: hachura para alterado, cruzada para excluído, sempre em banda sob o valor na grade.
+- **Do** levar a contagem Δ no botão Salvar e na aba enquanto houver alterações em stage.
+- **Do** usar `display` com a caixa original para identificadores e `display-caps` para os demais títulos.
+- **Do** manter linhas de 28px, cantos de 0px e texto funcional em 11px ou mais.
+- **Do** limitar o movimento à faixa de produção (120ms), à ficha de exposição (160ms) e à revelação (120ms `steps(2)`), todos com `prefers-reduced-motion`.
 
 ### Don't:
 
-- **Don't** usar azul em dado: tipos do Redis, números no código, ícones.
-- **Don't** indicar ambiente, produção ou estado editado só por cor.
-- **Don't** pintar texto com cor de engine.
-- **Don't** usar `--seal` cheio para ações comuns.
-- **Don't** introduzir segunda família de interface nem mono fora de dado/código.
-- **Don't** animar nada além da faixa de lacre e do Termo de custódia (120ms, `motion-reduce`); diálogos genéricos não animam.
-- **Don't** usar `backdrop-filter`/blur nem sombras decorativas.
+- **Don't** pôr grade ou hachura atrás de dígitos ou de dado.
+- **Don't** usar azul em dado, ícone de tipo ou número de código.
+- **Don't** usar magenta sem filtro ou ordenação ativos.
+- **Don't** usar luz de segurança cheia para ações comuns.
+- **Don't** indicar ambiente, produção ou estado só por cor.
+- **Don't** arredondar cantos.
+- **Don't** usar `backdrop-filter` nem sombras além da folha do diálogo.
+- **Don't** usar mono fora de dado, código e quantidades.
 - **Don't** adicionar alternância de tema no app.
 
 ---
 
-Revisão de acabamento: disposição "ship" após uma rodada de correções (8 correções pontuadas como resolvidas).
+Revisão de acabamento: disposição "fix". Após o lote de correções, o veredito pontuou 7 de 8 correções resolvidas e 1 parcial, mais 2 regressões (hachura e tempo do keyframe de revelação; ações de hover truncando a conexão de produção). As duas foram corrigidas no código (a revelação usa a banda inferior em 120ms; as ações de hover sobrepõem só a linha do alvo) e conferidas visualmente pelo construtor, sem nova pontuação do revisor.

@@ -107,7 +107,7 @@ export function EntryTable({
       )}
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="h-7 border-b text-left label-caps text-muted-foreground">
+          <tr className="h-7 border-b text-left legend text-muted-foreground">
             {showIndex && <th className="w-12 px-2 py-1.5 font-medium">#</th>}
             <th className="px-2 py-1.5 font-medium">{firstLabel}</th>
             {secondLabel && <th className="px-2 py-1.5 font-medium">{secondLabel}</th>}

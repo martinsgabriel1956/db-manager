@@ -1,8 +1,8 @@
 import type { KeyboardEvent } from "react";
 import { Database, History, Network, SquareTerminal, Table2, X } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
-import { ENGINE_CAP } from "@/features/connections/options";
-import { useTabs, type Tab } from "@/features/tabs/store";
+import { ENGINE_CODE, ENGINE_LABEL } from "@/features/connections/options";
+import { tableKey, useTabs, type Tab } from "@/features/tabs/store";
 import { cn } from "@/lib/utils";
 
 type TabBarProps = { connections: ConnectionConfig[] };
@@ -38,7 +38,7 @@ export function tabPanelId(tabId: string): string {
 }
 
 export function TabBar({ connections }: TabBarProps) {
-  const { tabs, activeId, activate, close } = useTabs();
+  const { tabs, activeId, activate, close, pending } = useTabs();
 
   function focusTab(index: number) {
     const tab = tabs[(index + tabs.length) % tabs.length];
@@ -72,7 +72,7 @@ export function TabBar({ connections }: TabBarProps) {
     <div
       role="tablist"
       aria-label="Abas abertas"
-      className="flex shrink-0 overflow-x-auto border-b bg-muted/40 [scrollbar-width:thin]"
+      className="flex h-9 shrink-0 overflow-x-auto border-b border-foreground bg-muted [scrollbar-width:thin]"
     >
       {tabs.map((tab, index) => {
         const label = tabLabel(tab, connections);
@@ -82,6 +82,7 @@ export function TabBar({ connections }: TabBarProps) {
             ? null
             : (connections.find(c => c.id === tab.connectionId)?.engine ?? null);
         const isActive = tab.id === activeId;
+        const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
         return (
           <div
             key={tab.id}
@@ -89,10 +90,21 @@ export function TabBar({ connections }: TabBarProps) {
             className={cn(
               "group flex shrink-0 items-center border-r text-sm",
               isActive
-                ? "bg-background font-medium shadow-[inset_0_2px_0_var(--select)]"
-                : "text-muted-foreground hover:bg-background/60"
+                ? // the system's one diagonal: the active tab's corner is cut in blue
+                  "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
+                : "text-muted-foreground hover:bg-background hover:text-foreground"
             )}
           >
+            {/* the engine code, so two connections' tabs never read alike */}
+            {engine && (
+              <span
+                title={ENGINE_LABEL[engine]}
+                aria-hidden
+                className="pl-3 legend text-muted-foreground"
+              >
+                {ENGINE_CODE[engine]}
+              </span>
+            )}
             <button
               type="button"
               role="tab"
@@ -104,25 +116,30 @@ export function TabBar({ connections }: TabBarProps) {
               onClick={() => activate(tab.id)}
               onKeyDown={event => handleKeyDown(event, index, tab.id)}
               onAuxClick={event => event.button === 1 && close(tab.id)}
-              className="flex max-w-56 items-center gap-1.5 py-1.5 pr-1 pl-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-            >
-              {/* the tube-cap colour of the tab's engine */}
-              {engine && (
-                <span
-                  aria-hidden
-                  className={cn("size-2 shrink-0 rounded-[1px]", ENGINE_CAP[engine])}
-                />
+              className={cn(
+                "flex max-w-56 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                engine ? "pl-1.5" : "pl-3"
               )}
+            >
               <Icon className="size-3.5 shrink-0" />
               <span className="truncate">{label}</span>
             </button>
+            {/* staged exposure on this table: the same Δ the save button carries */}
+            {staged > 0 && (
+              <span
+                aria-hidden
+                className="mr-0.5 h-[18px] bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background"
+              >
+                Δ {staged}
+              </span>
+            )}
             {/* keyboard users close with Delete on the tab, so this stays out of the tab order */}
             <button
               type="button"
               tabIndex={-1}
               aria-label={`Fechar aba ${label}`}
               onClick={() => close(tab.id)}
-              className="mr-1 rounded-[2px] p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="mr-1 p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <X className="size-3.5" />
             </button>

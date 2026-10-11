@@ -9,6 +9,7 @@ import { NewKeyDialog } from "@/features/redis/NewKeyDialog";
 import { buildKeyTree, uniqueKeys } from "@/features/redis/keyTree";
 import { useKeyEdit, useKeyScan } from "@/features/redis/queries";
 import { errorMessage } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 
 type KeyBrowserProps = {
   connectionId: string;
@@ -44,7 +45,8 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
           <Input
             aria-label="Padrão de chaves"
             placeholder="user:* (SCAN MATCH)"
-            className="h-7 font-mono text-xs"
+            // a narrowed SCAN is filtration: the pattern field takes the magenta rule
+            className={cn("h-7 font-mono text-xs", pattern !== "*" && "border-filter")}
             value={draft}
             onChange={event => setDraft(event.target.value)}
           />
@@ -143,7 +145,7 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
       <ConfirmDialog
         connectionId={connectionId}
         confirmation={editor.confirmation}
-        confirmLabel="Romper lacre e executar"
+        confirmLabel="Executar"
         statementSuffix=""
         pending={editor.isPending}
         onConfirm={editor.confirm}

@@ -15,6 +15,8 @@ export type GridEditing = {
   onCommit: (row: number, column: number, value: string) => void;
   rowStatus: (row: number) => "new" | "deleted" | null;
   isEdited: (row: number, column: number) => boolean;
+  /** just saved: the hatch develops away */
+  isDeveloping?: (row: number, column: number) => boolean;
 };
 
 type CellEditor = SelectedCell & { text: string };
@@ -200,7 +202,7 @@ export function ResultGrid({
         ref={headerRef}
         role="row"
         aria-rowindex={1}
-        className="sticky top-0 z-10 flex border-b bg-muted"
+        className="sticky top-0 z-10 flex border-b border-foreground bg-muted"
         style={{ width }}
       >
         {columns.map((column, index) => {
@@ -210,10 +212,10 @@ export function ResultGrid({
               <span className="truncate font-semibold">{column.name}</span>
               <span className="truncate text-muted-foreground">{column.typeName}</span>
               {sortedHere === "asc" && (
-                <ArrowUp className="size-3 shrink-0" aria-label="crescente" />
+                <ArrowUp className="size-3 shrink-0 text-filter" aria-label="crescente" />
               )}
               {sortedHere === "desc" && (
-                <ArrowDown className="size-3 shrink-0" aria-label="decrescente" />
+                <ArrowDown className="size-3 shrink-0 text-filter" aria-label="decrescente" />
               )}
             </>
           );
@@ -232,7 +234,11 @@ export function ResultGrid({
                       : undefined
               }
               style={{ width: COLUMN_WIDTH }}
-              className="shrink-0 border-r"
+              // sorting is filtration: magenta rule under the sorted column
+              className={cn(
+                "shrink-0 border-r",
+                sortedHere && "shadow-[inset_0_-2px_0_var(--filter)]"
+              )}
             >
               {onSortChange ? (
                 <button
@@ -265,8 +271,8 @@ export function ResultGrid({
                 data-status={status ?? undefined}
                 className={cn(
                   "absolute top-0 left-0 flex border-b",
-                  status === "new" && "bg-success/10",
-                  status === "deleted" && "bg-destructive/10 text-muted-foreground line-through"
+                  status === "new" && "hatch-band bg-success/10",
+                  status === "deleted" && "cross-hatch-band text-muted-foreground line-through"
                 )}
                 style={{ height: ROW_HEIGHT, width, transform: `translateY(${item.start}px)` }}
               >
@@ -275,6 +281,7 @@ export function ResultGrid({
                     selected?.row === item.index && selected.column === columnIndex;
                   const isEditing = editor?.row === item.index && editor.column === columnIndex;
                   const isEdited = editing?.isEdited(item.index, columnIndex) ?? false;
+                  const isDeveloping = editing?.isDeveloping?.(item.index, columnIndex) ?? false;
                   return (
                     <div
                       key={`${columnIndex}:${columns[columnIndex]?.name}`}
@@ -290,9 +297,9 @@ export function ResultGrid({
                         isNumeric(cell) && "text-right",
                         cell.t === "null" && "text-muted-foreground italic",
                         cell.t === "unknown" && "text-muted-foreground",
-                        isEdited && "opened-hatch",
-                        isSelected &&
-                          "bg-select/10 outline outline-2 -outline-offset-2 outline-select"
+                        isEdited && "hatch-band shadow-[inset_0_-2px_0_var(--foreground)]",
+                        isDeveloping && "developed",
+                        isSelected && "bg-select/10 outline-2 -outline-offset-2 outline-select"
                       )}
                     >
                       {isEditing ? (
