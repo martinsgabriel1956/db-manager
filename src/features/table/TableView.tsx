@@ -1,15 +1,19 @@
 import { useState } from "react";
+import { Plus, Trash2, Undo2 } from "lucide-react";
 import type { BrowseRequest, Filter, Sort } from "@/bindings";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
 import { StructureView } from "@/features/table/StructureView";
+import { useTableEditing } from "@/features/table/useTableEditing";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
-type TableViewProps = { connectionId: string; schema: string; table: string };
+type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
 
 type Tab = "data" | "structure";
 
@@ -23,14 +27,14 @@ export function nextSort(current: Sort | null, column: string): Sort | null {
   return current.direction === "asc" ? { column, direction: "desc" } : null;
 }
 
-export function TableView({ connectionId, schema, table }: TableViewProps) {
+export function TableView(props: TableViewProps) {
   const [tab, setTab] = useState<Tab>("data");
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-4 border-b px-3">
         <h2 className="py-2 font-mono text-sm font-semibold">
-          {schema}.{table}
+          {props.schema}.{props.table}
         </h2>
         <div role="tablist" className="flex gap-1">
           {(["data", "structure"] as const).map(id => (
@@ -51,17 +55,24 @@ export function TableView({ connectionId, schema, table }: TableViewProps) {
             </button>
           ))}
         </div>
+        {props.readOnly && <Badge variant="outline">Somente leitura</Badge>}
       </div>
-      {tab === "data" ? (
-        <TableData connectionId={connectionId} schema={schema} table={table} />
-      ) : (
-        <StructureView connectionId={connectionId} schema={schema} table={table} />
+      {/* both stay mounted: switching tabs must not drop staged edits */}
+      <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "data" && "hidden")}>
+        <TableData {...props} />
+      </div>
+      {tab === "structure" && (
+        <StructureView
+          connectionId={props.connectionId}
+          schema={props.schema}
+          table={props.table}
+        />
       )}
     </div>
   );
 }
 
-function TableData({ connectionId, schema, table }: TableViewProps) {
+function TableData({ connectionId, schema, table, readOnly }: TableViewProps) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<Sort | null>(null);
   const [filter, setFilter] = useState<Filter | null>(null);
@@ -78,7 +89,13 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
   };
   const browse = useBrowse(connectionId, request);
   const batch = browse.data;
-  const selectedCell = selected && batch?.rows[selected.row]?.[selected.column];
+  const primaryKey =
+    structure.data?.columns.filter(column => column.isPrimaryKey).map(column => column.name) ?? [];
+  const edit = useTableEditing({ connectionId, schema, table, readOnly, batch, primaryKey });
+  const dirty = edit.count > 0;
+
+  const selectedCell = selected && edit.rows[selected.row]?.[selected.column];
+  const selectedEditable = selected !== null && edit.editing.canEdit(selected.row, selected.column);
 
   function restart(update: () => void) {
     update();
@@ -91,9 +108,69 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
       <BrowseToolbar
         columns={structure.data?.columns.map(column => column.name) ?? []}
         active={filter}
+        disabled={dirty}
         onApply={next => restart(() => setFilter(next))}
         onClear={() => restart(() => setFilter(null))}
       />
+      {batch && !readOnly && (
+        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm">
+          {edit.canEdit ? (
+            <>
+              <Button size="sm" variant="outline" onClick={edit.addRow}>
+                <Plus /> Adicionar linha
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={selected === null}
+                onClick={() => selected && edit.toggleRow(selected.row)}
+              >
+                {selected && edit.isDeleted(selected.row) ? (
+                  <>
+                    <Undo2 /> Restaurar linha
+                  </>
+                ) : (
+                  <>
+                    <Trash2 /> Excluir linha
+                  </>
+                )}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Duplo clique numa célula para editar
+              </span>
+            </>
+          ) : (
+            structure.isSuccess && (
+              <span className="text-xs text-muted-foreground">
+                Sem chave primária editável: tabela somente leitura
+              </span>
+            )
+          )}
+          {dirty && (
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs font-medium">
+                {edit.count} {edit.count === 1 ? "alteração pendente" : "alterações pendentes"}
+              </span>
+              <Button size="sm" variant="outline" disabled={edit.saving} onClick={edit.discard}>
+                Descartar
+              </Button>
+              <Button size="sm" disabled={edit.saving} onClick={edit.save}>
+                Salvar
+              </Button>
+            </div>
+          )}
+          {edit.notice && !dirty && (
+            <span role="status" className="ml-auto text-xs text-emerald-700">
+              {edit.notice}
+            </span>
+          )}
+        </div>
+      )}
+      {edit.saveError && (
+        <p role="alert" className="px-3 py-2 text-sm text-destructive">
+          {edit.saveError}
+        </p>
+      )}
       {browse.isError && (
         <p role="alert" className="px-3 py-2 text-sm text-destructive">
           {errorMessage(browse.error)}
@@ -104,13 +181,16 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
           {batch && (
             <ResultGrid
               columns={batch.columns}
-              rows={batch.rows}
+              rows={edit.rows}
               hasMore={false}
               isLoadingMore={false}
               sort={sort}
-              onSortChange={column => restart(() => setSort(prev => nextSort(prev, column)))}
+              onSortChange={
+                dirty ? undefined : column => restart(() => setSort(prev => nextSort(prev, column)))
+              }
               selected={selected}
               onSelect={setSelected}
+              editing={edit.editing}
             />
           )}
           {browse.isPending && <p className="p-3 text-sm text-muted-foreground">Carregando…</p>}
@@ -120,6 +200,11 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
             column={batch.columns[selected.column]}
             cell={selectedCell}
             onClose={() => setSelected(null)}
+            onSetNull={
+              selectedEditable
+                ? () => edit.setValue(selected.row, selected.column, null)
+                : undefined
+            }
           />
         )}
       </div>
@@ -127,7 +212,7 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
         <Button
           size="sm"
           variant="outline"
-          disabled={page === 0 || browse.isFetching}
+          disabled={page === 0 || browse.isFetching || dirty}
           onClick={() => {
             setPage(prev => prev - 1);
             setSelected(null);
@@ -139,7 +224,7 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
         <Button
           size="sm"
           variant="outline"
-          disabled={!batch?.hasMore || browse.isFetching}
+          disabled={!batch?.hasMore || browse.isFetching || dirty}
           onClick={() => {
             setPage(prev => prev + 1);
             setSelected(null);
@@ -147,8 +232,20 @@ function TableData({ connectionId, schema, table }: TableViewProps) {
         >
           Próxima
         </Button>
+        {dirty && (
+          <span className="text-xs text-muted-foreground">
+            Salve ou descarte para trocar de página
+          </span>
+        )}
         {browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>}
       </div>
+      <ConfirmDialog
+        confirmation={edit.confirmation}
+        confirmLabel="Salvar em produção"
+        pending={edit.saving}
+        onConfirm={edit.confirm}
+        onCancel={edit.dismiss}
+      />
     </div>
   );
 }

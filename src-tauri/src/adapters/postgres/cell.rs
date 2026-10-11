@@ -2,6 +2,8 @@
 //! so the server renders every value exactly (numeric, int8, timestamps, arrays…)
 //! and we only classify it by type OID.
 
+use std::collections::HashMap;
+
 use sqlx::TypeInfo;
 use sqlx::postgres::{PgTypeInfo, PgTypeKind};
 
@@ -29,40 +31,121 @@ const JSONB: u32 = 3802;
 const TEXTUAL: &[u32] = &[
     18, 19, 25, 1042, 1043, 2950, 142, 1083, 1266, 1186, 869, 650, 829, 774, 1560, 1562, 790, 705,
 ];
+const MODELED: &[u32] = &[
+    BOOL,
+    BYTEA,
+    INT8,
+    INT2,
+    INT4,
+    OID,
+    JSON,
+    FLOAT4,
+    FLOAT8,
+    DATE,
+    TIMESTAMP,
+    TIMESTAMPTZ,
+    NUMERIC,
+    JSONB,
+];
 
 /// The session runs with `TimeZone=UTC` (see `PostgresAdapter::connect`).
 pub const SESSION_TIME_ZONE: &str = "UTC";
 
-pub fn to_cell(type_info: &PgTypeInfo, text: Option<&str>) -> Cell {
+/// How a column's text values are read, resolved once per column.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValueType {
+    /// built-in type we model, by OID
+    Builtin(u32),
+    Array(Box<ValueType>),
+    /// user-defined enum: plain text
+    Enum,
+    Unknown,
+}
+
+/// Facts from pg_type about OIDs sqlx leaves unresolved on the text protocol
+/// (enums, domains, extension types).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomType {
+    pub name: String,
+    pub kind: CustomKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CustomKind {
+    Enum,
+    /// domain over this base type OID
+    Domain(u32),
+    Other,
+}
+
+pub type Catalog = HashMap<u32, CustomType>;
+
+fn is_modeled(oid: u32) -> bool {
+    MODELED.contains(&oid) || TEXTUAL.contains(&oid)
+}
+
+/// OID to look up in pg_type when sqlx could not resolve the type ("?").
+pub fn unresolved_oid(type_info: &PgTypeInfo) -> Option<u32> {
+    (type_info.name() == "?")
+        .then(|| type_info.oid().map(|oid| oid.0))
+        .flatten()
+}
+
+pub fn resolve(type_info: &PgTypeInfo, catalog: &Catalog) -> ValueType {
+    // must come first: sqlx panics on kind() for types it did not resolve
+    if let Some(oid) = unresolved_oid(type_info) {
+        return match catalog.get(&oid).map(|custom| &custom.kind) {
+            Some(CustomKind::Enum) => ValueType::Enum,
+            Some(CustomKind::Domain(base)) if is_modeled(*base) => ValueType::Builtin(*base),
+            _ => ValueType::Unknown,
+        };
+    }
+    match type_info.kind() {
+        PgTypeKind::Array(element) => ValueType::Array(Box::new(resolve(element, catalog))),
+        PgTypeKind::Enum(_) => ValueType::Enum,
+        PgTypeKind::Domain(base) => resolve(base, catalog),
+        _ => match type_info.oid().map(|oid| oid.0) {
+            Some(oid) if is_modeled(oid) => ValueType::Builtin(oid),
+            _ => ValueType::Unknown,
+        },
+    }
+}
+
+/// Columns the grid may edit: scalars we can write back as text. Arrays, bytea and
+/// unmodeled types stay read-only.
+pub fn is_editable(value_type: &ValueType) -> bool {
+    match value_type {
+        ValueType::Builtin(oid) => *oid != BYTEA,
+        ValueType::Enum => true,
+        ValueType::Array(_) | ValueType::Unknown => false,
+    }
+}
+
+pub fn type_name(type_info: &PgTypeInfo, catalog: &Catalog) -> String {
+    match unresolved_oid(type_info) {
+        Some(oid) => catalog
+            .get(&oid)
+            .map_or_else(|| format!("oid:{oid}"), |custom| custom.name.clone()),
+        None => type_info.name().to_lowercase(),
+    }
+}
+
+pub fn to_cell(value_type: &ValueType, type_name: &str, text: Option<&str>) -> Cell {
     let Some(text) = text else {
         return Cell::Null;
     };
-    if let PgTypeKind::Array(element) = type_info.kind() {
-        return match parse_array(text) {
-            Some(node) => array_to_cell(node, element),
-            None => unknown(type_info, text),
-        };
-    }
-    match type_info.oid().map(|oid| oid.0) {
-        Some(oid) => scalar_to_cell(oid, text).unwrap_or_else(|| unknown(type_info, text)),
-        None => unknown(type_info, text),
-    }
-}
-
-pub fn type_name(type_info: &PgTypeInfo) -> String {
-    match type_info.name() {
-        // sqlx shows "?" for types it did not resolve (custom types, extensions)
-        "?" => type_info
-            .oid()
-            .map_or_else(|| "?".to_string(), |oid| format!("oid:{}", oid.0)),
-        name => name.to_lowercase(),
-    }
-}
-
-fn unknown(type_info: &PgTypeInfo, text: &str) -> Cell {
-    Cell::Unknown {
-        type_name: type_name(type_info),
+    let unknown = || Cell::Unknown {
+        type_name: type_name.to_string(),
         text: text.to_string(),
+    };
+    match value_type {
+        ValueType::Builtin(oid) => scalar_to_cell(*oid, text).unwrap_or_else(unknown),
+        ValueType::Array(element) => match parse_array(text) {
+            Some(node) => array_to_cell(node, element, type_name),
+            None => unknown(),
+        },
+        ValueType::Enum => Cell::Text(text.to_string()),
+        ValueType::Unknown => unknown(),
     }
 }
 
@@ -113,15 +196,15 @@ enum ArrayNode {
     Item(Option<String>),
 }
 
-fn array_to_cell(node: ArrayNode, element: &PgTypeInfo) -> Cell {
+fn array_to_cell(node: ArrayNode, element: &ValueType, type_name: &str) -> Cell {
     match node {
         ArrayNode::List(items) => Cell::Array(
             items
                 .into_iter()
-                .map(|item| array_to_cell(item, element))
+                .map(|item| array_to_cell(item, element, type_name))
                 .collect(),
         ),
-        ArrayNode::Item(value) => to_cell(element, value.as_deref()),
+        ArrayNode::Item(value) => to_cell(element, type_name, value.as_deref()),
     }
 }
 
@@ -322,7 +405,56 @@ mod tests {
     }
 
     #[test]
-    fn null_is_null_regardless_of_type() {
-        assert_eq!(to_cell(&PgTypeInfo::with_name("text"), None), Cell::Null);
+    fn to_cell_by_value_type() {
+        let int_array = ValueType::Array(Box::new(ValueType::Builtin(INT4)));
+        let cases = [
+            (ValueType::Builtin(INT4), None, Cell::Null),
+            (ValueType::Unknown, None, Cell::Null),
+            (ValueType::Enum, Some("paid"), Cell::Text("paid".into())),
+            (
+                int_array.clone(),
+                Some("{1,NULL}"),
+                Cell::Array(vec![Cell::Int("1".into()), Cell::Null]),
+            ),
+            (
+                int_array,
+                Some("not an array"),
+                Cell::Unknown {
+                    type_name: "t".into(),
+                    text: "not an array".into(),
+                },
+            ),
+            (
+                ValueType::Builtin(FLOAT8),
+                Some("NaN"),
+                Cell::Unknown {
+                    type_name: "t".into(),
+                    text: "NaN".into(),
+                },
+            ),
+            (
+                ValueType::Unknown,
+                Some("(1,2)"),
+                Cell::Unknown {
+                    type_name: "t".into(),
+                    text: "(1,2)".into(),
+                },
+            ),
+        ];
+        for (value_type, text, expected) in cases {
+            assert_eq!(to_cell(&value_type, "t", text), expected, "{value_type:?}");
+        }
+    }
+
+    #[test]
+    fn editable_columns() {
+        assert!(is_editable(&ValueType::Builtin(INT8)));
+        assert!(is_editable(&ValueType::Builtin(25)));
+        assert!(is_editable(&ValueType::Enum));
+        assert!(!is_editable(&ValueType::Builtin(BYTEA)));
+        assert!(!is_editable(&ValueType::Array(Box::new(
+            ValueType::Builtin(INT4)
+        ))));
+        assert!(!is_editable(&ValueType::Unknown));
     }
 }

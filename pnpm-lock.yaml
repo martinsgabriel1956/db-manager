@@ -190,6 +190,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2
         version: 2.12.2
+      '@tauri-apps/plugin-store':
+        specifier: ^2.5.0
+        version: 2.5.0
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -226,6 +229,9 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.3.0)(react@19.3.0)
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2
@@ -1569,6 +1575,9 @@ packages:
     resolution: {integrity: sha512-kEDEiGzG+yAc5FeLxtXpES/VN+F2C8H0r4gDVtfRLKxT9np9101d9REG/Kgo2lr0hKi0IpDsODiHnU3+naOmLg==}
     engines: {node: '>= 10'}
     hasBin: true
+
+  '@tauri-apps/plugin-store@2.5.0':
+    resolution: {integrity: sha512-+ykjiQwMJCSk/U2enHA8peKBWgDKgrP7JfZnGwQpqzwA0nVtKTc0LCyxWr2whOrcQoQqtUdr9NVdDZpfKpT1Xw==}
 
   '@testing-library/dom@10.4.2':
     resolution: {integrity: sha512-yzr2S9HyAIdhz2/6qHgbs665Q7PKVcDF05vsOlHPxG1mo36gKVesdYVeDLnXgfjJ03CrKRk08knc6+E/9m8v2Q==}
@@ -3301,6 +3310,24 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
+  zustand@5.0.15:
+    resolution: {integrity: sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
+
 snapshots:
 
   '@adobe/css-tools@4.5.0': {}
@@ -4670,6 +4697,10 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.12.1
       '@tauri-apps/cli-win32-ia32-msvc': 2.12.1
       '@tauri-apps/cli-win32-x64-msvc': 2.12.1
+
+  '@tauri-apps/plugin-store@2.5.0':
+    dependencies:
+      '@tauri-apps/api': 2.12.2
 
   '@testing-library/dom@10.4.2':
     dependencies:
@@ -6249,3 +6280,8 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.6.5: {}
+
+  zustand@5.0.15(@types/react@19.3.0)(react@19.3.0):
+    optionalDependencies:
+      '@types/react': 19.3.0
+      react: 19.3.0

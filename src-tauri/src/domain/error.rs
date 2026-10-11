@@ -22,6 +22,11 @@ pub enum AppError {
     Cancelled(String),
     #[error("{0}")]
     Timeout(String),
+    /// an edited/deleted row no longer matches: nothing was saved
+    #[error("{0}")]
+    Conflict(String),
+    #[error("{0}")]
+    ReadOnly(String),
 }
 
 impl AppError {
@@ -47,6 +52,16 @@ impl AppError {
 
     pub fn cancelled() -> Self {
         AppError::Cancelled("query cancelada".to_string())
+    }
+
+    pub fn conflict() -> Self {
+        AppError::Conflict(
+            "uma das linhas foi alterada ou removida por outra sessão; nada foi salvo".to_string(),
+        )
+    }
+
+    pub fn read_only(connection_name: &str) -> Self {
+        AppError::ReadOnly(format!("a conexão {connection_name} é somente leitura"))
     }
 
     pub fn timeout(secs: u32) -> Self {

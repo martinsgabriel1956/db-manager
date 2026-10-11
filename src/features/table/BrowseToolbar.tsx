@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 type BrowseToolbarProps = {
   columns: string[];
   active: Filter | null;
+  /** locked while edits are pending */
+  disabled?: boolean;
   onApply: (filter: Filter) => void;
   onClear: () => void;
 };
@@ -21,7 +23,13 @@ const OPS = Object.keys(OP_LABEL) as FilterOp[];
 
 const SELECT_CLASS = "h-7 rounded-md border border-input bg-transparent px-2 text-sm";
 
-export function BrowseToolbar({ columns, active, onApply, onClear }: BrowseToolbarProps) {
+export function BrowseToolbar({
+  columns,
+  active,
+  disabled = false,
+  onApply,
+  onClear
+}: BrowseToolbarProps) {
   const [column, setColumn] = useState(active?.column ?? "");
   const [op, setOp] = useState<FilterOp>(active?.op ?? "eq");
   const [value, setValue] = useState(active?.value ?? "");
@@ -30,7 +38,7 @@ export function BrowseToolbar({ columns, active, onApply, onClear }: BrowseToolb
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!selectedColumn) {
+    if (!selectedColumn || disabled) {
       return;
     }
     onApply({ column: selectedColumn, op, value: needsValue ? value : null });
@@ -72,11 +80,11 @@ export function BrowseToolbar({ columns, active, onApply, onClear }: BrowseToolb
           onChange={event => setValue(event.target.value)}
         />
       )}
-      <Button type="submit" size="sm" variant="outline" disabled={!selectedColumn}>
+      <Button type="submit" size="sm" variant="outline" disabled={!selectedColumn || disabled}>
         Aplicar
       </Button>
       {active && (
-        <Button type="button" size="sm" variant="ghost" onClick={onClear}>
+        <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onClear}>
           Limpar filtro
         </Button>
       )}

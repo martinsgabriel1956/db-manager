@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { commands, type Cell, type ResultColumn, type ScriptOutcome } from "@/bindings";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  commands,
+  type Cell,
+  type Confirmation,
+  type ResultColumn,
+  type ScriptOutcome
+} from "@/bindings";
 import { errorMessage } from "@/lib/errors";
 
 export type RunState =
   | { status: "idle" }
   | { status: "running"; runId: string }
+  /** destructive script, or a write on prod: waits for the user */
+  | { status: "confirm"; runId: string; sql: string; confirmation: Confirmation }
   | { status: "error"; runId: string; message: string }
   | { status: "command"; runId: string; outcome: ScriptOutcome; rowsAffected: number }
   | {
@@ -26,6 +35,7 @@ export type RunState =
  */
 export function useScriptRunner(connectionId: string) {
   const [state, setState] = useState<RunState>({ status: "idle" });
+  const queryClient = useQueryClient();
   const cursorRef = useRef<string | null>(null);
   const disposedRef = useRef(false);
 
@@ -46,7 +56,7 @@ export function useScriptRunner(connectionId: string) {
   }, [releaseCursor]);
 
   const run = useCallback(
-    async (sql: string) => {
+    async (sql: string, confirmed = false) => {
       if (sql.trim() === "") {
         return;
       }
@@ -55,7 +65,13 @@ export function useScriptRunner(connectionId: string) {
       setState({ status: "running", runId });
       try {
         await commands.connectDatabase(connectionId);
-        const outcome = await commands.runScript(connectionId, runId, sql);
+        const response = await commands.runScript(connectionId, runId, sql, confirmed);
+        if (response.status === "needsConfirmation") {
+          setState({ status: "confirm", runId, sql, confirmation: response.confirmation });
+          return;
+        }
+        queryClient.invalidateQueries({ queryKey: ["history"] });
+        const { outcome } = response;
         const { result } = outcome;
         if (result.kind === "command") {
           setState({ status: "command", runId, outcome, rowsAffected: result.rowsAffected });
@@ -78,11 +94,24 @@ export function useScriptRunner(connectionId: string) {
           loadError: null
         });
       } catch (error) {
+        queryClient.invalidateQueries({ queryKey: ["history"] });
         setState({ status: "error", runId, message: errorMessage(error) });
       }
     },
-    [connectionId, releaseCursor]
+    [connectionId, releaseCursor, queryClient]
   );
+
+  const confirm = useCallback(() => {
+    if (state.status === "confirm") {
+      run(state.sql, true);
+    }
+  }, [state, run]);
+
+  const dismiss = useCallback(() => {
+    if (state.status === "confirm") {
+      setState({ status: "idle" });
+    }
+  }, [state]);
 
   const cancel = useCallback(() => {
     if (state.status === "running") {
@@ -123,5 +152,5 @@ export function useScriptRunner(connectionId: string) {
     }
   }, [state]);
 
-  return { state, run, cancel, loadMore };
+  return { state, run, cancel, loadMore, confirm, dismiss };
 }

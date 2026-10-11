@@ -5,6 +5,7 @@ import type {
   ConnectionConfig,
   KeychainOutcome,
   RowBatch,
+  RunResponse,
   SchemaInfo,
   ScriptOutcome,
   TableStructure
@@ -24,6 +25,14 @@ export const prodPostgres: ConnectionConfig = {
   target: { kind: "network", host: "db", port: 5432, database: "app", username: "me" },
   tls: { mode: "require", caCertPath: null },
   keySeparator: null
+};
+
+export const devPostgres: ConnectionConfig = {
+  ...prodPostgres,
+  id: "pg-dev",
+  name: "Postgres dev",
+  environment: "dev",
+  readOnly: false
 };
 
 export const localRedis: ConnectionConfig = {
@@ -59,8 +68,8 @@ export const usersStructure: TableStructure = {
 
 export const usersPage: RowBatch = {
   columns: [
-    { name: "id", typeName: "int4" },
-    { name: "profile", typeName: "jsonb" }
+    { name: "id", typeName: "int4", editable: true },
+    { name: "profile", typeName: "jsonb", editable: true }
   ],
   rows: [
     [
@@ -82,13 +91,17 @@ export const rowsOutcome: ScriptOutcome = {
   result: {
     kind: "rows",
     batch: {
-      columns: [{ name: "n", typeName: "int4" }],
+      columns: [{ name: "n", typeName: "int4", editable: true }],
       rows: [[{ t: "int", v: "1" }]],
       hasMore: false
     },
     cursorId: null
   }
 };
+
+export function executed(outcome: ScriptOutcome): RunResponse {
+  return { status: "executed", outcome };
+}
 
 /**
  * In-memory stand-in for the Rust commands. Records every call; `overrides`
@@ -117,7 +130,9 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     table_structure: () => usersStructure,
     completion_tables: () => completion,
     browse_table: () => usersPage,
-    run_script: () => rowsOutcome,
+    run_script: () => executed(rowsOutcome),
+    apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
+    search_history: () => [],
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
     cancel_run: () => null
@@ -125,6 +140,10 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
 
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
+    // tab persistence is mocked in setup.ts; nothing else talks to plugins
+    if (cmd.startsWith("plugin:")) {
+      return null;
+    }
     const handler = overrides[cmd] ?? defaults[cmd];
     if (!handler) {
       throw new Error(`unexpected command ${cmd}`);

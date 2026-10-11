@@ -118,6 +118,60 @@ async fn values_keep_full_fidelity() {
 }
 
 #[tokio::test]
+async fn custom_types_resolve_instead_of_crashing() {
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+    run(
+        &db,
+        r"CREATE TYPE mood AS ENUM ('ok', 'sad');
+          CREATE DOMAIN positive AS int CHECK (VALUE > 0);
+          CREATE EXTENSION IF NOT EXISTS citext",
+    )
+    .await
+    .unwrap();
+
+    let script = run(
+        &db,
+        "SELECT 'sad'::mood, 5::positive, ARRAY['ok']::mood[], 'Ab'::citext",
+    )
+    .await
+    .unwrap();
+
+    let columns: Vec<_> = script
+        .first
+        .batch
+        .columns
+        .iter()
+        .map(|c| (c.type_name.as_str(), c.editable))
+        .collect();
+    assert_eq!(
+        columns,
+        vec![
+            ("mood", true),
+            // result descriptions report a domain by its base type
+            ("int4", true),
+            ("mood[]", false),
+            ("citext", false),
+        ]
+    );
+    assert_eq!(
+        script.first.batch.rows[0],
+        vec![
+            Cell::Text("sad".into()),
+            Cell::Int("5".into()),
+            Cell::Unknown {
+                type_name: "mood[]".into(),
+                text: "{ok}".into(),
+            },
+            Cell::Unknown {
+                type_name: "citext".into(),
+                text: "Ab".into(),
+            },
+        ]
+    );
+}
+
+#[tokio::test]
 async fn scripts_stream_batches_and_report_commands() {
     let (_container, config) = start().await;
     let db = connect(&config, false).await;

@@ -116,6 +116,8 @@ pub struct BrowseRequest {
 pub struct ResultColumn {
     pub name: String,
     pub type_name: String,
+    /// scalar type the grid can write back as text (not arrays, bytea, unmodeled types)
+    pub editable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -147,4 +149,86 @@ pub struct ScriptOutcome {
     pub statement_count: u32,
     pub duration_ms: u32,
     pub result: StatementResult,
+}
+
+/// A write the user must confirm before it runs: destructive statements anywhere,
+/// and every write on a `prod` connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Confirmation {
+    pub reason: String,
+    pub statements: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum RunResponse {
+    Executed { outcome: ScriptOutcome },
+    NeedsConfirmation { confirmation: Confirmation },
+}
+
+/// Original value of a primary-key column, identifying the row to change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyValue {
+    pub column: String,
+    pub value: Cell,
+}
+
+/// New value typed by the user; `None` writes NULL.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnValue {
+    pub column: String,
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RowChange {
+    Update {
+        key: Vec<KeyValue>,
+        values: Vec<ColumnValue>,
+    },
+    Insert {
+        values: Vec<ColumnValue>,
+    },
+    Delete {
+        key: Vec<KeyValue>,
+    },
+}
+
+/// Staged grid edits, applied in one transaction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TableChanges {
+    pub schema: String,
+    pub table: String,
+    pub changes: Vec<RowChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum ApplyResponse {
+    #[serde(rename_all = "camelCase")]
+    Applied {
+        rows_changed: u32,
+    },
+    NeedsConfirmation {
+        confirmation: Confirmation,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntry {
+    pub id: u32,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub sql: String,
+    /// ISO 8601, UTC
+    pub executed_at: String,
+    pub duration_ms: u32,
+    pub success: bool,
+    pub error: Option<String>,
 }

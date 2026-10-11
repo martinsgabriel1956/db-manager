@@ -152,11 +152,13 @@ test("structure tab lists columns, indexes and foreign keys", async () => {
 
   await user.click(screen.getByRole("tab", { name: "Estrutura" }));
 
-  expect(await screen.findByRole("heading", { name: "Colunas" })).toBeInTheDocument();
-  expect(screen.getByText("jsonb")).toBeInTheDocument();
-  expect(screen.getAllByText("PK")).toHaveLength(2); // header + the id column
-  expect(screen.getByText("users_pkey")).toBeInTheDocument();
-  expect(screen.getByText("Nenhum.")).toBeInTheDocument();
+  const heading = await screen.findByRole("heading", { name: "Colunas" });
+  // the data tab stays mounted (hidden) to keep staged edits: scope to the structure
+  const structure = within(heading.closest("div.grid") as HTMLElement);
+  expect(structure.getByText("jsonb")).toBeInTheDocument();
+  expect(structure.getAllByText("PK")).toHaveLength(2); // header + the id column
+  expect(structure.getByText("users_pkey")).toBeInTheDocument();
+  expect(structure.getByText("Nenhum.")).toBeInTheDocument();
 });
 
 test("browse errors are shown", async () => {

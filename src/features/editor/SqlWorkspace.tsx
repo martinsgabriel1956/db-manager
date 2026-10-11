@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Play, Square } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
 import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunner";
@@ -54,50 +55,58 @@ export function SqlWorkspace({
   }
 
   return (
-    <Group orientation="vertical" className="h-full">
-      <Panel defaultSize="45" minSize={80}>
-        <div className="flex h-full flex-col">
-          <div className="flex items-center gap-2 border-b px-3 py-1.5">
-            <h2 className="text-sm font-semibold">SQL · {connectionName}</h2>
-            <span className="text-xs text-muted-foreground">
-              Ctrl+Enter executa a seleção ou tudo
-            </span>
-            <div className="ml-auto flex gap-2">
-              {isRunning ? (
-                <Button size="sm" variant="destructive" onClick={runner.cancel}>
-                  <Square /> Cancelar
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={() => runFromEditor(editorApi.current?.textToRun() ?? sql)}
-                >
-                  <Play /> Executar
-                </Button>
-              )}
+    <>
+      <Group orientation="vertical" className="h-full">
+        <Panel defaultSize="45" minSize={80}>
+          <div className="flex h-full flex-col">
+            <div className="flex items-center gap-2 border-b px-3 py-1.5">
+              <h2 className="text-sm font-semibold">SQL · {connectionName}</h2>
+              <span className="text-xs text-muted-foreground">
+                Ctrl+Enter executa a seleção ou tudo
+              </span>
+              <div className="ml-auto flex gap-2">
+                {isRunning ? (
+                  <Button size="sm" variant="destructive" onClick={runner.cancel}>
+                    <Square /> Cancelar
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => runFromEditor(editorApi.current?.textToRun() ?? sql)}
+                  >
+                    <Play /> Executar
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              <SqlEditor
+                value={sql}
+                onChange={onSqlChange}
+                onRun={runFromEditor}
+                completion={completion.data}
+                apiRef={editorApi}
+              />
             </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <SqlEditor
-              value={sql}
-              onChange={onSqlChange}
-              onRun={runFromEditor}
-              completion={completion.data}
-              apiRef={editorApi}
-            />
-          </div>
-        </div>
-      </Panel>
-      <Separator className="h-1 bg-border hover:bg-primary/40" />
-      <Panel minSize={80}>
-        {/* keyed per run so a stale cell selection never points into a new result */}
-        <ResultsPanel
-          key={runner.state.status === "idle" ? "idle" : runner.state.runId}
-          state={runner.state}
-          onLoadMore={runner.loadMore}
-        />
-      </Panel>
-    </Group>
+        </Panel>
+        <Separator className="h-1 bg-border hover:bg-primary/40" />
+        <Panel minSize={80}>
+          {/* keyed per run so a stale cell selection never points into a new result */}
+          <ResultsPanel
+            key={runner.state.status === "idle" ? "idle" : runner.state.runId}
+            state={runner.state}
+            onLoadMore={runner.loadMore}
+          />
+        </Panel>
+      </Group>
+      <ConfirmDialog
+        confirmation={runner.state.status === "confirm" ? runner.state.confirmation : null}
+        confirmLabel="Executar mesmo assim"
+        onConfirm={runner.confirm}
+        onCancel={runner.dismiss}
+      />
+    </>
   );
 }
 
@@ -112,6 +121,9 @@ function ResultsPanel({ state, onLoadMore }: ResultsPanelProps) {
   }
   if (state.status === "running") {
     return <p className="p-3 text-sm text-muted-foreground">Executando…</p>;
+  }
+  if (state.status === "confirm") {
+    return <p className="p-3 text-sm text-muted-foreground">Aguardando confirmação…</p>;
   }
   if (state.status === "error") {
     return (

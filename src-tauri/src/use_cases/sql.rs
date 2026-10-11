@@ -1,20 +1,20 @@
+use std::collections::BTreeSet;
 use std::time::Instant;
 
 use crate::adapters::postgres::{PostgresAdapter, split_statements};
 use crate::domain::{
-    AppError, BrowseRequest, CompletionTable, ConnectionConfig, Engine, FilterOp, RowBatch,
-    SchemaInfo, ScriptOutcome, StatementResult, TableStructure,
+    AppError, ApplyResponse, BrowseRequest, CompletionTable, Confirmation, ConnectionConfig,
+    Engine, Environment, FilterOp, RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome,
+    StatementResult, TableChanges, TableStructure,
 };
-use crate::registry::Registry;
+use crate::registry::{OpenConnection, Registry};
+use crate::storage::history::{HistoryStore, NewHistoryEntry};
 use crate::storage::secrets::SecretStore;
+use crate::use_cases::guard;
 
 /// Rows per batch in the SQL editor (initial result and each `fetch_more`).
 pub const EDITOR_BATCH_SIZE: usize = 1000;
 pub const MAX_PAGE_SIZE: u32 = 1000;
-
-/// ponytail: M1 opens every connection read-only, whatever its flag. M2 lifts this
-/// once destructive-statement detection and prod confirmation exist.
-const FORCE_READ_ONLY: bool = true;
 
 pub async fn connect(
     registry: &Registry,
@@ -30,15 +30,22 @@ pub async fn connect(
         ));
     }
     let password = secrets.get(&config.id)?;
-    let adapter =
-        PostgresAdapter::connect(&config, password, config.read_only || FORCE_READ_ONLY).await?;
-    registry.insert_connection(&config.id, adapter);
+    let adapter = PostgresAdapter::connect(&config, password, config.read_only).await?;
+    registry.insert_connection(
+        &config.id,
+        OpenConnection {
+            adapter,
+            name: config.name,
+            environment: config.environment,
+            read_only: config.read_only,
+        },
+    );
     Ok(())
 }
 
 pub async fn disconnect(registry: &Registry, connection_id: &str) {
-    if let Some(adapter) = registry.remove_connection(connection_id) {
-        adapter.close().await;
+    if let Some(connection) = registry.remove_connection(connection_id) {
+        connection.adapter.close().await;
     }
 }
 
@@ -46,7 +53,11 @@ pub async fn list_schemas(
     registry: &Registry,
     connection_id: &str,
 ) -> Result<Vec<SchemaInfo>, AppError> {
-    registry.connection(connection_id)?.list_schemas().await
+    registry
+        .connection(connection_id)?
+        .adapter
+        .list_schemas()
+        .await
 }
 
 pub async fn table_structure(
@@ -57,6 +68,7 @@ pub async fn table_structure(
 ) -> Result<TableStructure, AppError> {
     registry
         .connection(connection_id)?
+        .adapter
         .table_structure(schema, table)
         .await
 }
@@ -67,6 +79,7 @@ pub async fn completion_tables(
 ) -> Result<Vec<CompletionTable>, AppError> {
     registry
         .connection(connection_id)?
+        .adapter
         .completion_tables()
         .await
 }
@@ -77,7 +90,11 @@ pub async fn browse(
     request: BrowseRequest,
 ) -> Result<RowBatch, AppError> {
     validate_browse(&request)?;
-    registry.connection(connection_id)?.browse(&request).await
+    registry
+        .connection(connection_id)?
+        .adapter
+        .browse(&request)
+        .await
 }
 
 fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
@@ -98,29 +115,50 @@ fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Splits the script, runs it and keeps the last statement's rows streaming under
+/// Splits the script and asks for confirmation when it is destructive (or writes on
+/// prod). Otherwise runs it, keeping the last statement's rows streaming under
 /// `run_id`, which is also the cursor id for `fetch_more`/`close_cursor`.
 pub async fn run_script(
     registry: &Registry,
+    history: &HistoryStore,
     connection_id: &str,
     run_id: &str,
     sql: &str,
-) -> Result<ScriptOutcome, AppError> {
+    confirmed: bool,
+) -> Result<RunResponse, AppError> {
     let statements = split_statements(sql);
     if statements.is_empty() {
         return Err(AppError::validation("nenhum comando para executar"));
     }
-    let adapter = registry.connection(connection_id)?;
+    let connection = registry.connection(connection_id)?;
+    if !confirmed {
+        let confirmation =
+            guard::confirmation_for(&statements, connection.environment, connection.read_only);
+        if let Some(confirmation) = confirmation {
+            return Ok(RunResponse::NeedsConfirmation { confirmation });
+        }
+    }
     // a re-run under the same id replaces the previous result
     registry.remove_cursor(run_id);
 
     let started = Instant::now();
-    let result = adapter
+    let result = connection
+        .adapter
         .run_script(&statements, EDITOR_BATCH_SIZE, |pid| {
-            registry.start_run(run_id, adapter.clone(), pid)
+            registry.start_run(run_id, connection.clone(), pid)
         })
         .await;
     registry.finish_run(run_id);
+    let duration_ms = elapsed_ms(started);
+    record(
+        history,
+        connection_id,
+        &connection,
+        sql,
+        duration_ms,
+        result.as_ref().err(),
+    )
+    .await;
     let run = result?;
 
     let has_cursor = run.cursor.is_some();
@@ -141,12 +179,127 @@ pub async fn run_script(
         }
     };
 
-    Ok(ScriptOutcome {
-        statement_count: u32::try_from(statements.len()).unwrap_or(u32::MAX),
-        duration_ms: u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX),
-        result,
+    Ok(RunResponse::Executed {
+        outcome: ScriptOutcome {
+            statement_count: u32::try_from(statements.len()).unwrap_or(u32::MAX),
+            duration_ms,
+            result,
+        },
     })
 }
+
+/// Applies staged grid edits in one transaction. Rows are identified by the whole
+/// primary key; tables without one are not editable. On prod the generated SQL is
+/// returned for confirmation first.
+pub async fn apply_changes(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    changes: TableChanges,
+    confirmed: bool,
+) -> Result<ApplyResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    if connection.read_only {
+        return Err(AppError::read_only(&connection.name));
+    }
+    if changes.changes.is_empty() {
+        return Err(AppError::validation("nenhuma alteração para salvar"));
+    }
+    let primary_key = connection
+        .adapter
+        .primary_key(&changes.schema, &changes.table)
+        .await?;
+    validate_keys(&changes.changes, &primary_key)?;
+
+    let statements = changes
+        .changes
+        .iter()
+        .map(|change| PostgresAdapter::change_sql(&changes.schema, &changes.table, change))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if connection.environment == Environment::Prod && !confirmed {
+        return Ok(ApplyResponse::NeedsConfirmation {
+            confirmation: Confirmation {
+                reason: "Conexão de produção: confira as alterações antes de salvar".to_string(),
+                statements,
+            },
+        });
+    }
+
+    let started = Instant::now();
+    let result = connection.adapter.apply(&statements).await;
+    let sql = format!("{};", statements.join(";\n"));
+    record(
+        history,
+        connection_id,
+        &connection,
+        &sql,
+        elapsed_ms(started),
+        result.as_ref().err(),
+    )
+    .await;
+    Ok(ApplyResponse::Applied {
+        rows_changed: result?,
+    })
+}
+
+fn validate_keys(changes: &[RowChange], primary_key: &[String]) -> Result<(), AppError> {
+    if primary_key.is_empty() {
+        return Err(AppError::validation(
+            "tabela sem chave primária não pode ser editada",
+        ));
+    }
+    let expected: BTreeSet<&str> = primary_key.iter().map(String::as_str).collect();
+    for change in changes {
+        let key = match change {
+            RowChange::Update { key, .. } | RowChange::Delete { key } => key,
+            RowChange::Insert { .. } => continue,
+        };
+        let given: BTreeSet<&str> = key.iter().map(|k| k.column.as_str()).collect();
+        if given != expected || given.len() != key.len() {
+            return Err(AppError::validation(
+                "a linha precisa ser identificada pela chave primária completa",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Best effort: failing to write history must not fail the query itself.
+async fn record(
+    history: &HistoryStore,
+    connection_id: &str,
+    connection: &OpenConnection,
+    sql: &str,
+    duration_ms: u32,
+    error: Option<&AppError>,
+) {
+    let _ = history
+        .record(NewHistoryEntry {
+            connection_id,
+            connection_name: &connection.name,
+            sql,
+            duration_ms,
+            error: error.map(ToString::to_string),
+        })
+        .await;
+}
+
+fn elapsed_ms(started: Instant) -> u32 {
+    u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
+}
+
+pub async fn search_history(
+    history: &HistoryStore,
+    text: &str,
+    connection_id: Option<&str>,
+) -> Result<Vec<crate::domain::HistoryEntry>, AppError> {
+    history
+        .search(text.trim(), connection_id, HISTORY_PAGE)
+        .await
+}
+
+const HISTORY_PAGE: u32 = 200;
 
 /// Next batch of an open cursor; the cursor is released once exhausted or on error.
 pub async fn fetch_more(registry: &Registry, cursor_id: &str) -> Result<RowBatch, AppError> {
@@ -165,7 +318,7 @@ pub fn close_cursor(registry: &Registry, cursor_id: &str) {
 /// Cancels a script that is still running (no-op if it already finished).
 pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppError> {
     match registry.running(run_id) {
-        Some((adapter, pid)) => adapter.cancel_backend(pid).await,
+        Some((connection, pid)) => connection.adapter.cancel_backend(pid).await,
         None => Ok(()),
     }
 }
@@ -184,6 +337,29 @@ mod tests {
             page: 0,
             page_size,
         }
+    }
+
+    #[test]
+    fn keys_must_be_the_full_primary_key() {
+        use crate::domain::{Cell, KeyValue};
+        let key = |columns: &[&str]| {
+            columns
+                .iter()
+                .map(|c| KeyValue {
+                    column: c.to_string(),
+                    value: Cell::Int("1".into()),
+                })
+                .collect::<Vec<_>>()
+        };
+        let pk = vec!["id".to_string(), "tenant".to_string()];
+        let delete = |columns: &[&str]| vec![RowChange::Delete { key: key(columns) }];
+
+        assert!(validate_keys(&delete(&["tenant", "id"]), &pk).is_ok());
+        assert!(validate_keys(&[RowChange::Insert { values: vec![] }], &pk).is_ok());
+        assert!(validate_keys(&delete(&["id"]), &pk).is_err());
+        assert!(validate_keys(&delete(&["id", "tenant", "name"]), &pk).is_err());
+        assert!(validate_keys(&delete(&["id", "id"]), &pk).is_err());
+        assert!(validate_keys(&delete(&["id"]), &[]).is_err());
     }
 
     #[test]
@@ -223,7 +399,7 @@ mod integration_tests {
 
     use super::*;
     use crate::adapters::postgres::integration_tests::start;
-    use crate::domain::{Environment, Target, TlsConfig, TlsMode};
+    use crate::domain::{Cell, ColumnValue, KeyValue, Target, TlsConfig, TlsMode};
 
     struct ContainerPassword;
 
@@ -237,6 +413,28 @@ mod integration_tests {
         fn delete(&self, _: &str) -> Result<(), AppError> {
             Ok(())
         }
+    }
+
+    fn executed(response: RunResponse) -> ScriptOutcome {
+        match response {
+            RunResponse::Executed { outcome } => outcome,
+            RunResponse::NeedsConfirmation { confirmation } => {
+                panic!("unexpected confirmation: {confirmation:?}")
+            }
+        }
+    }
+
+    async fn exec(
+        registry: &Registry,
+        history: &HistoryStore,
+        run_id: &str,
+        sql: &str,
+    ) -> ScriptOutcome {
+        executed(
+            run_script(registry, history, "it", run_id, sql, false)
+                .await
+                .unwrap(),
+        )
     }
 
     #[tokio::test]
@@ -272,6 +470,7 @@ mod integration_tests {
     async fn scripts_stream_cancel_and_disconnect_through_the_registry() {
         let (_container, config) = start().await;
         let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
         connect(&registry, &ContainerPassword, config.clone())
             .await
             .unwrap();
@@ -281,22 +480,14 @@ mod integration_tests {
             .unwrap();
         assert!(!list_schemas(&registry, "it").await.unwrap().is_empty());
 
-        // M1 forces read-only even though this connection is not flagged
-        assert!(!config.read_only);
-        let err = run_script(&registry, "it", "r0", "CREATE TABLE x (id int)")
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("read-only"), "{err}");
-
         // the last statement streams under a cursor named after the run
-        let outcome = run_script(
+        let outcome = exec(
             &registry,
-            "it",
+            &history,
             "r1",
             "SELECT 1; SELECT g FROM generate_series(1, 1500) g",
         )
-        .await
-        .unwrap();
+        .await;
         assert_eq!(outcome.statement_count, 2);
         let StatementResult::Rows { batch, cursor_id } = outcome.result else {
             panic!("expected rows");
@@ -313,7 +504,7 @@ mod integration_tests {
         ));
 
         // a complete result has no cursor
-        let small = run_script(&registry, "it", "r2", "SELECT 1").await.unwrap();
+        let small = exec(&registry, &history, "r2", "SELECT 1").await;
         assert!(matches!(
             small.result,
             StatementResult::Rows {
@@ -322,21 +513,26 @@ mod integration_tests {
             }
         ));
 
-        let command = run_script(&registry, "it", "r3", "SET search_path TO public")
-            .await
-            .unwrap();
+        let command = exec(&registry, &history, "r3", "SET search_path TO public").await;
         assert_eq!(
             command.result,
             StatementResult::Command { rows_affected: 0 }
         );
 
         assert!(matches!(
-            run_script(&registry, "it", "r4", "-- nothing to run").await,
+            run_script(&registry, &history, "it", "r4", "-- nothing to run", false).await,
             Err(AppError::Validation(_))
         ));
 
         // cancel while running
-        let running = run_script(&registry, "it", "r5", "SELECT pg_sleep(30)");
+        let running = run_script(
+            &registry,
+            &history,
+            "it",
+            "r5",
+            "SELECT pg_sleep(30)",
+            false,
+        );
         let cancel = async {
             for _ in 0..100 {
                 if registry.running("r5").is_some() {
@@ -352,15 +548,21 @@ mod integration_tests {
         // cancelling a finished run is a no-op
         cancel_run(&registry, "r5").await.unwrap();
 
+        // every run lands in the history, failures included
+        let entries = history.search("", Some("it"), 50).await.unwrap();
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[0].sql, "SELECT pg_sleep(30)");
+        assert_eq!(entries[0].error.as_deref(), Some("query cancelada"));
+        assert!(entries[1].success);
+
         // closing a cursor releases it
-        run_script(
+        exec(
             &registry,
-            "it",
+            &history,
             "r6",
             "SELECT g FROM generate_series(1, 5000) g",
         )
-        .await
-        .unwrap();
+        .await;
         close_cursor(&registry, "r6");
         assert!(matches!(
             fetch_more(&registry, "r6").await,
@@ -369,14 +571,13 @@ mod integration_tests {
 
         // disconnect with an open cursor must not hang: closing the pool waits for
         // the cursor's checked-out connection
-        run_script(
+        exec(
             &registry,
-            "it",
+            &history,
             "r7",
             "SELECT g FROM generate_series(1, 5000000) g",
         )
-        .await
-        .unwrap();
+        .await;
         tokio::time::timeout(Duration::from_secs(10), disconnect(&registry, "it"))
             .await
             .expect("disconnect hung with an open cursor");
@@ -387,6 +588,311 @@ mod integration_tests {
         assert!(matches!(
             fetch_more(&registry, "r7").await,
             Err(AppError::NotFound(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn writes_need_confirmation_when_destructive_or_on_prod() {
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+
+        exec(&registry, &history, "w1", "CREATE TABLE t (id int PRIMARY KEY, name text); INSERT INTO t VALUES (1, 'a'), (2, 'b')").await;
+
+        // destructive: nothing runs until confirmed
+        let response = run_script(&registry, &history, "it", "w2", "DELETE FROM t", false)
+            .await
+            .unwrap();
+        let RunResponse::NeedsConfirmation { confirmation } = response else {
+            panic!("expected confirmation");
+        };
+        assert_eq!(confirmation.reason, "Comando destrutivo: DELETE sem WHERE");
+        assert_eq!(confirmation.statements, vec!["DELETE FROM t"]);
+        let still_there = exec(&registry, &history, "w3", "SELECT count(*) FROM t").await;
+        assert!(
+            matches!(still_there.result, StatementResult::Rows { batch, .. } if batch.rows[0][0] == Cell::Int("2".into()))
+        );
+        // not recorded: it never ran
+        assert!(
+            history
+                .search("DELETE FROM t", None, 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        let confirmed = executed(
+            run_script(&registry, &history, "it", "w4", "DELETE FROM t", true)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            confirmed.result,
+            StatementResult::Command { rows_affected: 2 }
+        );
+
+        // on prod every write asks, reads do not
+        disconnect(&registry, "it").await;
+        config.environment = Environment::Prod;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        assert!(matches!(
+            run_script(
+                &registry,
+                &history,
+                "it",
+                "w5",
+                "INSERT INTO t VALUES (3, 'c')",
+                false
+            )
+            .await
+            .unwrap(),
+            RunResponse::NeedsConfirmation { .. }
+        ));
+        exec(&registry, &history, "w6", "SELECT * FROM t").await;
+
+        // read-only connections: the database itself refuses, no confirmation step
+        disconnect(&registry, "it").await;
+        config.read_only = true;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        let err = run_script(&registry, &history, "it", "w7", "DROP TABLE t", false)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("read-only"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn staged_changes_apply_in_one_transaction() {
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        exec(
+            &registry,
+            &history,
+            "s1",
+            r"CREATE TYPE mood AS ENUM ('ok', 'sad');
+              CREATE TABLE people (id int, tenant text, name text, mood mood, PRIMARY KEY (id, tenant));
+              CREATE TABLE logs (msg text);
+              INSERT INTO people VALUES (1, 'x', 'Ana', 'ok'), (2, 'x', 'Bia', 'sad')",
+        )
+        .await;
+
+        let key = |id: &str| {
+            vec![
+                KeyValue {
+                    column: "tenant".into(),
+                    value: Cell::Text("x".into()),
+                },
+                KeyValue {
+                    column: "id".into(),
+                    value: Cell::Int(id.into()),
+                },
+            ]
+        };
+        let value = |column: &str, value: Option<&str>| ColumnValue {
+            column: column.into(),
+            value: value.map(str::to_string),
+        };
+        let changes = |list: Vec<RowChange>| TableChanges {
+            schema: "public".into(),
+            table: "people".into(),
+            changes: list,
+        };
+
+        let applied = apply_changes(
+            &registry,
+            &history,
+            "it",
+            changes(vec![
+                RowChange::Update {
+                    key: key("1"),
+                    values: vec![
+                        value("name", Some("Ana O'Neil")),
+                        value("mood", Some("sad")),
+                    ],
+                },
+                RowChange::Delete { key: key("2") },
+                RowChange::Insert {
+                    values: vec![
+                        value("id", Some("3")),
+                        value("tenant", Some("x")),
+                        value("name", None),
+                        value("mood", Some("ok")),
+                    ],
+                },
+            ]),
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(applied, ApplyResponse::Applied { rows_changed: 3 });
+
+        // enum columns are editable text now that custom types are resolved
+        let page = browse(
+            &registry,
+            "it",
+            BrowseRequest {
+                schema: "public".into(),
+                table: "people".into(),
+                filters: vec![],
+                sort: None,
+                page: 0,
+                page_size: 10,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(page.columns[3].type_name, "mood");
+        assert!(page.columns[3].editable);
+        assert_eq!(
+            page.rows,
+            vec![
+                vec![
+                    Cell::Int("1".into()),
+                    Cell::Text("x".into()),
+                    Cell::Text("Ana O'Neil".into()),
+                    Cell::Text("sad".into())
+                ],
+                vec![
+                    Cell::Int("3".into()),
+                    Cell::Text("x".into()),
+                    Cell::Null,
+                    Cell::Text("ok".into())
+                ],
+            ]
+        );
+        let recorded = history.search("UPDATE", None, 10).await.unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert!(
+            recorded[0]
+                .sql
+                .contains("DELETE FROM \"public\".\"people\"")
+        );
+
+        // a row that no longer matches rolls the whole batch back
+        let conflict = apply_changes(
+            &registry,
+            &history,
+            "it",
+            changes(vec![
+                RowChange::Update {
+                    key: key("1"),
+                    values: vec![value("name", Some("changed"))],
+                },
+                RowChange::Delete { key: key("2") },
+            ]),
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(conflict, AppError::Conflict(_)));
+        let after = exec(
+            &registry,
+            &history,
+            "s2",
+            "SELECT name FROM people WHERE id = 1",
+        )
+        .await;
+        assert!(
+            matches!(after.result, StatementResult::Rows { batch, .. } if batch.rows[0][0] == Cell::Text("Ana O'Neil".into()))
+        );
+
+        // a database error also rolls back and is reported
+        let bad = apply_changes(
+            &registry,
+            &history,
+            "it",
+            changes(vec![RowChange::Update {
+                key: key("1"),
+                values: vec![value("mood", Some("happy"))],
+            }]),
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            bad.to_string().contains("invalid input value for enum"),
+            "{bad}"
+        );
+
+        // keys must be the full primary key; tables without one are not editable
+        let partial = apply_changes(
+            &registry,
+            &history,
+            "it",
+            changes(vec![RowChange::Delete {
+                key: vec![KeyValue {
+                    column: "id".into(),
+                    value: Cell::Int("1".into()),
+                }],
+            }]),
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(partial, AppError::Validation(_)));
+        let no_pk = apply_changes(
+            &registry,
+            &history,
+            "it",
+            TableChanges {
+                schema: "public".into(),
+                table: "logs".into(),
+                changes: vec![RowChange::Insert {
+                    values: vec![value("msg", Some("hi"))],
+                }],
+            },
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            no_pk.to_string(),
+            "tabela sem chave primária não pode ser editada"
+        );
+
+        // prod returns the generated SQL for confirmation, then applies it
+        disconnect(&registry, "it").await;
+        config.environment = Environment::Prod;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        let delete_three = || changes(vec![RowChange::Delete { key: key("3") }]);
+        let response = apply_changes(&registry, &history, "it", delete_three(), false)
+            .await
+            .unwrap();
+        let ApplyResponse::NeedsConfirmation { confirmation } = response else {
+            panic!("expected confirmation");
+        };
+        assert_eq!(
+            confirmation.statements,
+            vec![r#"DELETE FROM "public"."people" WHERE "tenant" = 'x' AND "id" = '3'"#]
+        );
+        assert_eq!(
+            apply_changes(&registry, &history, "it", delete_three(), true)
+                .await
+                .unwrap(),
+            ApplyResponse::Applied { rows_changed: 1 }
+        );
+
+        // read-only connections refuse before touching the database
+        disconnect(&registry, "it").await;
+        config.read_only = true;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        assert!(matches!(
+            apply_changes(&registry, &history, "it", delete_three(), true).await,
+            Err(AppError::ReadOnly(_))
         ));
     }
 }

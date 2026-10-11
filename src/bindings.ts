@@ -14,10 +14,12 @@ export const commands = {
 	tableStructure: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<TableStructure>("table_structure", { connectionId, schema, table }),
 	completionTables: (connectionId: string) => __TAURI_INVOKE<CompletionTable[]>("completion_tables", { connectionId }),
 	browseTable: (connectionId: string, request: BrowseRequest) => __TAURI_INVOKE<RowBatch>("browse_table", { connectionId, request }),
-	runScript: (connectionId: string, runId: string, sql: string) => __TAURI_INVOKE<ScriptOutcome>("run_script", { connectionId, runId, sql }),
+	runScript: (connectionId: string, runId: string, sql: string, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("run_script", { connectionId, runId, sql, confirmed }),
 	fetchMore: (cursorId: string) => __TAURI_INVOKE<RowBatch>("fetch_more", { cursorId }),
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
+	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
+	searchHistory: (text: string, connectionId: string | null) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId }),
 };
 
 /* Types */
@@ -25,7 +27,11 @@ export const commands = {
  *  Serialized as `{ kind, message }`. The payload is the final, human-readable message
  *  (built by the constructors below), so `message` and `Display` always match.
  */
-export type AppError = { kind: "validation"; message: string } | { kind: "notFound"; message: string } | { kind: "storage"; message: string } | { kind: "keychain"; message: string } | { kind: "notConnected"; message: string } | { kind: "database"; message: string } | { kind: "cancelled"; message: string } | { kind: "timeout"; message: string };
+export type AppError = { kind: "validation"; message: string } | { kind: "notFound"; message: string } | { kind: "storage"; message: string } | { kind: "keychain"; message: string } | { kind: "notConnected"; message: string } | { kind: "database"; message: string } | { kind: "cancelled"; message: string } | { kind: "timeout"; message: string } | 
+/**  an edited/deleted row no longer matches: nothing was saved */
+{ kind: "conflict"; message: string } | { kind: "readOnly"; message: string };
+
+export type ApplyResponse = { status: "applied"; rowsChanged: number } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 export type BrowseRequest = {
 	schema: string,
@@ -77,11 +83,26 @@ export type ColumnInfo = {
 	isPrimaryKey: boolean,
 };
 
+/**  New value typed by the user; `None` writes NULL. */
+export type ColumnValue = {
+	column: string,
+	value: string | null,
+};
+
 /**  Tables and their columns, for editor autocomplete. */
 export type CompletionTable = {
 	schema: string,
 	table: string,
 	columns: string[],
+};
+
+/**
+ *  A write the user must confirm before it runs: destructive statements anywhere,
+ *  and every write on a `prod` connection.
+ */
+export type Confirmation = {
+	reason: string,
+	statements: string[],
 };
 
 /**
@@ -120,9 +141,27 @@ export type ForeignKeyInfo = {
 	definition: string,
 };
 
+export type HistoryEntry = {
+	id: number,
+	connectionId: string,
+	connectionName: string,
+	sql: string,
+	/**  ISO 8601, UTC */
+	executedAt: string,
+	durationMs: number,
+	success: boolean,
+	error: string | null,
+};
+
 export type IndexInfo = {
 	name: string,
 	definition: string,
+};
+
+/**  Original value of a primary-key column, identifying the row to change. */
+export type KeyValue = {
+	column: string,
+	value: Cell,
 };
 
 /**
@@ -143,6 +182,8 @@ export type RelationKind = "table" | "view" | "materializedView" | "foreignTable
 export type ResultColumn = {
 	name: string,
 	typeName: string,
+	/**  scalar type the grid can write back as text (not arrays, bytea, unmodeled types) */
+	editable: boolean,
 };
 
 export type RowBatch = {
@@ -150,6 +191,10 @@ export type RowBatch = {
 	rows: Cell[][],
 	hasMore: boolean,
 };
+
+export type RowChange = { kind: "update"; key: KeyValue[]; values: ColumnValue[] } | { kind: "insert"; values: ColumnValue[] } | { kind: "delete"; key: KeyValue[] };
+
+export type RunResponse = { status: "executed"; outcome: ScriptOutcome } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 export type SchemaInfo = {
 	name: string,
@@ -181,6 +226,13 @@ export type StatementResult =
 { kind: "rows"; batch: RowBatch; cursorId: string | null } | 
 /**  DDL/DML/utility statement. u32 because specta forbids u64; saturates at ~4 billion. */
 { kind: "command"; rowsAffected: number };
+
+/**  Staged grid edits, applied in one transaction. */
+export type TableChanges = {
+	schema: string,
+	table: string,
+	changes: RowChange[],
+};
 
 export type TableStructure = {
 	columns: ColumnInfo[],

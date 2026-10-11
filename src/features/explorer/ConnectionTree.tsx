@@ -13,10 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDisconnect, useSchemas } from "@/features/explorer/queries";
 import { ENGINE_LABEL, ENVIRONMENT_STYLE } from "@/features/connections/options";
+import type { TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
-
-export type TableTarget = { connectionId: string; schema: string; table: string };
 
 type TreeActions = {
   activeTable: TableTarget | null;

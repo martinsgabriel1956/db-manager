@@ -2,13 +2,21 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::adapters::postgres::{Cursor, PostgresAdapter};
-use crate::domain::AppError;
+use crate::domain::{AppError, Environment};
 
 // The locks guard plain maps and are never held across an await.
 
+/// An open session plus the connection settings the write rules depend on.
+pub struct OpenConnection {
+    pub adapter: PostgresAdapter,
+    pub name: String,
+    pub environment: Environment,
+    pub read_only: bool,
+}
+
 /// A running script: which backend to cancel.
 struct Run {
-    adapter: Arc<PostgresAdapter>,
+    connection: Arc<OpenConnection>,
     pid: i32,
 }
 
@@ -20,7 +28,7 @@ struct OpenCursor {
 /// Open connections, running scripts (for cancel) and open result cursors.
 #[derive(Default)]
 pub struct Registry {
-    connections: Mutex<HashMap<String, Arc<PostgresAdapter>>>,
+    connections: Mutex<HashMap<String, Arc<OpenConnection>>>,
     runs: Mutex<HashMap<String, Run>>,
     cursors: Mutex<HashMap<String, OpenCursor>>,
 }
@@ -34,11 +42,11 @@ impl Registry {
         lock(&self.connections).contains_key(connection_id)
     }
 
-    pub fn insert_connection(&self, connection_id: &str, adapter: PostgresAdapter) {
-        lock(&self.connections).insert(connection_id.to_string(), Arc::new(adapter));
+    pub fn insert_connection(&self, connection_id: &str, connection: OpenConnection) {
+        lock(&self.connections).insert(connection_id.to_string(), Arc::new(connection));
     }
 
-    pub fn connection(&self, connection_id: &str) -> Result<Arc<PostgresAdapter>, AppError> {
+    pub fn connection(&self, connection_id: &str) -> Result<Arc<OpenConnection>, AppError> {
         lock(&self.connections)
             .get(connection_id)
             .cloned()
@@ -47,23 +55,23 @@ impl Registry {
 
     /// Removes the connection and drops its cursors first: each cursor holds a pool
     /// connection, and closing the pool waits for all of them to come back.
-    pub fn remove_connection(&self, connection_id: &str) -> Option<Arc<PostgresAdapter>> {
+    pub fn remove_connection(&self, connection_id: &str) -> Option<Arc<OpenConnection>> {
         lock(&self.cursors).retain(|_, open| open.connection_id != connection_id);
         lock(&self.connections).remove(connection_id)
     }
 
-    pub fn start_run(&self, run_id: &str, adapter: Arc<PostgresAdapter>, pid: i32) {
-        lock(&self.runs).insert(run_id.to_string(), Run { adapter, pid });
+    pub fn start_run(&self, run_id: &str, connection: Arc<OpenConnection>, pid: i32) {
+        lock(&self.runs).insert(run_id.to_string(), Run { connection, pid });
     }
 
     pub fn finish_run(&self, run_id: &str) {
         lock(&self.runs).remove(run_id);
     }
 
-    pub fn running(&self, run_id: &str) -> Option<(Arc<PostgresAdapter>, i32)> {
+    pub fn running(&self, run_id: &str) -> Option<(Arc<OpenConnection>, i32)> {
         lock(&self.runs)
             .get(run_id)
-            .map(|run| (run.adapter.clone(), run.pid))
+            .map(|run| (run.connection.clone(), run.pid))
     }
 
     pub fn insert_cursor(&self, cursor_id: &str, connection_id: &str, cursor: Cursor) {

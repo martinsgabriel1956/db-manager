@@ -4,7 +4,8 @@ use tauri::State;
 
 use crate::AppState;
 use crate::domain::{
-    AppError, BrowseRequest, CompletionTable, RowBatch, SchemaInfo, ScriptOutcome, TableStructure,
+    AppError, ApplyResponse, BrowseRequest, CompletionTable, HistoryEntry, RowBatch, RunResponse,
+    SchemaInfo, TableChanges, TableStructure,
 };
 use crate::use_cases::{connections, sql};
 
@@ -77,8 +78,45 @@ pub async fn run_script(
     connection_id: String,
     run_id: String,
     sql: String,
-) -> Result<ScriptOutcome, AppError> {
-    sql::run_script(&state.registry, &connection_id, &run_id, &sql).await
+    confirmed: bool,
+) -> Result<RunResponse, AppError> {
+    sql::run_script(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        &run_id,
+        &sql,
+        confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn apply_changes(
+    state: State<'_, AppState>,
+    connection_id: String,
+    changes: TableChanges,
+    confirmed: bool,
+) -> Result<ApplyResponse, AppError> {
+    sql::apply_changes(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        changes,
+        confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn search_history(
+    state: State<'_, AppState>,
+    text: String,
+    connection_id: Option<String>,
+) -> Result<Vec<HistoryEntry>, AppError> {
+    sql::search_history(&state.history, &text, connection_id.as_deref()).await
 }
 
 #[tauri::command]

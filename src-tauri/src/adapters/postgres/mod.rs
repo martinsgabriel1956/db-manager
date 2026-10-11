@@ -1,5 +1,6 @@
 mod browse;
 mod cell;
+mod edit;
 mod split;
 
 #[cfg(test)]
@@ -7,12 +8,15 @@ pub(crate) mod integration_tests;
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use futures_util::StreamExt;
 use futures_util::stream::{BoxStream, Peekable};
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgSslMode};
+use sqlx::postgres::{
+    PgColumn, PgConnectOptions, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgSslMode,
+};
 use sqlx::{
     AssertSqlSafe, Column, Either, Executor, Postgres, Row, SqlSafeStr, Statement, ValueRef,
 };
@@ -20,8 +24,8 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::domain::{
     AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableStructure, Target,
-    TlsMode,
+    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, RowChange, SchemaInfo,
+    TableStructure, Target, TlsMode,
 };
 
 pub use split::split_statements;
@@ -62,7 +66,108 @@ pub struct ScriptRun {
 
 pub struct PostgresAdapter {
     pool: PgPool,
+    types: Types,
     timeout_secs: u32,
+}
+
+/// Turns rows into cells. Custom types (enums, domains) arrive unresolved on the
+/// text protocol, so their pg_type facts are looked up once and cached.
+#[derive(Clone)]
+struct Types {
+    pool: PgPool,
+    catalog: Arc<Mutex<cell::Catalog>>,
+}
+
+impl Types {
+    async fn resolve(&self, columns: &[PgColumn]) -> Vec<(ResultColumn, cell::ValueType)> {
+        let missing: Vec<i64> = {
+            let catalog = self.catalog.lock().unwrap_or_else(PoisonError::into_inner);
+            columns
+                .iter()
+                .filter_map(|c| cell::unresolved_oid(c.type_info()))
+                .filter(|oid| !catalog.contains_key(oid))
+                .map(i64::from)
+                .collect()
+        };
+        if !missing.is_empty() {
+            // best effort: an unresolved type is still shown, as Unknown
+            if let Ok(found) = self.lookup(&missing).await {
+                let mut catalog = self.catalog.lock().unwrap_or_else(PoisonError::into_inner);
+                catalog.extend(found);
+            }
+        }
+
+        let catalog = self.catalog.lock().unwrap_or_else(PoisonError::into_inner);
+        columns
+            .iter()
+            .map(|column| {
+                let value_type = cell::resolve(column.type_info(), &catalog);
+                let result_column = ResultColumn {
+                    name: column.name().to_string(),
+                    type_name: cell::type_name(column.type_info(), &catalog),
+                    editable: cell::is_editable(&value_type),
+                };
+                (result_column, value_type)
+            })
+            .collect()
+    }
+
+    async fn lookup(&self, oids: &[i64]) -> Result<Vec<(u32, cell::CustomType)>, AppError> {
+        let rows: Vec<(i64, String, String, i64)> = sqlx::query_as(
+            r"SELECT oid::int8, format_type(oid, NULL), typtype::text, typbasetype::int8
+              FROM pg_type WHERE oid::int8 = ANY($1)",
+        )
+        .bind(oids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(oid, name, typtype, base)| {
+                let kind = match typtype.as_str() {
+                    "e" => cell::CustomKind::Enum,
+                    "d" => cell::CustomKind::Domain(u32::try_from(base).unwrap_or(0)),
+                    _ => cell::CustomKind::Other,
+                };
+                (
+                    u32::try_from(oid).unwrap_or(0),
+                    cell::CustomType { name, kind },
+                )
+            })
+            .collect())
+    }
+
+    async fn batch(&self, rows: Vec<PgRow>, has_more: bool) -> RowBatch {
+        let Some(first) = rows.first() else {
+            return RowBatch {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                has_more,
+            };
+        };
+        let resolved = self.resolve(first.columns()).await;
+        let cells = rows
+            .iter()
+            .map(|row| {
+                resolved
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (column, value_type))| {
+                        let text = row
+                            .try_get_raw(index)
+                            .ok()
+                            .filter(|value| !value.is_null())
+                            .and_then(|value| value.as_str().ok().map(str::to_owned));
+                        cell::to_cell(value_type, &column.type_name, text.as_deref())
+                    })
+                    .collect()
+            })
+            .collect();
+        RowBatch {
+            columns: resolved.into_iter().map(|(column, _)| column).collect(),
+            rows: cells,
+            has_more,
+        }
+    }
 }
 
 impl PostgresAdapter {
@@ -116,6 +221,10 @@ impl PostgresAdapter {
             .connect_with(options)
             .await?;
         Ok(Self {
+            types: Types {
+                pool: pool.clone(),
+                catalog: Arc::default(),
+            },
             pool,
             timeout_secs: config.timeout_secs,
         })
@@ -246,9 +355,9 @@ impl PostgresAdapter {
             .collect())
     }
 
-    /// Primary key first (stable default ordering), then the page itself.
-    pub async fn browse(&self, request: &BrowseRequest) -> Result<RowBatch, AppError> {
-        let primary_key: Vec<String> = sqlx::query_scalar(
+    /// Primary-key columns in key order; empty for tables without one and for views.
+    pub async fn primary_key(&self, schema: &str, table: &str) -> Result<Vec<String>, AppError> {
+        let columns = sqlx::query_scalar(
             r"SELECT a.attname::text
               FROM pg_index i
               JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey::int2[])
@@ -256,18 +365,23 @@ impl PostgresAdapter {
                 AND i.indrelid = (quote_ident($1) || '.' || quote_ident($2))::regclass
               ORDER BY array_position(i.indkey::int2[], a.attnum)",
         )
-        .bind(&request.schema)
-        .bind(&request.table)
+        .bind(schema)
+        .bind(table)
         .fetch_all(&self.pool)
         .await?;
+        Ok(columns)
+    }
 
+    /// Primary key first (stable default ordering), then the page itself.
+    pub async fn browse(&self, request: &BrowseRequest) -> Result<RowBatch, AppError> {
+        let primary_key = self.primary_key(&request.schema, &request.table).await?;
         let sql = browse::browse_sql(request, &primary_key)?;
         let limit = request.page_size as usize;
 
         let mut stream = sqlx::raw_sql(AssertSqlSafe(sql.clone()))
             .fetch_many(&self.pool)
             .peekable();
-        let read = read_batch(Pin::new(&mut stream), limit).await?;
+        let read = read_batch(Pin::new(&mut stream), limit, &self.types).await?;
         drop(stream);
 
         let mut batch = read.batch;
@@ -315,6 +429,7 @@ impl PostgresAdapter {
         let (requests, receiver) = mpsc::channel(1);
         tokio::spawn(stream_task(
             self.pool.clone(),
+            self.types.clone(),
             conn,
             pid,
             last.clone(),
@@ -329,6 +444,27 @@ impl PostgresAdapter {
         }
         let cursor = first.batch.has_more.then_some(cursor);
         Ok(ScriptRun { first, cursor })
+    }
+
+    pub fn change_sql(schema: &str, table: &str, change: &RowChange) -> Result<String, AppError> {
+        edit::change_sql(schema, table, change)
+    }
+
+    /// Runs the statements in one transaction. Each one must touch exactly one row:
+    /// otherwise the row changed under us and everything is rolled back.
+    pub async fn apply(&self, statements: &[String]) -> Result<u32, AppError> {
+        let mut tx = self.pool.begin().await?;
+        for statement in statements {
+            let result = sqlx::raw_sql(AssertSqlSafe(statement.clone()))
+                .execute(&mut *tx)
+                .await?;
+            if result.rows_affected() != 1 {
+                // dropping `tx` rolls back
+                return Err(AppError::conflict());
+            }
+        }
+        tx.commit().await?;
+        Ok(u32::try_from(statements.len()).unwrap_or(u32::MAX))
     }
 
     pub async fn cancel_backend(&self, pid: i32) -> Result<(), AppError> {
@@ -364,13 +500,11 @@ impl PostgresAdapter {
         else {
             return Vec::new();
         };
-        statement
-            .columns()
-            .iter()
-            .map(|column| ResultColumn {
-                name: column.name().to_string(),
-                type_name: cell::type_name(column.type_info()),
-            })
+        self.types
+            .resolve(statement.columns())
+            .await
+            .into_iter()
+            .map(|(column, _)| column)
             .collect()
     }
 }
@@ -388,6 +522,7 @@ async fn cancel_backend(pool: &PgPool, pid: i32) -> Result<(), AppError> {
 /// cancelled server-side and the connection discarded instead of drained.
 async fn stream_task(
     pool: PgPool,
+    types: Types,
     mut conn: PoolConnection<Postgres>,
     pid: i32,
     sql: String,
@@ -400,7 +535,7 @@ async fn stream_task(
             .fetch_many(&mut *conn)
             .peekable();
         while let Some(reply) = requests.recv().await {
-            let read = read_batch(Pin::new(&mut stream), batch_size).await;
+            let read = read_batch(Pin::new(&mut stream), batch_size, &types).await;
             finished = read.as_ref().map_or(true, |r| !r.batch.has_more);
             let _ = reply.send(read);
             if finished {
@@ -417,36 +552,23 @@ async fn stream_task(
 async fn read_batch(
     mut stream: Pin<&mut RowStream<'_>>,
     batch_size: usize,
+    types: &Types,
 ) -> Result<BatchRead, AppError> {
-    let mut columns: Vec<ResultColumn> = Vec::new();
     let mut rows = Vec::new();
 
     while rows.len() < batch_size {
         match stream.next().await {
-            Some(Ok(Either::Right(row))) => {
-                if columns.is_empty() {
-                    columns = row_columns(&row);
-                }
-                rows.push(row_cells(&row));
-            }
+            Some(Ok(Either::Right(row))) => rows.push(row),
             Some(Ok(Either::Left(done))) => {
                 return Ok(BatchRead {
-                    batch: RowBatch {
-                        columns,
-                        rows,
-                        has_more: false,
-                    },
+                    batch: types.batch(rows, false).await,
                     rows_affected: Some(done.rows_affected()),
                 });
             }
             Some(Err(err)) => return Err(err.into()),
             None => {
                 return Ok(BatchRead {
-                    batch: RowBatch {
-                        columns,
-                        rows,
-                        has_more: false,
-                    },
+                    batch: types.batch(rows, false).await,
                     rows_affected: None,
                 });
             }
@@ -459,37 +581,9 @@ async fn read_batch(
         Some(Ok(Either::Right(_))) | Some(Err(_))
     );
     Ok(BatchRead {
-        batch: RowBatch {
-            columns,
-            rows,
-            has_more,
-        },
+        batch: types.batch(rows, has_more).await,
         rows_affected: None,
     })
-}
-
-fn row_columns(row: &PgRow) -> Vec<ResultColumn> {
-    row.columns()
-        .iter()
-        .map(|column| ResultColumn {
-            name: column.name().to_string(),
-            type_name: cell::type_name(column.type_info()),
-        })
-        .collect()
-}
-
-fn row_cells(row: &PgRow) -> Vec<crate::domain::Cell> {
-    row.columns()
-        .iter()
-        .map(|column| {
-            let text = row
-                .try_get_raw(column.ordinal())
-                .ok()
-                .filter(|value| !value.is_null())
-                .and_then(|value| value.as_str().ok().map(str::to_owned));
-            cell::to_cell(column.type_info(), text.as_deref())
-        })
-        .collect()
 }
 
 fn relation_kind(relkind: &str) -> RelationKind {

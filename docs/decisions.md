@@ -129,3 +129,15 @@ Decisões tomadas durante a implementação, que refinam ou adiam itens acima.
 - **Cursor**: uma task tokio é dona da conexão e do stream do último comando. Fechar/abandonar o resultado cancela no servidor (`pg_cancel_backend`) e descarta a conexão em vez de drenar.
 - **Tipos customizados** (enums, domínios, extensões) aparecem como `Unknown` (texto, não editável) no M1; resolver pelo catálogo entra no M2, quando edição importa.
 - **TanStack Table adiado**: a grade só precisa de virtualização (TanStack Virtual). Entra quando houver redimensionar/fixar colunas.
+
+### M2
+
+- **Confirmação é uma resposta, não um erro**: `run_script`/`apply_changes` devolvem `NeedsConfirmation { reason, statements }` (em vez de `AppError::NeedsConfirmation`, como planejado). O front mostra o SQL exato e reenvia com `confirmed: true`.
+- **O que pede confirmação** (`use_cases/guard.rs`, com `sqlparser`): DROP, TRUNCATE, UPDATE/DELETE sem WHERE, **ALTER TABLE … DROP COLUMN/CONSTRAINT** (adicionado), inclusive dentro de CTE e `EXPLAIN ANALYZE`. Em `prod`, toda escrita. Conexão somente leitura não confirma nada: o próprio banco recusa.
+- **SQL que o parser não entende** cai na palavra-chave inicial: DROP/TRUNCATE são destrutivos; DELETE/UPDATE/ALTER pedem confirmação porque não dá para checar o WHERE.
+- **Edição em stage**: linhas identificadas pela chave primária completa (validada no backend contra o catálogo); valores vão como literais texto que o Postgres converte para o tipo da coluna. Ordem: exclusões, alterações, inserções. Tudo numa transação e cada comando precisa afetar exatamente 1 linha, senão rollback com erro de conflito.
+- **Editáveis**: tipos escalares modelados e enums. Arrays, bytea e tipos não modelados ficam somente leitura; tabela sem PK (ou com PK de tipo não editável) também. Paginação, ordenação e filtro travam enquanto houver alterações pendentes.
+- **Tipos customizados**: enums e domínios resolvidos pelo `pg_type` (cache por conexão). Corrige um crash do M1: o sqlx entra em pânico ao chamar `kind()` num tipo não resolvido.
+- **Abas** persistidas em `ui-state.json` (`tauri-plugin-store`, via `persist` do Zustand): tabelas, editores (com o SQL) e histórico. Resultados não persistem (o cursor morre com o app).
+- **Histórico** em `history.sqlite` (sqlx sqlite): scripts executados (com erro, se houver) e edições salvas; o que ficou só na confirmação não entra. Sem limite de retenção por enquanto.
+- **Salvar edições não tem timeout** (são poucas linhas por PK); o editor SQL continua com o timeout da conexão.

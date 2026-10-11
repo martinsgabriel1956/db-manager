@@ -8,9 +8,11 @@ type CellDetailProps = {
   column: ResultColumn;
   cell: Cell;
   onClose: () => void;
+  /** present when the cell is editable */
+  onSetNull?: () => void;
 };
 
-export function CellDetail({ column, cell, onClose }: CellDetailProps) {
+export function CellDetail({ column, cell, onClose, onSetNull }: CellDetailProps) {
   return (
     <aside aria-label="Valor da célula" className="flex w-80 shrink-0 flex-col border-l">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
@@ -30,6 +32,13 @@ export function CellDetail({ column, cell, onClose }: CellDetailProps) {
       >
         {detailText(cell)}
       </pre>
+      {onSetNull && cell.t !== "null" && (
+        <div className="border-t px-3 py-2">
+          <Button size="sm" variant="outline" onClick={onSetNull}>
+            Definir como NULL
+          </Button>
+        </div>
+      )}
       {cell.t === "bytes" && (
         <p className="border-t px-3 py-2 text-xs text-muted-foreground">
           Prévia dos primeiros bytes; o conteúdo completo não é carregado.

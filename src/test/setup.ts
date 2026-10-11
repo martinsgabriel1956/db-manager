@@ -1,7 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { clearMocks } from "@tauri-apps/api/mocks";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
+import { INITIAL_TABS, useTabs } from "@/features/tabs/store";
+
+// tabs persist through tauri-plugin-store in the app; tests keep them in memory
+vi.mock("@/features/tabs/storage", () => ({
+  tauriStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }
+}));
 
 // jsdom has no layout: give elements a size so virtualized lists render rows
 // and CodeMirror can measure.
@@ -26,4 +32,5 @@ globalThis.ResizeObserver = class {
 afterEach(() => {
   cleanup();
   clearMocks();
+  useTabs.setState(INITIAL_TABS);
 });

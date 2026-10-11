@@ -1,36 +1,57 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { History } from "lucide-react";
+import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
 import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
-import { ConnectionTree, type TableTarget } from "@/features/explorer/ConnectionTree";
+import { ConnectionTree } from "@/features/explorer/ConnectionTree";
 import { isConnectionQuery } from "@/features/explorer/queries";
+import { HistoryView } from "@/features/history/HistoryView";
 import { TableView } from "@/features/table/TableView";
+import { TabBar } from "@/features/tabs/TabBar";
+import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
-type View =
-  | { kind: "none" }
-  | { kind: "form"; connectionId: string | null }
-  | ({ kind: "table" } & TableTarget)
-  | { kind: "editor"; connectionId: string };
+/** null connectionId = creating a new connection */
+type FormState = { connectionId: string | null };
+
+type TabContentProps = {
+  tab: Tab;
+  connections: ConnectionConfig[];
+  onOpenInEditor: (connectionId: string, sql: string) => void;
+};
 
 export function App() {
   const connections = useConnections();
   const queryClient = useQueryClient();
-  const [view, setView] = useState<View>({ kind: "none" });
+  const { tabs, activeId, openTable, openEditor, openHistory, keepConnections } = useTabs();
+  const [form, setForm] = useState<FormState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // ponytail: editor text per connection lives in memory; M2 tabs persist it
-  const [editorSql, setEditorSql] = useState<Record<string, string>>({});
 
-  const viewConnectionId = view.kind === "none" ? null : view.connectionId;
-  const active = connections.data?.find(connection => connection.id === viewConnectionId) ?? null;
+  useEffect(() => {
+    if (connections.data) {
+      keepConnections(connections.data.map(connection => connection.id));
+    }
+  }, [connections.data, keepConnections]);
+
+  const list = connections.data ?? [];
+  const activeTab = tabs.find(tab => tab.id === activeId) ?? null;
+  const tabConnectionId = activeTab && activeTab.kind !== "history" ? activeTab.connectionId : null;
+  const activeConnectionId = form ? form.connectionId : tabConnectionId;
+  const active = list.find(connection => connection.id === activeConnectionId) ?? null;
   const isProd = active?.environment === "prod";
 
-  function open(next: View) {
+  function showTabs() {
+    setForm(null);
     setNotice(null);
-    setView(next);
+  }
+
+  function openInEditor(connectionId: string, sql: string) {
+    showTabs();
+    openEditor(connectionId, sql);
   }
 
   /** The backend closed this connection's session; cached schemas/results are stale. */
@@ -49,15 +70,30 @@ export function App() {
       )}
     >
       <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3">
-        <div className="flex items-center justify-between px-3">
+        <div className="flex items-center justify-between gap-2 px-3">
           <h1 className="text-sm font-semibold">Conexões</h1>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => open({ kind: "form", connectionId: null })}
-          >
-            Nova
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                showTabs();
+                openHistory();
+              }}
+            >
+              <History /> Histórico
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setNotice(null);
+                setForm({ connectionId: null });
+              }}
+            >
+              Nova
+            </Button>
+          </div>
         </div>
         {connections.isPending && <p className="px-3 text-sm text-muted-foreground">Carregando…</p>}
         {connections.isError && (
@@ -68,10 +104,19 @@ export function App() {
         {connections.data && (
           <ConnectionTree
             connections={connections.data}
-            activeTable={view.kind === "table" ? view : null}
-            onEdit={connectionId => open({ kind: "form", connectionId })}
-            onOpenTable={target => open({ kind: "table", ...target })}
-            onOpenEditor={connectionId => open({ kind: "editor", connectionId })}
+            activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
+            onEdit={connectionId => {
+              setNotice(null);
+              setForm({ connectionId });
+            }}
+            onOpenTable={target => {
+              showTabs();
+              openTable(target);
+            }}
+            onOpenEditor={connectionId => {
+              showTabs();
+              openEditor(connectionId);
+            }}
           />
         )}
       </aside>
@@ -85,55 +130,85 @@ export function App() {
             {notice}
           </p>
         )}
-        {view.kind === "none" && (
-          <p className="p-6 text-sm text-muted-foreground">
-            Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
-          </p>
-        )}
-        {view.kind === "form" && (view.connectionId === null || active) && (
-          <div className="overflow-auto p-6">
-            <ConnectionForm
-              key={view.connectionId ?? "new"}
-              connection={active}
-              onSaved={(id, keychainWarning) => {
-                dropConnectionCache(id);
-                setView({ kind: "form", connectionId: id });
-                setNotice(
-                  keychainWarning &&
-                    `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
-                );
-              }}
-              onDeleted={keychainWarning => {
-                if (view.connectionId) {
-                  dropConnectionCache(view.connectionId);
-                }
-                setView({ kind: "none" });
-                setNotice(
-                  keychainWarning &&
-                    `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
-                );
-              }}
-            />
-          </div>
-        )}
-        {view.kind === "table" && (
-          <TableView
-            key={`${view.connectionId}:${view.schema}.${view.table}`}
-            connectionId={view.connectionId}
-            schema={view.schema}
-            table={view.table}
-          />
-        )}
-        {view.kind === "editor" && active && (
-          <SqlWorkspace
-            key={view.connectionId}
-            connectionId={view.connectionId}
-            connectionName={active.name}
-            sql={editorSql[view.connectionId] ?? ""}
-            onSqlChange={sql => setEditorSql(prev => ({ ...prev, [view.connectionId]: sql }))}
-          />
+        {form ? (
+          (form.connectionId === null || active) && (
+            <div className="overflow-auto p-6">
+              <ConnectionForm
+                key={form.connectionId ?? "new"}
+                connection={active}
+                onSaved={(id, keychainWarning) => {
+                  dropConnectionCache(id);
+                  setForm({ connectionId: id });
+                  setNotice(
+                    keychainWarning &&
+                      `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
+                  );
+                }}
+                onDeleted={keychainWarning => {
+                  if (form.connectionId) {
+                    dropConnectionCache(form.connectionId);
+                  }
+                  setForm(null);
+                  setNotice(
+                    keychainWarning &&
+                      `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
+                  );
+                }}
+              />
+            </div>
+          )
+        ) : (
+          <>
+            {tabs.length > 0 && <TabBar connections={list} />}
+            {tabs.length === 0 && (
+              <p className="p-6 text-sm text-muted-foreground">
+                Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
+              </p>
+            )}
+            <div className="relative min-h-0 flex-1">
+              {/* every tab stays mounted so results and staged edits survive switching */}
+              {tabs.map(tab => (
+                <div
+                  key={tab.id}
+                  className={cn("absolute inset-0", tab.id !== activeId && "hidden")}
+                >
+                  <TabContent tab={tab} connections={list} onOpenInEditor={openInEditor} />
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </main>
     </div>
+  );
+}
+
+function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
+  const setSql = useTabs(state => state.setSql);
+
+  if (tab.kind === "history") {
+    return <HistoryView connections={connections} onOpenInEditor={onOpenInEditor} />;
+  }
+  const connection = connections.find(c => c.id === tab.connectionId);
+  if (!connection) {
+    return null;
+  }
+  if (tab.kind === "table") {
+    return (
+      <TableView
+        connectionId={tab.connectionId}
+        schema={tab.schema}
+        table={tab.table}
+        readOnly={connection.readOnly}
+      />
+    );
+  }
+  return (
+    <SqlWorkspace
+      connectionId={tab.connectionId}
+      connectionName={connection.name}
+      sql={tab.sql}
+      onSqlChange={sql => setSql(tab.id, sql)}
+    />
   );
 }

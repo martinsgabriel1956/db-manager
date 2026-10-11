@@ -12,6 +12,7 @@ use tauri_specta::{Builder, ErrorHandlingMode, collect_commands};
 
 use registry::Registry;
 use storage::connections::ConnectionStore;
+use storage::history::HistoryStore;
 use storage::secrets::{OsKeychain, SecretStore};
 
 const BINDINGS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/bindings.ts");
@@ -20,6 +21,7 @@ pub struct AppState {
     pub store: Mutex<ConnectionStore>,
     pub secrets: Box<dyn SecretStore>,
     pub registry: Registry,
+    pub history: HistoryStore,
 }
 
 fn specta_builder() -> Builder<tauri::Wry> {
@@ -39,6 +41,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::fetch_more,
             commands::sql::close_cursor,
             commands::sql::cancel_run,
+            commands::sql::apply_changes,
+            commands::sql::search_history,
         ])
 }
 
@@ -56,13 +60,19 @@ pub fn run() {
     export_bindings(&builder);
 
     tauri::Builder::default()
+        // UI state (open tabs, editor text), see src/features/tabs
+        .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(builder.invoke_handler())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
+            let history = tauri::async_runtime::block_on(HistoryStore::open(
+                &data_dir.join("history.sqlite"),
+            ))?;
             app.manage(AppState {
                 store: Mutex::new(ConnectionStore::new(data_dir.join("connections.json"))),
                 secrets: Box::new(OsKeychain),
                 registry: Registry::default(),
+                history,
             });
             Ok(())
         })
