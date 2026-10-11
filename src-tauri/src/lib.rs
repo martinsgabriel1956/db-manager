@@ -1,5 +1,7 @@
+mod adapters;
 mod commands;
 mod domain;
+mod registry;
 mod storage;
 mod use_cases;
 
@@ -8,6 +10,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 use tauri_specta::{Builder, ErrorHandlingMode, collect_commands};
 
+use registry::Registry;
 use storage::connections::ConnectionStore;
 use storage::secrets::{OsKeychain, SecretStore};
 
@@ -16,6 +19,7 @@ const BINDINGS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/binding
 pub struct AppState {
     pub store: Mutex<ConnectionStore>,
     pub secrets: Box<dyn SecretStore>,
+    pub registry: Registry,
 }
 
 fn specta_builder() -> Builder<tauri::Wry> {
@@ -25,6 +29,16 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::connections::list_connections,
             commands::connections::save_connection,
             commands::connections::delete_connection,
+            commands::sql::connect_database,
+            commands::sql::disconnect_database,
+            commands::sql::list_schemas,
+            commands::sql::table_structure,
+            commands::sql::completion_tables,
+            commands::sql::browse_table,
+            commands::sql::run_script,
+            commands::sql::fetch_more,
+            commands::sql::close_cursor,
+            commands::sql::cancel_run,
         ])
 }
 
@@ -48,6 +62,7 @@ pub fn run() {
             app.manage(AppState {
                 store: Mutex::new(ConnectionStore::new(data_dir.join("connections.json"))),
                 secrets: Box::new(OsKeychain),
+                registry: Registry::default(),
             });
             Ok(())
         })

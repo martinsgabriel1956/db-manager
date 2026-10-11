@@ -12,6 +12,14 @@ pub fn list(store: &ConnectionStore) -> Result<Vec<ConnectionConfig>, AppError> 
     Ok(connections)
 }
 
+pub fn find(store: &ConnectionStore, id: &str) -> Result<ConnectionConfig, AppError> {
+    store
+        .load()?
+        .into_iter()
+        .find(|c| c.id == id)
+        .ok_or_else(|| AppError::not_found(&format!("conexão {id}")))
+}
+
 /// Upserts by id. Metadata is written first; a keychain failure after that is
 /// returned as a warning so the user knows the password was not stored.
 pub fn save(
@@ -49,7 +57,7 @@ pub fn delete(
     let before = connections.len();
     connections.retain(|c| c.id != id);
     if connections.len() == before {
-        return Err(AppError::NotFound(id.to_string()));
+        return Err(AppError::not_found(&format!("conexão {id}")));
     }
     store.save(&connections)?;
 
@@ -94,7 +102,7 @@ fn validate(
     secret: &SecretChange,
     existing: &[ConnectionConfig],
 ) -> Result<(), AppError> {
-    let invalid = |msg: &str| Err(AppError::Validation(msg.to_string()));
+    let invalid = |msg: &str| Err(AppError::validation(msg));
 
     if config.id.trim().is_empty() {
         return invalid("id da conexão ausente");
@@ -170,12 +178,15 @@ mod tests {
     struct MemorySecrets(Mutex<HashMap<String, String>>);
 
     impl MemorySecrets {
-        fn get(&self, id: &str) -> Option<String> {
+        fn stored(&self, id: &str) -> Option<String> {
             self.0.lock().unwrap().get(id).cloned()
         }
     }
 
     impl SecretStore for MemorySecrets {
+        fn get(&self, id: &str) -> Result<Option<String>, AppError> {
+            Ok(self.stored(id))
+        }
         fn set(&self, id: &str, secret: &str) -> Result<(), AppError> {
             self.0.lock().unwrap().insert(id.into(), secret.into());
             Ok(())
@@ -189,11 +200,14 @@ mod tests {
     struct BrokenKeychain;
 
     impl SecretStore for BrokenKeychain {
+        fn get(&self, _: &str) -> Result<Option<String>, AppError> {
+            Err(AppError::keychain("no secret service"))
+        }
         fn set(&self, _: &str, _: &str) -> Result<(), AppError> {
-            Err(AppError::Keychain("no secret service".into()))
+            Err(AppError::keychain("no secret service"))
         }
         fn delete(&self, _: &str) -> Result<(), AppError> {
-            Err(AppError::Keychain("no secret service".into()))
+            Err(AppError::keychain("no secret service"))
         }
     }
 
@@ -275,7 +289,7 @@ mod tests {
 
         assert_eq!(outcome.keychain_warning, None);
         assert_eq!(list(&store).unwrap(), vec![postgres("1", "pg")]);
-        assert_eq!(secrets.get("1").as_deref(), Some("s3cret"));
+        assert_eq!(secrets.stored("1").as_deref(), Some("s3cret"));
     }
 
     #[test]
@@ -316,7 +330,7 @@ mod tests {
         let all = list(&store).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].name, "renamed");
-        assert_eq!(secrets.get("1").as_deref(), Some("pw"));
+        assert_eq!(secrets.stored("1").as_deref(), Some("pw"));
     }
 
     #[test]
@@ -333,7 +347,7 @@ mod tests {
 
         save(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
 
-        assert_eq!(secrets.get("1"), None);
+        assert_eq!(secrets.stored("1"), None);
     }
 
     #[test]
@@ -544,7 +558,25 @@ mod tests {
 
         assert_eq!(outcome.keychain_warning, None);
         assert!(list(&store).unwrap().is_empty());
-        assert_eq!(secrets.get("1"), None);
+        assert_eq!(secrets.stored("1"), None);
+    }
+
+    #[test]
+    fn find_returns_the_connection_or_not_found() {
+        let (_dir, store) = store();
+        save(
+            &store,
+            &MemorySecrets::default(),
+            postgres("1", "pg"),
+            SecretChange::Keep,
+        )
+        .unwrap();
+
+        assert_eq!(find(&store, "1").unwrap().name, "pg");
+        assert_eq!(
+            find(&store, "2").unwrap_err().to_string(),
+            "não encontrado: conexão 2"
+        );
     }
 
     #[test]
@@ -553,7 +585,7 @@ mod tests {
 
         let err = delete(&store, &MemorySecrets::default(), "nope").unwrap_err();
 
-        assert!(matches!(err, AppError::NotFound(id) if id == "nope"));
+        assert_eq!(err.to_string(), "não encontrado: conexão nope");
     }
 
     #[test]

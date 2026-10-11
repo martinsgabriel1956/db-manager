@@ -1,0 +1,83 @@
+use serde::Serialize;
+use specta::Type;
+
+/// Serialized as `{ kind, message }`. The payload is the final, human-readable message
+/// (built by the constructors below), so `message` and `Display` always match.
+#[derive(Debug, thiserror::Error, Serialize, Type)]
+#[serde(tag = "kind", content = "message", rename_all = "camelCase")]
+pub enum AppError {
+    #[error("{0}")]
+    Validation(String),
+    #[error("{0}")]
+    NotFound(String),
+    #[error("{0}")]
+    Storage(String),
+    #[error("{0}")]
+    Keychain(String),
+    #[error("{0}")]
+    NotConnected(String),
+    #[error("{0}")]
+    Database(String),
+    #[error("{0}")]
+    Cancelled(String),
+    #[error("{0}")]
+    Timeout(String),
+}
+
+impl AppError {
+    pub fn validation(message: impl Into<String>) -> Self {
+        AppError::Validation(message.into())
+    }
+
+    pub fn not_found(what: &str) -> Self {
+        AppError::NotFound(format!("não encontrado: {what}"))
+    }
+
+    pub fn storage(err: impl std::fmt::Display) -> Self {
+        AppError::Storage(format!("falha ao ler/gravar dados locais: {err}"))
+    }
+
+    pub fn keychain(err: impl std::fmt::Display) -> Self {
+        AppError::Keychain(format!("keychain indisponível: {err}"))
+    }
+
+    pub fn not_connected(connection_id: &str) -> Self {
+        AppError::NotConnected(format!("conexão {connection_id} não está aberta"))
+    }
+
+    pub fn cancelled() -> Self {
+        AppError::Cancelled("query cancelada".to_string())
+    }
+
+    pub fn timeout(secs: u32) -> Self {
+        AppError::Timeout(format!(
+            "query excedeu o timeout de {secs}s e foi cancelada"
+        ))
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::storage(err)
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(err: serde_json::Error) -> Self {
+        AppError::storage(err)
+    }
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(db) = &err {
+            // 57014 = query_canceled (pg_cancel_backend)
+            if db.code().as_deref() == Some("57014") {
+                return AppError::cancelled();
+            }
+            let code = db.code().map(|c| format!(" [{c}]")).unwrap_or_default();
+            return AppError::Database(format!("{}{code}", db.message()));
+        }
+        AppError::Database(err.to_string())
+    }
+}

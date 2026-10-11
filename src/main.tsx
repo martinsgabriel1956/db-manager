@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "@/App";
 import "@/index.css";
 
-const queryClient = new QueryClient();
+// IPC to a local backend: a failed call will not succeed by retrying
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

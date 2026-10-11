@@ -1,39 +1,61 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
-import { ConnectionList } from "@/features/connections/ConnectionList";
 import { useConnections } from "@/features/connections/queries";
+import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
+import { ConnectionTree, type TableTarget } from "@/features/explorer/ConnectionTree";
+import { isConnectionQuery } from "@/features/explorer/queries";
+import { TableView } from "@/features/table/TableView";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
-type Selection = { mode: "none" } | { mode: "new" } | { mode: "edit"; id: string };
+type View =
+  | { kind: "none" }
+  | { kind: "form"; connectionId: string | null }
+  | ({ kind: "table" } & TableTarget)
+  | { kind: "editor"; connectionId: string };
 
 export function App() {
   const connections = useConnections();
-  const [selection, setSelection] = useState<Selection>({ mode: "none" });
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<View>({ kind: "none" });
   const [notice, setNotice] = useState<string | null>(null);
+  // ponytail: editor text per connection lives in memory; M2 tabs persist it
+  const [editorSql, setEditorSql] = useState<Record<string, string>>({});
 
-  const selectedId = selection.mode === "edit" ? selection.id : null;
-  const selected = connections.data?.find(connection => connection.id === selectedId) ?? null;
-  const isProd = selected?.environment === "prod";
+  const viewConnectionId = view.kind === "none" ? null : view.connectionId;
+  const active = connections.data?.find(connection => connection.id === viewConnectionId) ?? null;
+  const isProd = active?.environment === "prod";
 
-  function select(next: Selection) {
+  function open(next: View) {
     setNotice(null);
-    setSelection(next);
+    setView(next);
+  }
+
+  /** The backend closed this connection's session; cached schemas/results are stale. */
+  function dropConnectionCache(connectionId: string) {
+    queryClient.removeQueries({
+      predicate: query => isConnectionQuery(query.queryKey, connectionId)
+    });
   }
 
   return (
     <div
-      data-environment={selected?.environment}
+      data-environment={active?.environment}
       className={cn(
         "flex h-screen bg-background text-foreground",
         isProd && "ring-4 ring-inset ring-red-600"
       )}
     >
-      <aside className="flex w-72 shrink-0 flex-col gap-3 border-r py-3">
+      <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3">
         <div className="flex items-center justify-between px-3">
           <h1 className="text-sm font-semibold">Conexões</h1>
-          <Button size="sm" variant="outline" onClick={() => select({ mode: "new" })}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => open({ kind: "form", connectionId: null })}
+          >
             Nova
           </Button>
         </div>
@@ -44,43 +66,71 @@ export function App() {
           </p>
         )}
         {connections.data && (
-          <ConnectionList
+          <ConnectionTree
             connections={connections.data}
-            selectedId={selectedId}
-            onSelect={id => select({ mode: "edit", id })}
+            activeTable={view.kind === "table" ? view : null}
+            onEdit={connectionId => open({ kind: "form", connectionId })}
+            onOpenTable={target => open({ kind: "table", ...target })}
+            onOpenEditor={connectionId => open({ kind: "editor", connectionId })}
           />
         )}
       </aside>
 
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex min-w-0 flex-1 flex-col">
         {notice && (
           <p
             role="status"
-            className="mb-4 rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-900"
+            className="m-4 mb-0 rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-900"
           >
             {notice}
           </p>
         )}
-        {selection.mode === "none" && (
-          <p className="text-sm text-muted-foreground">Selecione uma conexão ou crie uma nova.</p>
+        {view.kind === "none" && (
+          <p className="p-6 text-sm text-muted-foreground">
+            Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
+          </p>
         )}
-        {(selection.mode === "new" || selected) && (
-          <ConnectionForm
-            key={selected?.id ?? "new"}
-            connection={selected}
-            onSaved={(id, keychainWarning) => {
-              setSelection({ mode: "edit", id });
-              setNotice(
-                keychainWarning && `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
-              );
-            }}
-            onDeleted={keychainWarning => {
-              setSelection({ mode: "none" });
-              setNotice(
-                keychainWarning &&
-                  `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
-              );
-            }}
+        {view.kind === "form" && (view.connectionId === null || active) && (
+          <div className="overflow-auto p-6">
+            <ConnectionForm
+              key={view.connectionId ?? "new"}
+              connection={active}
+              onSaved={(id, keychainWarning) => {
+                dropConnectionCache(id);
+                setView({ kind: "form", connectionId: id });
+                setNotice(
+                  keychainWarning &&
+                    `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
+                );
+              }}
+              onDeleted={keychainWarning => {
+                if (view.connectionId) {
+                  dropConnectionCache(view.connectionId);
+                }
+                setView({ kind: "none" });
+                setNotice(
+                  keychainWarning &&
+                    `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
+                );
+              }}
+            />
+          </div>
+        )}
+        {view.kind === "table" && (
+          <TableView
+            key={`${view.connectionId}:${view.schema}.${view.table}`}
+            connectionId={view.connectionId}
+            schema={view.schema}
+            table={view.table}
+          />
+        )}
+        {view.kind === "editor" && active && (
+          <SqlWorkspace
+            key={view.connectionId}
+            connectionId={view.connectionId}
+            connectionName={active.name}
+            sql={editorSql[view.connectionId] ?? ""}
+            onSqlChange={sql => setEditorSql(prev => ({ ...prev, [view.connectionId]: sql }))}
           />
         )}
       </main>

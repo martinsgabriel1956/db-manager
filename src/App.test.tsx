@@ -1,70 +1,24 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { mockIPC } from "@tauri-apps/api/mocks";
-import type { InvokeArgs } from "@tauri-apps/api/core";
 import { expect, test } from "vitest";
 import { App } from "@/App";
-import type { AppError, ConnectionConfig, KeychainOutcome } from "@/bindings";
-
-type Call = { cmd: string; args: InvokeArgs | undefined };
-
-const prodPostgres: ConnectionConfig = {
-  id: "pg-1",
-  name: "Postgres prod",
-  engine: "postgres",
-  environment: "prod",
-  readOnly: true,
-  timeoutSecs: 30,
-  target: { kind: "network", host: "db", port: 5432, database: "app", username: "me" },
-  tls: { mode: "require", caCertPath: null },
-  keySeparator: null
-};
-
-/** Fake backend: keeps connections in memory, records every call. */
-function fakeBackend(initial: ConnectionConfig[], overrides: Record<string, () => unknown> = {}) {
-  let connections = [...initial];
-  const calls: Call[] = [];
-  const ok: KeychainOutcome = { keychainWarning: null };
-
-  mockIPC((cmd, args) => {
-    calls.push({ cmd, args });
-    if (overrides[cmd]) {
-      return overrides[cmd]();
-    }
-    if (cmd === "list_connections") {
-      return connections;
-    }
-    if (cmd === "save_connection") {
-      const { config } = args as { config: ConnectionConfig };
-      connections = [...connections.filter(c => c.id !== config.id), config];
-      return ok;
-    }
-    if (cmd === "delete_connection") {
-      const { id } = args as { id: string };
-      connections = connections.filter(c => c.id !== id);
-      return ok;
-    }
-    throw new Error(`unexpected command ${cmd}`);
-  });
-
-  return calls;
-}
+import type { AppError, ConnectionConfig } from "@/bindings";
+import { callsTo, fakeBackend, localRedis, prodPostgres } from "@/test/fakeBackend";
+import { renderWithClient } from "@/test/render";
 
 function renderApp() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <App />
-    </QueryClientProvider>
-  );
+  return renderWithClient(<App />);
 }
 
-test("lists connections with environment and read-only marker", async () => {
+async function editConnection(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(await screen.findByRole("button", { name: `Editar ${name}` }));
+}
+
+test("lists connections with engine and read-only marker", async () => {
   fakeBackend([prodPostgres]);
   renderApp();
 
-  const item = await screen.findByRole("button", { name: /Postgres prod/ });
+  const item = await screen.findByRole("button", { name: /^Postgres prod/ });
 
   expect(item).toHaveTextContent("PostgreSQL");
   expect(item).toHaveTextContent("RO");
@@ -87,8 +41,8 @@ test("creates a connection and sends the password as a secret change", async () 
   await user.type(screen.getByLabelText("Senha"), "s3cret");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-  await waitFor(() => expect(calls.some(c => c.cmd === "save_connection")).toBe(true));
-  const save = calls.find(c => c.cmd === "save_connection")!.args as {
+  await waitFor(() => expect(callsTo(calls, "save_connection")).toHaveLength(1));
+  const save = callsTo(calls, "save_connection")[0] as {
     config: ConnectionConfig;
     secret: unknown;
   };
@@ -98,7 +52,7 @@ test("creates a connection and sends the password as a secret change", async () 
     target: { kind: "network", host: "localhost", port: 5432 }
   });
   expect(save.secret).toEqual({ action: "set", value: "s3cret" });
-  expect(await screen.findByRole("button", { name: /Local PG/ })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /^Local PG/ })).toBeInTheDocument();
 });
 
 test("blocks submit and shows inline errors when the form is invalid", async () => {
@@ -111,7 +65,7 @@ test("blocks submit and shows inline errors when the form is invalid", async () 
 
   expect(screen.getByText("Informe um nome")).toBeInTheDocument();
   expect(screen.getByLabelText("Nome")).toHaveAttribute("aria-invalid", "true");
-  expect(calls.some(c => c.cmd === "save_connection")).toBe(false);
+  expect(callsTo(calls, "save_connection")).toHaveLength(0);
 });
 
 test("switching to sqlite swaps network fields for a file path", async () => {
@@ -139,12 +93,12 @@ test("redis shows the key separator field", async () => {
   expect(screen.getByLabelText("Porta")).toHaveValue(6379);
 });
 
-test("selecting a prod connection marks the window and fills the form", async () => {
+test("editing a prod connection marks the window and fills the form", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
   const { container } = renderApp();
 
-  await user.click(await screen.findByRole("button", { name: /Postgres prod/ }));
+  await editConnection(user, "Postgres prod");
 
   expect(container.firstChild).toHaveAttribute("data-environment", "prod");
   expect(screen.getByLabelText("Nome")).toHaveValue("Postgres prod");
@@ -156,14 +110,13 @@ test("editing with 'remove saved password' sends a clear secret change", async (
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: /Postgres prod/ }));
+  await editConnection(user, "Postgres prod");
   await user.click(screen.getByLabelText("Remover senha salva"));
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-  await waitFor(() => {
-    const save = calls.find(c => c.cmd === "save_connection");
-    expect(save?.args).toMatchObject({ secret: { action: "clear" } });
-  });
+  await waitFor(() =>
+    expect(callsTo(calls, "save_connection")[0]).toMatchObject({ secret: { action: "clear" } })
+  );
 });
 
 test("delete asks for confirmation before calling the backend", async () => {
@@ -171,14 +124,14 @@ test("delete asks for confirmation before calling the backend", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: /Postgres prod/ }));
+  await editConnection(user, "Postgres prod");
   await user.click(screen.getByRole("button", { name: "Excluir" }));
-  expect(calls.some(c => c.cmd === "delete_connection")).toBe(false);
+  expect(callsTo(calls, "delete_connection")).toHaveLength(0);
 
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
 
   await waitFor(() => expect(screen.getByText("Nenhuma conexão cadastrada.")).toBeInTheDocument());
-  expect(calls.find(c => c.cmd === "delete_connection")?.args).toEqual({ id: "pg-1" });
+  expect(callsTo(calls, "delete_connection")).toEqual([{ id: "pg-1" }]);
 });
 
 test("shows the keychain warning after saving", async () => {
@@ -188,7 +141,7 @@ test("shows the keychain warning after saving", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: /Postgres prod/ }));
+  await editConnection(user, "Postgres prod");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
   expect(await screen.findByRole("status")).toHaveTextContent(
@@ -202,7 +155,7 @@ test("shows the backend validation error", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: /Postgres prod/ }));
+  await editConnection(user, "Postgres prod");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("já existe uma conexão com esse nome");
@@ -214,4 +167,31 @@ test("shows an error when connections cannot be loaded", async () => {
   renderApp();
 
   expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+});
+
+test("saving a connection drops its cached session data", async () => {
+  const calls = fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
+  expect(await screen.findByRole("button", { name: "users" })).toBeInTheDocument();
+  await editConnection(user, "Postgres prod");
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+  // the tree stays expanded and refetches: the backend closed the old session
+  await waitFor(() => expect(callsTo(calls, "list_schemas")).toHaveLength(2));
+});
+
+test("non-postgres engines say navigation comes later", async () => {
+  fakeBackend([localRedis]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click(await screen.findByRole("button", { name: /^Cache/ }));
+
+  expect(screen.getByText(/Navegação para Redis chega em um próximo marco/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Abrir editor SQL de Cache" })
+  ).not.toBeInTheDocument();
 });

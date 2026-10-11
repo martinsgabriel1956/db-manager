@@ -5,12 +5,84 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
+	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
 	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),
 	deleteConnection: (id: string) => __TAURI_INVOKE<KeychainOutcome>("delete_connection", { id }),
+	connectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("connect_database", { connectionId }),
+	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
+	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),
+	tableStructure: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<TableStructure>("table_structure", { connectionId, schema, table }),
+	completionTables: (connectionId: string) => __TAURI_INVOKE<CompletionTable[]>("completion_tables", { connectionId }),
+	browseTable: (connectionId: string, request: BrowseRequest) => __TAURI_INVOKE<RowBatch>("browse_table", { connectionId, request }),
+	runScript: (connectionId: string, runId: string, sql: string) => __TAURI_INVOKE<ScriptOutcome>("run_script", { connectionId, runId, sql }),
+	fetchMore: (cursorId: string) => __TAURI_INVOKE<RowBatch>("fetch_more", { cursorId }),
+	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
+	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 };
 
 /* Types */
-export type AppError = { kind: "validation"; message: string } | { kind: "notFound"; message: string } | { kind: "storage"; message: string } | { kind: "keychain"; message: string };
+/**
+ *  Serialized as `{ kind, message }`. The payload is the final, human-readable message
+ *  (built by the constructors below), so `message` and `Display` always match.
+ */
+export type AppError = { kind: "validation"; message: string } | { kind: "notFound"; message: string } | { kind: "storage"; message: string } | { kind: "keychain"; message: string } | { kind: "notConnected"; message: string } | { kind: "database"; message: string } | { kind: "cancelled"; message: string } | { kind: "timeout"; message: string };
+
+export type BrowseRequest = {
+	schema: string,
+	table: string,
+	filters: Filter[],
+	sort: Sort | null,
+	/**  0-based */
+	page: number,
+	pageSize: number,
+};
+
+/**
+ *  One value crossing the Rust ↔ TS boundary. JSON silently loses data (i64 > 2^53,
+ *  numeric precision, binary, NULL vs "NULL"), so every lossy type travels as text.
+ */
+export type Cell = { t: "null" } | { t: "bool"; v: boolean } | 
+/**  any integer width, always as string */
+{ t: "int"; v: string } | 
+/**  finite floats only; NaN/Infinity become `Unknown` */
+{ t: "float"; v: number | null } | 
+/**  numeric/decimal, exact text */
+{ t: "decimal"; v: string } | { t: "text"; v: string } | { t: "bytes"; v: {
+	len: number,
+	previewHex: string,
+} } | 
+/**  ISO 8601 date */
+{ t: "date"; v: string } | 
+/**  `tz` is None for timestamps without time zone */
+{ t: "timestamp"; v: {
+	value: string,
+	tz: string | null,
+} } | 
+/**
+ *  original JSON text, validated. Not a parsed value: JSON numbers beyond 2^53
+ *  would be rounded by JavaScript on the way to the UI
+ */
+{ t: "json"; v: string } | { t: "array"; v: Cell[] } | 
+/**  type we don't model: shown as text, never editable */
+{ t: "unknown"; v: {
+	typeName: string,
+	text: string,
+} };
+
+export type ColumnInfo = {
+	name: string,
+	dataType: string,
+	nullable: boolean,
+	default: string | null,
+	isPrimaryKey: boolean,
+};
+
+/**  Tables and their columns, for editor autocomplete. */
+export type CompletionTable = {
+	schema: string,
+	table: string,
+	columns: string[],
+};
 
 /**
  *  Connection metadata persisted in connections.json. The password never lives here:
@@ -34,6 +106,25 @@ export type Engine = "postgres" | "mysql" | "sqlite" | "mongo" | "redis";
 
 export type Environment = "local" | "dev" | "staging" | "prod";
 
+export type Filter = {
+	column: string,
+	op: FilterOp,
+	/**  required for Eq/Like, ignored for IsNull/IsNotNull */
+	value: string | null,
+};
+
+export type FilterOp = "eq" | "like" | "isNull" | "isNotNull";
+
+export type ForeignKeyInfo = {
+	name: string,
+	definition: string,
+};
+
+export type IndexInfo = {
+	name: string,
+	definition: string,
+};
+
 /**
  *  Result of an operation that touches the keychain. Metadata is saved even when the
  *  keychain fails, so the failure is reported as a warning instead of an error.
@@ -42,11 +133,60 @@ export type KeychainOutcome = {
 	keychainWarning: string | null,
 };
 
+export type Relation = {
+	name: string,
+	kind: RelationKind,
+};
+
+export type RelationKind = "table" | "view" | "materializedView" | "foreignTable";
+
+export type ResultColumn = {
+	name: string,
+	typeName: string,
+};
+
+export type RowBatch = {
+	columns: ResultColumn[],
+	rows: Cell[][],
+	hasMore: boolean,
+};
+
+export type SchemaInfo = {
+	name: string,
+	relations: Relation[],
+};
+
+export type ScriptOutcome = {
+	statementCount: number,
+	durationMs: number,
+	result: StatementResult,
+};
+
 /**
  *  What to do with the stored password when saving a connection.
  *  The front never receives the stored password, so editing needs an explicit "keep".
  */
 export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" };
+
+export type Sort = {
+	column: string,
+	direction: SortDirection,
+};
+
+export type SortDirection = "asc" | "desc";
+
+/**  Result of the last statement of a script. */
+export type StatementResult = 
+/**  `cursor_id` is set while more rows can be fetched with `fetch_more` */
+{ kind: "rows"; batch: RowBatch; cursorId: string | null } | 
+/**  DDL/DML/utility statement. u32 because specta forbids u64; saturates at ~4 billion. */
+{ kind: "command"; rowsAffected: number };
+
+export type TableStructure = {
+	columns: ColumnInfo[],
+	indexes: IndexInfo[],
+	foreignKeys: ForeignKeyInfo[],
+};
 
 /**  Where the database lives: a server (Postgres, MySQL, Mongo, Redis) or a file (SQLite). */
 export type Target = { kind: "network"; host: string; port: number; database: string; username: string } | { kind: "file"; path: string };

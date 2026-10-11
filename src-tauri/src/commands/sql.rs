@@ -1,0 +1,104 @@
+use std::sync::PoisonError;
+
+use tauri::State;
+
+use crate::AppState;
+use crate::domain::{
+    AppError, BrowseRequest, CompletionTable, RowBatch, SchemaInfo, ScriptOutcome, TableStructure,
+};
+use crate::use_cases::{connections, sql};
+
+#[tauri::command]
+#[specta::specta]
+pub async fn connect_database(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<(), AppError> {
+    let config = {
+        let store = state.store.lock().unwrap_or_else(PoisonError::into_inner);
+        connections::find(&store, &connection_id)?
+    };
+    sql::connect(&state.registry, state.secrets.as_ref(), config).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn disconnect_database(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<(), AppError> {
+    sql::disconnect(&state.registry, &connection_id).await;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn list_schemas(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Vec<SchemaInfo>, AppError> {
+    sql::list_schemas(&state.registry, &connection_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn table_structure(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+) -> Result<TableStructure, AppError> {
+    sql::table_structure(&state.registry, &connection_id, &schema, &table).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn completion_tables(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Vec<CompletionTable>, AppError> {
+    sql::completion_tables(&state.registry, &connection_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn browse_table(
+    state: State<'_, AppState>,
+    connection_id: String,
+    request: BrowseRequest,
+) -> Result<RowBatch, AppError> {
+    sql::browse(&state.registry, &connection_id, request).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn run_script(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    sql: String,
+) -> Result<ScriptOutcome, AppError> {
+    sql::run_script(&state.registry, &connection_id, &run_id, &sql).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn fetch_more(
+    state: State<'_, AppState>,
+    cursor_id: String,
+) -> Result<RowBatch, AppError> {
+    sql::fetch_more(&state.registry, &cursor_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn close_cursor(state: State<'_, AppState>, cursor_id: String) -> Result<(), AppError> {
+    sql::close_cursor(&state.registry, &cursor_id);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn cancel_run(state: State<'_, AppState>, run_id: String) -> Result<(), AppError> {
+    sql::cancel_run(&state.registry, &run_id).await
+}

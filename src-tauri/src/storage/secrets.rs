@@ -4,6 +4,8 @@ const SERVICE: &str = "db-manager";
 
 /// Two implementations: the OS keychain in the app, an in-memory one in tests.
 pub trait SecretStore: Send + Sync {
+    /// None when no secret is stored for this connection.
+    fn get(&self, connection_id: &str) -> Result<Option<String>, AppError>;
     fn set(&self, connection_id: &str, secret: &str) -> Result<(), AppError>;
     /// Deleting a secret that does not exist is not an error.
     fn delete(&self, connection_id: &str) -> Result<(), AppError>;
@@ -13,6 +15,14 @@ pub trait SecretStore: Send + Sync {
 pub struct OsKeychain;
 
 impl SecretStore for OsKeychain {
+    fn get(&self, connection_id: &str) -> Result<Option<String>, AppError> {
+        match entry(connection_id)?.get_password() {
+            Ok(secret) => Ok(Some(secret)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(keychain_error(err)),
+        }
+    }
+
     fn set(&self, connection_id: &str, secret: &str) -> Result<(), AppError> {
         entry(connection_id)?
             .set_password(secret)
@@ -32,7 +42,7 @@ fn entry(connection_id: &str) -> Result<keyring::Entry, AppError> {
 }
 
 fn keychain_error(err: keyring::Error) -> AppError {
-    AppError::Keychain(err.to_string())
+    AppError::keychain(err)
 }
 
 #[cfg(test)]
@@ -46,13 +56,10 @@ mod tests {
     fn os_keychain_set_then_delete() {
         let id = "db-manager-selftest";
         OsKeychain.set(id, "pw").unwrap();
-        assert_eq!(entry(id).unwrap().get_password().unwrap(), "pw");
+        assert_eq!(OsKeychain.get(id).unwrap().as_deref(), Some("pw"));
 
         OsKeychain.delete(id).unwrap();
-        assert!(matches!(
-            entry(id).unwrap().get_password(),
-            Err(keyring::Error::NoEntry)
-        ));
+        assert_eq!(OsKeychain.get(id).unwrap(), None);
         // deleting again is not an error
         OsKeychain.delete(id).unwrap();
     }

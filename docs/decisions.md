@@ -111,3 +111,21 @@ src-tauri/src/
 ## v2+
 
 Túnel SSH, Redis cluster, edição de schema pela UI, builder de aggregation, pub/sub, assinatura e auto-update.
+
+## Notas de implementação
+
+Decisões tomadas durante a implementação, que refinam ou adiam itens acima.
+
+### M1
+
+- **Protocolo texto no Postgres.** Toda query roda pelo simple query protocol (`sqlx::raw_sql`): o servidor renderiza cada valor em texto exato e o adapter só classifica pelo OID do tipo. Um único caminho de conversão para `Cell`, fidelidade total (numeric, int8, arrays).
+- **Filtros da navegação** viram literais escapados com o algoritmo do `PQescapeLiteral` da libpq (aspas dobradas; com barra invertida, `E''`), porque o protocolo texto não aceita bind parameters. Identificadores sempre entre aspas. Testado contra injeção no teste de integração.
+- **`Cell::Json` carrega o texto JSON**, não um valor parseado: números acima de 2^53 seriam arredondados pelo JavaScript. O front formata sem `JSON.parse`.
+- **Sessão com `TimeZone=UTC`, `DateStyle=ISO`, `bytea_output=hex`** para que os textos sejam determinísticos. `timestamptz` aparece em UTC.
+- **Somente leitura forçado em toda conexão no M1** (`FORCE_READ_ONLY` em `use_cases/sql.rs`). O M2 remove isso junto com a detecção de comandos destrutivos.
+- **Sem trait `SqlAdapter` ainda**: `PostgresAdapter` é concreto. A trait é extraída no M3, quando MySQL e SQLite forem a 2ª e a 3ª implementação.
+- **Script com vários comandos**: dividido por um lexer próprio (`split.rs`: strings, `E''`, `$tag$`, comentários aninhados); todos rodam na mesma sessão e o resultado mostrado é o do último.
+- **Timeout** vale para o tempo até o primeiro lote de cada comando (e cancela no servidor). Lotes seguintes não contam, porque o usuário pode ficar lendo o resultado.
+- **Cursor**: uma task tokio é dona da conexão e do stream do último comando. Fechar/abandonar o resultado cancela no servidor (`pg_cancel_backend`) e descarta a conexão em vez de drenar.
+- **Tipos customizados** (enums, domínios, extensões) aparecem como `Unknown` (texto, não editável) no M1; resolver pelo catálogo entra no M2, quando edição importa.
+- **TanStack Table adiado**: a grade só precisa de virtualização (TanStack Virtual). Entra quando houver redimensionar/fixar colunas.

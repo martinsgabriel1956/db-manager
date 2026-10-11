@@ -31,6 +31,9 @@ export default defineConfig(() => ({
     }
   },
 
+  // the bundle is loaded from disk by Tauri, not over the network
+  build: { chunkSizeWarningLimit: 2000 },
+
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

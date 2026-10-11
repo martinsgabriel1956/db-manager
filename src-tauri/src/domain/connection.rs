@@ -86,28 +86,3 @@ pub enum SecretChange {
 pub struct KeychainOutcome {
     pub keychain_warning: Option<String>,
 }
-
-#[derive(Debug, thiserror::Error, Serialize, Type)]
-#[serde(tag = "kind", content = "message", rename_all = "camelCase")]
-pub enum AppError {
-    #[error("{0}")]
-    Validation(String),
-    #[error("conexão não encontrada: {0}")]
-    NotFound(String),
-    #[error("falha ao ler/gravar dados locais: {0}")]
-    Storage(String),
-    #[error("keychain indisponível: {0}")]
-    Keychain(String),
-}
-
-impl From<std::io::Error> for AppError {
-    fn from(err: std::io::Error) -> Self {
-        AppError::Storage(err.to_string())
-    }
-}
-
-impl From<serde_json::Error> for AppError {
-    fn from(err: serde_json::Error) -> Self {
-        AppError::Storage(err.to_string())
-    }
-}
