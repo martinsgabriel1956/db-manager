@@ -205,7 +205,7 @@ impl PostgresAdapter {
             .host(host)
             .port(*port)
             .username(username)
-            .application_name("db-manager")
+            .application_name("ordo")
             .ssl_mode(ssl_mode(config.tls.mode))
             .options(session);
         if !database.is_empty() {

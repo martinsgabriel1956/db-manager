@@ -81,7 +81,7 @@ impl MongoAdapter {
                 ));
             }
         };
-        options.app_name = Some("db-manager".to_string());
+        options.app_name = Some("ordo".to_string());
         options.connect_timeout = Some(CONNECT_TIMEOUT);
         options.server_selection_timeout = Some(CONNECT_TIMEOUT);
 

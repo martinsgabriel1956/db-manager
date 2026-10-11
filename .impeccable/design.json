@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-10-11T00:00:00Z",
-  "title": "Design System: DB Manager",
+  "title": "Design System: Ordo",
   "extensions": {
     "colorMeta": {
       "z0": { "role": "neutral", "displayName": "Zona 0 · Tinta", "tonalRamp": ["#0f1011", "#1d1f22", "#2c2f33", "#3e4247", "#4f545a", "#5c6269", "#80868d", "#b4b9bf", "#dde0e5", "#eef0f3", "#f7f8fa"] },

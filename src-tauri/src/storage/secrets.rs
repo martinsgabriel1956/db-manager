@@ -1,5 +1,6 @@
 use crate::domain::AppError;
 
+// kept from the DB Manager days: renaming it would orphan every saved password
 const SERVICE: &str = "db-manager";
 
 /// Two implementations: the OS keychain in the app, an in-memory one in tests.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DB Manager",
+  "productName": "Ordo",
   "version": "0.1.0",
   "identifier": "dev.nemomartins.dbmanager",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DB Manager",
+        "title": "Ordo",
         "width": 1200,
         "height": 800,
         "minWidth": 960,

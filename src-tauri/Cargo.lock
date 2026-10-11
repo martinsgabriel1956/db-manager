@@ -1105,31 +1105,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
-name = "db-manager"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "keyring",
- "mongodb",
- "redis",
- "serde",
- "serde_json",
- "specta",
- "specta-typescript",
- "sqlparser",
- "sqlx",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-store",
- "tauri-specta",
- "tempfile",
- "testcontainers-modules",
- "thiserror 2.0.21",
- "tokio",
-]
-
-[[package]]
 name = "dbus"
 version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3548,6 +3523,31 @@ checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "ordo"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "keyring",
+ "mongodb",
+ "redis",
+ "serde",
+ "serde_json",
+ "specta",
+ "specta-typescript",
+ "sqlparser",
+ "sqlx",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-store",
+ "tauri-specta",
+ "tempfile",
+ "testcontainers-modules",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]

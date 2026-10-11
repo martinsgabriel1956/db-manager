@@ -1,5 +1,5 @@
 ---
-name: DB Manager
+name: Ordo
 description: Cliente desktop de bancos (Postgres, MySQL, SQLite, MongoDB, Redis) desenhado como ampliação em andamento sobre uma grade de construção.
 colors:
   z0: "#0f1011"
@@ -158,7 +158,7 @@ components:
     padding: "0 8px"
 ---
 
-# Design System: DB Manager
+# Design System: Ordo
 
 ## Overview
 
@@ -185,7 +185,7 @@ Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais
 
 ### Primary
 
-- **Azul Crouwel** (`select`; `night-select` no escuro): onde você está. Tabela ativa na lateral (linha cheia em azul com texto `select-foreground`), chave aberta do Redis (idem), aba ativa (filete interno de 3px no topo + triângulo de canto), sublinhado de 2px das tabs internas, célula selecionada (contorno de 2px + fundo a 10%), anel de foco (`--ring`), cursor e `caret-color`, `accent-color`, `::selection` a 28%. Também é a cor da única diagonal do sistema (marca DB/MANAGER, cabeçalho da ficha de exposição, ícone do app).
+- **Azul Crouwel** (`select`; `night-select` no escuro): onde você está. Tabela ativa na lateral (linha cheia em azul com texto `select-foreground`), chave aberta do Redis (idem), aba ativa (filete interno de 3px no topo + triângulo de canto), sublinhado de 2px das tabs internas, célula selecionada (contorno de 2px + fundo a 10%), anel de foco (`--ring`), cursor e `caret-color`, `accent-color`, `::selection` a 28%. Também é a cor da única diagonal do sistema (barra que fecha a marca ORDO/, cabeçalho da ficha de exposição) e do canto cortado (aba ativa, ícone do app).
 
 ### Secondary
 
@@ -222,7 +222,7 @@ Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais
 
 ### Hierarchy
 
-- **Display** (Saira 600, largura 80%, -0.01em, caixa preservada, utilitário `display`): identificadores, que são dado. Nome da tabela, coleção ou db do Redis no cabeçalho da view (1.75rem), marca DB (1.375rem), título de diálogos genéricos (1.25rem).
+- **Display** (Saira 600, largura 80%, -0.01em, caixa preservada, utilitário `display`): identificadores, que são dado. Nome da tabela, coleção ou db do Redis no cabeçalho da view (1.75rem), título de diálogos genéricos (1.25rem). A marca ORDO usa `display-caps` a 1.75rem com largura 75% e 0.14em, fechada pela diagonal azul.
 - **Display Caps** (Saira 600, largura 60%, 0.05em, versal, utilitário `display-caps`): títulos que não são identificadores. "Confirmar execução" (2rem), estados vazios ("Nenhuma aba aberta" 3.75rem, "Nada no histórico" 2.25rem, "Sem resultado" 1.875rem), "Histórico" (1.25rem), "SQL" (1.125rem), MANAGER na marca.
 - **Legend** (Saira 600, 0.6875rem, largura 75%, 0.1em, versal, utilitário `legend`): CONEXÕES, campos da ficha, `Label` de formulário, etiquetas de ambiente, badges, chip de filtro, código da engine (0.75rem), palavra "Produção" na faixa (0.75rem).
 - **Title** (Hanken 600, 13px): nome da conexão no registro; linhas da árvore em 13px regular.
@@ -263,7 +263,7 @@ Plano. Profundidade vem de zona (Z10 sobre Z9), de filetes de 1px e do filete de
 
 ## Shapes
 
-Cantos de 0px em tudo (`--radius: 0px`, todas as escalas de raio zeradas). Filetes de 1px; em tinta nas divisões principais, Z8 nas internas. A única diagonal é a linha azul da marca, repetida no cabeçalho da ficha de exposição e no ícone do app; o triângulo azul de canto da aba ativa é o corte dessa diagonal.
+Cantos de 0px em tudo (`--radius: 0px`, todas as escalas de raio zeradas). Filetes de 1px; em tinta nas divisões principais, Z8 nas internas. A única diagonal é a linha azul que fecha a marca, repetida no cabeçalho da ficha de exposição; o triângulo azul de canto da aba ativa e do ícone é o corte dessa diagonal.
 
 Texturas de estado, todas em `--hatch`:
 
@@ -272,7 +272,7 @@ Texturas de estado, todas em `--hatch`:
 - **Banda de hachura** (`hatch-band` / `cross-hatch-band`, 7px na base da célula, 1px a cada 5px): na grade a hachura fica numa banda sob o valor, nunca atrás dos dígitos.
 - **Pontilhado** (`border-dotted`): retido. Etiqueta LOCAL, badge "Somente leitura", cadeado da conexão somente leitura.
 
-O ícone do app (`src-tauri/icons/icon.svg`) é o mesmo mundo: papel branco com grade, moldura e "DB" em tinta #0f1011 com cantos cortados, diagonal em azul Crouwel.
+O ícone do app (`src-tauri/icons/icon.svg`) é o mesmo mundo: papel Z10 com grade, moldura em tinta #0f1011, um "O" quadrado de cantos cortados construído em células de 64px e o canto superior direito cortado em azul Crouwel, como a aba ativa.
 
 ## Components
 

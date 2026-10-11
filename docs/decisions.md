@@ -1,4 +1,6 @@
-# DB Manager — Decisões de design (v1)
+# Ordo — Decisões de design (v1)
+
+> O app se chamava DB Manager até a v1; o identificador `dev.nemomartins.dbmanager` e o serviço do keychain `db-manager` continuam com o nome antigo para não perder conexões e senhas salvas.
 
 Resultado da sessão de grill de 2026-10-10. Uso pessoal, um único usuário.
 

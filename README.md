@@ -1,4 +1,4 @@
-# DB Manager
+# Ordo
 
 Cliente desktop (Tauri + React + Rust) para Postgres, MySQL, SQLite, MongoDB e Redis.
 Decisões de design e marcos: [docs/decisions.md](docs/decisions.md).

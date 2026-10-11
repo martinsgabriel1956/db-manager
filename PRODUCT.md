@@ -48,7 +48,7 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 
 ## Brand Commitments
 
-- Nome: **DB Manager** (identificador `dev.nemomartins.dbmanager`).
+- Nome: **Ordo** ("ordem" em latim: uma ordem só para cinco engines). Antes se chamava DB Manager; o identificador `dev.nemomartins.dbmanager` e o serviço do keychain `db-manager` mantêm o nome antigo de propósito, porque trocá-los apagaria conexões e senhas salvas.
 - Idioma da interface: **português do Brasil**, direto e técnico. Comandos e nomes do banco aparecem como são (SQL, `SCAN`, `$numberLong`), sem tradução.
 - Não existe marca visual própria: o ícone em `src-tauri/icons` é o placeholder padrão do Tauri.
 
