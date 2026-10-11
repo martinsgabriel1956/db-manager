@@ -1,0 +1,24 @@
+# Demo Postgres for trying the app locally. Throwaway data and credentials.
+#   docker compose -f dev/demo/compose.yml up -d     # start (seeds on first run)
+#   docker compose -f dev/demo/compose.yml down -v   # stop and delete the data
+# In the app: host localhost, port 55432, database demo, user demo, password demo.
+services:
+  postgres:
+    image: postgres:17
+    container_name: db-manager-demo
+    environment:
+      POSTGRES_DB: demo
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+      - demo-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d demo"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  demo-data:
