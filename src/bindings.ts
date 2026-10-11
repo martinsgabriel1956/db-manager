@@ -20,6 +20,10 @@ export const commands = {
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
 	searchHistory: (text: string, connectionId: string | null) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId }),
+	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),
+	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
+	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
+	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
@@ -150,6 +154,19 @@ export type ConnectionConfig = {
 	keySeparator: string | null,
 };
 
+/**  A table of the ER diagram: its columns and the foreign keys leaving it. */
+export type DiagramTable = {
+	name: string,
+	columns: ColumnInfo[],
+	foreignKeys: ForeignKeyInfo[],
+};
+
+export type DocumentFormat = 
+/**  one Extended JSON document per line */
+"ndjson" | 
+/**  a JSON array of documents */
+"jsonArray";
+
 export type DocumentPage = {
 	documents: string[],
 	hasMore: boolean,
@@ -162,6 +179,11 @@ export type DocumentWrite = { kind: "insert"; document: string } |
 export type Engine = "postgres" | "mysql" | "sqlite" | "mongo" | "redis";
 
 export type Environment = "local" | "dev" | "staging" | "prod";
+
+export type ExportOutcome = {
+	rows: number,
+	durationMs: number,
+};
 
 export type Filter = {
 	column: string,
@@ -188,6 +210,11 @@ export type FindRequest = {
 export type ForeignKeyInfo = {
 	name: string,
 	definition: string,
+	columns: string[],
+	referencedSchema: string,
+	referencedTable: string,
+	/**  empty when SQLite points at the referenced primary key implicitly */
+	referencedColumns: string[],
 };
 
 export type HashEntry = {

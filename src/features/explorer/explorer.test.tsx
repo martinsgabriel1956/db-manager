@@ -31,10 +31,10 @@ test("expanding a connection connects and lists schemas with public open", async
 
   expect(await screen.findByRole("button", { name: "users" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "active_users" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /audit/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^audit/ })).toBeInTheDocument();
   expect(callsTo(calls, "connect_database")).toEqual([{ connectionId: "pg-1" }]);
 
-  await user.click(screen.getByRole("button", { name: /audit/ }));
+  await user.click(screen.getByRole("button", { name: /^audit/ }));
   expect(screen.getByText("Sem tabelas")).toBeInTheDocument();
 });
 

@@ -30,6 +30,15 @@ test("a Redis database opens once per connection", () => {
   expect(state().activeId).toBe(state().tabs[0].id);
 });
 
+test("a schema diagram opens once", () => {
+  state().openDiagram({ connectionId: "pg", schema: "public" });
+  state().openDiagram({ connectionId: "pg", schema: "app" });
+  state().openDiagram({ connectionId: "pg", schema: "public" });
+
+  expect(state().tabs).toHaveLength(2);
+  expect(state().activeId).toBe(state().tabs[0].id);
+});
+
 test("editors are numbered per connection", () => {
   state().openEditor("pg");
   state().openEditor("pg", "SELECT 1");

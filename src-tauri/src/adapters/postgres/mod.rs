@@ -23,6 +23,9 @@ use crate::domain::{
 const MAX_POOL_CONNECTIONS: u32 = 5;
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// name, definition, columns, referenced schema, table and columns
+type ForeignKeyRow = (String, String, Vec<String>, String, String, Vec<String>);
+
 pub struct PostgresAdapter {
     pool: PgPool,
     engine: PgEngine,
@@ -291,11 +294,20 @@ impl PostgresAdapter {
         .bind(schema)
         .bind(table)
         .fetch_all(&self.pool);
-        let foreign_keys = sqlx::query_as::<_, (String, String)>(
-            r"SELECT con.conname::text, pg_get_constraintdef(con.oid)
+        let foreign_keys = sqlx::query_as::<_, ForeignKeyRow>(
+            r"SELECT con.conname::text, pg_get_constraintdef(con.oid),
+                     ARRAY(SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY k(num, pos)
+                           JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.num
+                           ORDER BY k.pos),
+                     rn.nspname::text, rc.relname::text,
+                     ARRAY(SELECT a.attname::text FROM unnest(con.confkey) WITH ORDINALITY k(num, pos)
+                           JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.num
+                           ORDER BY k.pos)
               FROM pg_constraint con
               JOIN pg_class c ON c.oid = con.conrelid
               JOIN pg_namespace n ON n.oid = c.relnamespace
+              JOIN pg_class rc ON rc.oid = con.confrelid
+              JOIN pg_namespace rn ON rn.oid = rc.relnamespace
               WHERE con.contype = 'f' AND n.nspname = $1 AND c.relname = $2
               ORDER BY con.conname",
         )
@@ -327,7 +339,25 @@ impl PostgresAdapter {
                 .collect(),
             foreign_keys: foreign_keys
                 .into_iter()
-                .map(|(name, definition)| ForeignKeyInfo { name, definition })
+                .map(
+                    |(
+                        name,
+                        definition,
+                        columns,
+                        referenced_schema,
+                        referenced_table,
+                        referenced_columns,
+                    )| {
+                        ForeignKeyInfo {
+                            name,
+                            definition,
+                            columns,
+                            referenced_schema,
+                            referenced_table,
+                            referenced_columns,
+                        }
+                    },
+                )
                 .collect(),
         })
     }

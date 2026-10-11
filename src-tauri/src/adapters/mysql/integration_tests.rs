@@ -157,6 +157,16 @@ async fn values_types_and_introspection() {
         structure.foreign_keys[0].definition,
         "FOREIGN KEY (team_id) REFERENCES test.teams (id)"
     );
+    let key = &structure.foreign_keys[0];
+    assert_eq!(key.columns, ["team_id"]);
+    assert_eq!(
+        (
+            key.referenced_schema.as_str(),
+            key.referenced_table.as_str()
+        ),
+        ("test", "teams")
+    );
+    assert_eq!(key.referenced_columns, ["id"]);
     assert_eq!(db.primary_key("test", "people").await.unwrap(), vec!["id"]);
     assert!(matches!(
         db.table_structure("test", "missing").await,

@@ -264,13 +264,23 @@ impl SqliteAdapter {
                 .collect(),
             foreign_keys: grouped
                 .into_iter()
-                .map(|(id, target, froms, tos)| ForeignKeyInfo {
-                    name: format!("fk_{id}"),
-                    definition: format!(
-                        "FOREIGN KEY ({}) REFERENCES {target} ({})",
-                        froms.join(", "),
-                        tos.join(", ")
-                    ),
+                .map(|(id, target, froms, tos)| {
+                    // `to` is empty for every column, or for none
+                    let referenced_columns: Vec<String> =
+                        tos.into_iter().filter(|to| !to.is_empty()).collect();
+                    ForeignKeyInfo {
+                        name: format!("fk_{id}"),
+                        definition: format!(
+                            "FOREIGN KEY ({}) REFERENCES {target} ({})",
+                            froms.join(", "),
+                            referenced_columns.join(", ")
+                        ),
+                        columns: froms,
+                        // SQLite foreign keys never leave their database
+                        referenced_schema: schema.to_string(),
+                        referenced_table: target,
+                        referenced_columns,
+                    }
                 })
                 .collect(),
         })

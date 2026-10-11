@@ -43,6 +43,10 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::cancel_run,
             commands::sql::apply_changes,
             commands::sql::search_history,
+            commands::sql::schema_diagram,
+            commands::export::export_query,
+            commands::export::export_table,
+            commands::export::export_collection,
             commands::mongo::browse_collection,
             commands::mongo::collection_indexes,
             commands::mongo::run_aggregation,
@@ -72,6 +76,8 @@ pub fn run() {
     tauri::Builder::default()
         // UI state (open tabs, editor text), see src/features/tabs
         .plugin(tauri_plugin_store::Builder::new().build())
+        // "save as" for exports
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;

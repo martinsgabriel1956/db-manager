@@ -4,8 +4,8 @@ use tauri::State;
 
 use crate::AppState;
 use crate::domain::{
-    AppError, ApplyResponse, BrowseRequest, CompletionTable, HistoryEntry, RowBatch, RunResponse,
-    SchemaInfo, TableChanges, TableStructure,
+    AppError, ApplyResponse, BrowseRequest, CompletionTable, DiagramTable, HistoryEntry, RowBatch,
+    RunResponse, SchemaInfo, TableChanges, TableStructure,
 };
 use crate::use_cases::{connections, sql};
 
@@ -139,4 +139,14 @@ pub async fn close_cursor(state: State<'_, AppState>, cursor_id: String) -> Resu
 #[specta::specta]
 pub async fn cancel_run(state: State<'_, AppState>, run_id: String) -> Result<(), AppError> {
     sql::cancel_run(&state.registry, &run_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn schema_diagram(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+) -> Result<Vec<DiagramTable>, AppError> {
+    sql::schema_diagram(&state.registry, &connection_id, &schema).await
 }

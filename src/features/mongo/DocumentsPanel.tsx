@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
+import { commands } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { connected } from "@/features/explorer/queries";
+import { ExportButton, type ExportFormat } from "@/features/export/ExportButton";
 import { prettyJson } from "@/features/results/format";
 import { DocumentCard, type DocumentView } from "@/features/mongo/DocumentCard";
 import { DocumentEditorDialog } from "@/features/mongo/DocumentEditorDialog";
@@ -66,6 +69,28 @@ export function DocumentsPanel({
     pageSize: DOCUMENTS_PAGE_SIZE
   });
   const writer = useDocumentWrite(connectionId, database, collection);
+
+  // what the list shows (applied filter, sort and projection), every page
+  const exportFormats: ExportFormat[] = (
+    [
+      ["ndjson", "NDJSON", "ndjson"],
+      ["jsonArray", "JSON", "json"]
+    ] as const
+  ).map(([format, label, extension]) => ({
+    id: format,
+    label,
+    extension,
+    run: (path, runId) =>
+      connected(connectionId, () =>
+        commands.exportCollection(
+          connectionId,
+          runId,
+          { database, collection, ...applied, page: 0, pageSize: DOCUMENTS_PAGE_SIZE },
+          format,
+          path
+        )
+      )
+  }));
 
   function apply(event: FormEvent) {
     event.preventDefault();
@@ -131,6 +156,9 @@ export function DocumentsPanel({
         {documents.isFetching && (
           <span className="text-xs text-muted-foreground">atualizando…</span>
         )}
+        <div className="ml-auto">
+          <ExportButton baseName={collection} formats={exportFormats} />
+        </div>
       </div>
 
       {documents.isError && (

@@ -1,14 +1,16 @@
 use std::collections::BTreeSet;
 use std::time::Instant;
 
+use futures_util::{StreamExt, TryStreamExt, stream};
+
 use crate::adapters::SqlConnection;
 use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
 use crate::adapters::sql_builder;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, CompletionTable, Confirmation, ConnectionConfig,
-    Engine, Environment, FilterOp, RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome,
-    StatementResult, TableChanges, TableStructure,
+    DiagramTable, Engine, Environment, FilterOp, RelationKind, RowBatch, RowChange, RunResponse,
+    SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableStructure,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
@@ -75,6 +77,41 @@ pub async fn table_structure(
         .await
 }
 
+/// Every table of the schema with its columns and outgoing foreign keys.
+pub async fn schema_diagram(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+) -> Result<Vec<DiagramTable>, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let sql = connection.sql()?;
+    let tables: Vec<String> = sql
+        .list_schemas()
+        .await?
+        .into_iter()
+        .find(|info| info.name == schema)
+        .ok_or_else(|| AppError::not_found(&format!("schema {schema}")))?
+        .relations
+        .into_iter()
+        .filter(|relation| relation.kind == RelationKind::Table)
+        .map(|relation| relation.name)
+        .collect();
+    // ponytail: one catalog round trip per table; a schema-wide query per engine if
+    // big schemas get slow
+    stream::iter(tables)
+        .map(|name| async move {
+            let structure = sql.table_structure(schema, &name).await?;
+            Ok::<_, AppError>(DiagramTable {
+                name,
+                columns: structure.columns,
+                foreign_keys: structure.foreign_keys,
+            })
+        })
+        .buffered(8)
+        .try_collect()
+        .await
+}
+
 pub async fn completion_tables(
     registry: &Registry,
     connection_id: &str,
@@ -99,7 +136,7 @@ pub async fn browse(
         .await
 }
 
-fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
+pub(crate) fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
     if request.page_size == 0 || request.page_size > MAX_PAGE_SIZE {
         return Err(AppError::validation(format!(
             "tamanho de página deve ser entre 1 e {MAX_PAGE_SIZE}"

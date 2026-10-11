@@ -275,20 +275,31 @@ impl MysqlAdapter {
                 _ => indexes.push((name, non_unique == 0, vec![column])),
             }
         }
-        let mut foreign_keys: Vec<(String, Vec<String>, String, Vec<String>)> = Vec::new();
+        let mut foreign_keys: Vec<ForeignKeyInfo> = Vec::new();
         for (name, column, ref_schema, ref_table, ref_column) in key_columns {
             match foreign_keys.last_mut() {
-                Some((last, columns, _, refs)) if *last == name => {
-                    columns.push(column);
-                    refs.push(ref_column);
+                Some(last) if last.name == name => {
+                    last.columns.push(column);
+                    last.referenced_columns.push(ref_column);
                 }
-                _ => foreign_keys.push((
+                _ => foreign_keys.push(ForeignKeyInfo {
                     name,
-                    vec![column],
-                    format!("{ref_schema}.{ref_table}"),
-                    vec![ref_column],
-                )),
+                    definition: String::new(),
+                    columns: vec![column],
+                    referenced_schema: ref_schema,
+                    referenced_table: ref_table,
+                    referenced_columns: vec![ref_column],
+                }),
             }
+        }
+        for key in &mut foreign_keys {
+            key.definition = format!(
+                "FOREIGN KEY ({}) REFERENCES {}.{} ({})",
+                key.columns.join(", "),
+                key.referenced_schema,
+                key.referenced_table,
+                key.referenced_columns.join(", ")
+            );
         }
 
         Ok(TableStructure {
@@ -316,17 +327,7 @@ impl MysqlAdapter {
                     }
                 })
                 .collect(),
-            foreign_keys: foreign_keys
-                .into_iter()
-                .map(|(name, columns, target, refs)| ForeignKeyInfo {
-                    definition: format!(
-                        "FOREIGN KEY ({}) REFERENCES {target} ({})",
-                        columns.join(", "),
-                        refs.join(", ")
-                    ),
-                    name,
-                })
-                .collect(),
+            foreign_keys,
         })
     }
 

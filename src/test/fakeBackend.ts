@@ -3,6 +3,7 @@ import type { InvokeArgs } from "@tauri-apps/api/core";
 import type {
   CompletionTable,
   ConnectionConfig,
+  DiagramTable,
   KeyDetail,
   KeychainOutcome,
   RowBatch,
@@ -115,6 +116,42 @@ export const redisKeys: Record<string, KeyDetail> = {
     }
   }
 };
+
+export const diagram: DiagramTable[] = [
+  {
+    name: "teams",
+    columns: [
+      { name: "id", dataType: "integer", nullable: false, default: null, isPrimaryKey: true },
+      { name: "name", dataType: "text", nullable: true, default: null, isPrimaryKey: false }
+    ],
+    foreignKeys: []
+  },
+  {
+    name: "users",
+    columns: [
+      { name: "id", dataType: "integer", nullable: false, default: null, isPrimaryKey: true },
+      { name: "team_id", dataType: "integer", nullable: true, default: null, isPrimaryKey: false }
+    ],
+    foreignKeys: [
+      {
+        name: "users_team_id_fkey",
+        definition: "FOREIGN KEY (team_id) REFERENCES teams(id)",
+        columns: ["team_id"],
+        referencedSchema: "public",
+        referencedTable: "teams",
+        referencedColumns: ["id"]
+      },
+      {
+        name: "users_tenant_fkey",
+        definition: "FOREIGN KEY (team_id) REFERENCES billing.tenants(id)",
+        columns: ["team_id"],
+        referencedSchema: "billing",
+        referencedTable: "tenants",
+        referencedColumns: ["id"]
+      }
+    ]
+  }
+];
 
 export const schemas: SchemaInfo[] = [
   {
@@ -231,6 +268,11 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       { name: "Server", entries: [["redis_version", "7.4.0"]] },
       { name: "Memory", entries: [["used_memory_human", "1.2M"]] }
     ],
+    schema_diagram: () => diagram,
+    export_query: () => ({ rows: 1, durationMs: 3 }),
+    export_table: () => ({ rows: 1234, durationMs: 3 }),
+    export_collection: () => ({ rows: 2, durationMs: 3 }),
+    "plugin:dialog|save": () => "/tmp/export.csv",
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
     cancel_run: () => null
@@ -238,11 +280,11 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
 
   mockIPC((cmd, args) => {
     calls.push({ cmd, args });
-    // tab persistence is mocked in setup.ts; nothing else talks to plugins
-    if (cmd.startsWith("plugin:")) {
+    const handler = overrides[cmd] ?? defaults[cmd];
+    // tab persistence is mocked in setup.ts; other plugin calls answer null unless a test overrides them
+    if (!handler && cmd.startsWith("plugin:")) {
       return null;
     }
-    const handler = overrides[cmd] ?? defaults[cmd];
     if (!handler) {
       throw new Error(`unexpected command ${cmd}`);
     }

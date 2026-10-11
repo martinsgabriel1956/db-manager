@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Database,
   Eye,
+  Network,
   Pencil,
   SquareTerminal,
   Table2,
@@ -20,7 +21,7 @@ import {
   isSqlEngine
 } from "@/features/connections/options";
 import { useRedisDatabases } from "@/features/redis/queries";
-import type { RedisTarget, TableTarget } from "@/features/tabs/store";
+import type { DiagramTarget, RedisTarget, TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ type TreeActions = {
   onOpenTable: (target: TableTarget) => void;
   onOpenEditor: (connectionId: string) => void;
   onOpenRedis: (target: RedisTarget) => void;
+  onOpenDiagram: (target: DiagramTarget) => void;
 };
 
 type ConnectionTreeProps = TreeActions & { connections: ConnectionConfig[] };
@@ -41,6 +43,8 @@ type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   connectionId: string;
   schema: SchemaInfo;
   openByDefault: boolean;
+  /** SQL only: MongoDB has no foreign keys */
+  onOpenDiagram?: (target: DiagramTarget) => void;
 };
 
 export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps) {
@@ -63,7 +67,8 @@ function ConnectionNode({
   onEdit,
   onOpenTable,
   onOpenEditor,
-  onOpenRedis
+  onOpenRedis,
+  onOpenDiagram
 }: ConnectionNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isRedis = connection.engine === "redis";
@@ -185,6 +190,7 @@ function ConnectionNode({
                   openByDefault={schema.name === defaultSchemaFor(connection)}
                   activeTable={activeTable}
                   onOpenTable={onOpenTable}
+                  onOpenDiagram={hasSqlEditor ? onOpenDiagram : undefined}
                 />
               ))}
             </ul>
@@ -200,22 +206,36 @@ function SchemaNode({
   schema,
   openByDefault,
   activeTable,
-  onOpenTable
+  onOpenTable,
+  onOpenDiagram
 }: SchemaNodeProps) {
   const [expanded, setExpanded] = useState(openByDefault);
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
   return (
     <li role="treeitem" aria-expanded={expanded} aria-selected={false}>
-      <button
-        type="button"
-        onClick={() => setExpanded(prev => !prev)}
-        className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left text-sm hover:bg-muted"
-      >
-        <Chevron className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate">{schema.name}</span>
-        <span className="text-xs text-muted-foreground">{schema.relations.length}</span>
-      </button>
+      <div className="group flex items-center rounded-md pr-1 hover:bg-muted">
+        <button
+          type="button"
+          onClick={() => setExpanded(prev => !prev)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-1 text-left text-sm"
+        >
+          <Chevron className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{schema.name}</span>
+          <span className="text-xs text-muted-foreground">{schema.relations.length}</span>
+        </button>
+        {onOpenDiagram && (
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={`Diagrama ER de ${schema.name}`}
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            onClick={() => onOpenDiagram({ connectionId, schema: schema.name })}
+          >
+            <Network />
+          </Button>
+        )}
+      </div>
       {expanded && (
         <ul role="group" className="grid pl-5">
           {schema.relations.length === 0 && (

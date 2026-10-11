@@ -17,7 +17,21 @@ fn table_ref(dialect: Dialect, schema: &str, table: &str) -> String {
 
 /// Fetches `page_size + 1` rows so the caller knows whether a next page exists.
 /// Without an explicit sort, orders by primary key so pages are stable.
+/// One page of the table: the full query plus LIMIT/OFFSET (one extra row tells
+/// whether there is a next page).
 pub fn browse_sql(
+    dialect: Dialect,
+    request: &BrowseRequest,
+    primary_key: &[String],
+) -> Result<String, AppError> {
+    let mut sql = select_sql(dialect, request, primary_key)?;
+    let offset = u64::from(request.page) * u64::from(request.page_size);
+    sql.push_str(&format!(" LIMIT {} OFFSET {offset}", request.page_size + 1));
+    Ok(sql)
+}
+
+/// The table with the request's filters and order, every row (paging ignored).
+pub fn select_sql(
     dialect: Dialect,
     request: &BrowseRequest,
     primary_key: &[String],
@@ -59,9 +73,6 @@ pub fn browse_sql(
     if !order.is_empty() {
         sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
-
-    let offset = u64::from(request.page) * u64::from(request.page_size);
-    sql.push_str(&format!(" LIMIT {} OFFSET {offset}", request.page_size + 1));
     Ok(sql)
 }
 

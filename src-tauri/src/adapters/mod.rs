@@ -1,3 +1,4 @@
+pub mod csv;
 pub mod dialect;
 pub mod mongo;
 pub mod mysql;

@@ -213,6 +213,37 @@ impl MongoAdapter {
         })
     }
 
+    /// Every document matching the request (paging ignored), handed to `each` as
+    /// Extended JSON while the cursor streams. Tagged with `comment` so `kill`
+    /// can stop it; no maxTimeMS, since an export may legitimately take long.
+    pub async fn export_documents(
+        &self,
+        request: &FindRequest,
+        comment: &str,
+        mut each: impl FnMut(String) -> Result<(), AppError>,
+    ) -> Result<u32, AppError> {
+        let filter = ejson::parse_document(&request.filter, "filtro")?;
+        let sort = ejson::parse_document(&request.sort, "ordenação")?;
+        let projection = ejson::parse_document(&request.projection, "projeção")?;
+        let options = FindOptions::builder()
+            .sort((!sort.is_empty()).then_some(sort))
+            .projection((!projection.is_empty()).then_some(projection))
+            .comment(Some(Bson::String(comment.to_string())))
+            .build();
+        let mut cursor = self
+            .collection(&request.database, &request.collection)
+            .find(filter)
+            .with_options(options)
+            .await
+            .map_err(|err| self.error(err))?;
+        let mut count: u32 = 0;
+        while let Some(document) = cursor.try_next().await.map_err(|err| self.error(err))? {
+            each(ejson::to_text(document))?;
+            count = count.saturating_add(1);
+        }
+        Ok(count)
+    }
+
     /// Runs the pipeline tagged with `comment` so `kill` can find it. Returns the
     /// first documents and whether more existed.
     pub async fn aggregate(

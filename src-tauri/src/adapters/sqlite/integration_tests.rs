@@ -150,6 +150,16 @@ async fn values_introspection_and_triggers() {
         structure.foreign_keys[0].definition,
         "FOREIGN KEY (team_id) REFERENCES teams (id)"
     );
+    let key = &structure.foreign_keys[0];
+    assert_eq!(key.columns, ["team_id"]);
+    assert_eq!(
+        (
+            key.referenced_schema.as_str(),
+            key.referenced_table.as_str()
+        ),
+        ("main", "teams")
+    );
+    assert_eq!(key.referenced_columns, ["id"]);
     let teams = db.table_structure("main", "teams").await.unwrap();
     assert!(
         teams

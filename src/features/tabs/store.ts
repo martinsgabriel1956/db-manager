@@ -14,8 +14,10 @@ export type EditorTab = {
 };
 export type RedisTarget = { connectionId: string; db: number };
 export type RedisTab = { id: string; kind: "redis" } & RedisTarget;
+export type DiagramTarget = { connectionId: string; schema: string };
+export type DiagramTab = { id: string; kind: "diagram" } & DiagramTarget;
 export type HistoryTab = { id: "history"; kind: "history" };
-export type Tab = TableTab | EditorTab | RedisTab | HistoryTab;
+export type Tab = TableTab | EditorTab | RedisTab | DiagramTab | HistoryTab;
 
 type TabsState = {
   tabs: Tab[];
@@ -26,6 +28,8 @@ type TabsState = {
   openEditor: (connectionId: string, sql?: string) => void;
   /** focuses the database's tab if already open */
   openRedis: (target: RedisTarget) => void;
+  /** focuses the schema's diagram if already open */
+  openDiagram: (target: DiagramTarget) => void;
   openHistory: () => void;
   activate: (id: string) => void;
   close: (id: string) => void;
@@ -90,6 +94,20 @@ export const useTabs = create<TabsState>()(
             return { activeId: existing.id };
           }
           const tab: RedisTab = { id: crypto.randomUUID(), kind: "redis", ...target };
+          return { tabs: [...state.tabs, tab], activeId: tab.id };
+        }),
+      openDiagram: target =>
+        set(state => {
+          const existing = state.tabs.find(
+            tab =>
+              tab.kind === "diagram" &&
+              tab.connectionId === target.connectionId &&
+              tab.schema === target.schema
+          );
+          if (existing) {
+            return { activeId: existing.id };
+          }
+          const tab: DiagramTab = { id: crypto.randomUUID(), kind: "diagram", ...target };
           return { tabs: [...state.tabs, tab], activeId: tab.id };
         }),
       openHistory: () =>

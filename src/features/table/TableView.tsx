@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Plus, Trash2, Undo2 } from "lucide-react";
-import type { BrowseRequest, Filter, Sort } from "@/bindings";
+import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useBrowse, useStructure } from "@/features/explorer/queries";
+import { ExportButton } from "@/features/export/ExportButton";
+import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
@@ -14,6 +15,13 @@ import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
+
+type TableDataProps = TableViewProps & {
+  sort: Sort | null;
+  filter: Filter | null;
+  onSortChange: (update: (prev: Sort | null) => Sort | null) => void;
+  onFilterChange: (filter: Filter | null) => void;
+};
 
 type Tab = "data" | "structure";
 
@@ -29,6 +37,9 @@ export function nextSort(current: Sort | null, column: string): Sort | null {
 
 export function TableView(props: TableViewProps) {
   const [tab, setTab] = useState<Tab>("data");
+  // owned here so the export matches what the grid shows
+  const [sort, setSort] = useState<Sort | null>(null);
+  const [filter, setFilter] = useState<Filter | null>(null);
 
   return (
     <div className="flex h-full flex-col">
@@ -56,10 +67,44 @@ export function TableView(props: TableViewProps) {
           ))}
         </div>
         {props.readOnly && <Badge variant="outline">Somente leitura</Badge>}
+        <div className="ml-auto">
+          <ExportButton
+            baseName={props.table}
+            formats={[
+              {
+                id: "csv",
+                label: "CSV",
+                extension: "csv",
+                run: (path, runId) =>
+                  connected(props.connectionId, () =>
+                    commands.exportTable(
+                      props.connectionId,
+                      runId,
+                      {
+                        schema: props.schema,
+                        table: props.table,
+                        filters: filter ? [filter] : [],
+                        sort,
+                        page: 0,
+                        pageSize: PAGE_SIZE
+                      },
+                      path
+                    )
+                  )
+              }
+            ]}
+          />
+        </div>
       </div>
       {/* both stay mounted: switching tabs must not drop staged edits */}
       <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "data" && "hidden")}>
-        <TableData {...props} />
+        <TableData
+          {...props}
+          sort={sort}
+          filter={filter}
+          onSortChange={setSort}
+          onFilterChange={setFilter}
+        />
       </div>
       {tab === "structure" && (
         <StructureView
@@ -72,10 +117,17 @@ export function TableView(props: TableViewProps) {
   );
 }
 
-function TableData({ connectionId, schema, table, readOnly }: TableViewProps) {
+function TableData({
+  connectionId,
+  schema,
+  table,
+  readOnly,
+  sort,
+  filter,
+  onSortChange,
+  onFilterChange
+}: TableDataProps) {
   const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<Sort | null>(null);
-  const [filter, setFilter] = useState<Filter | null>(null);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
   const structure = useStructure(connectionId, schema, table);
 
@@ -109,8 +161,8 @@ function TableData({ connectionId, schema, table, readOnly }: TableViewProps) {
         columns={structure.data?.columns.map(column => column.name) ?? []}
         active={filter}
         disabled={dirty}
-        onApply={next => restart(() => setFilter(next))}
-        onClear={() => restart(() => setFilter(null))}
+        onApply={next => restart(() => onFilterChange(next))}
+        onClear={() => restart(() => onFilterChange(null))}
       />
       {batch && !readOnly && (
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm">
@@ -186,7 +238,9 @@ function TableData({ connectionId, schema, table, readOnly }: TableViewProps) {
               isLoadingMore={false}
               sort={sort}
               onSortChange={
-                dirty ? undefined : column => restart(() => setSort(prev => nextSort(prev, column)))
+                dirty
+                  ? undefined
+                  : column => restart(() => onSortChange(prev => nextSort(prev, column)))
               }
               selected={selected}
               onSelect={setSelected}

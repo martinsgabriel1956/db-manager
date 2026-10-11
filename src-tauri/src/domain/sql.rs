@@ -48,6 +48,11 @@ pub struct IndexInfo {
 pub struct ForeignKeyInfo {
     pub name: String,
     pub definition: String,
+    pub columns: Vec<String>,
+    pub referenced_schema: String,
+    pub referenced_table: String,
+    /// empty when SQLite points at the referenced primary key implicitly
+    pub referenced_columns: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
@@ -55,6 +60,15 @@ pub struct ForeignKeyInfo {
 pub struct TableStructure {
     pub columns: Vec<ColumnInfo>,
     pub indexes: Vec<IndexInfo>,
+    pub foreign_keys: Vec<ForeignKeyInfo>,
+}
+
+/// A table of the ER diagram: its columns and the foreign keys leaving it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramTable {
+    pub name: String,
+    pub columns: Vec<ColumnInfo>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 

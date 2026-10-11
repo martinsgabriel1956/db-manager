@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
@@ -18,6 +18,11 @@ import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
+// React Flow and elk are only loaded when a diagram is opened
+const DiagramView = lazy(() =>
+  import("@/features/diagram/DiagramView").then(module => ({ default: module.DiagramView }))
+);
+
 /** null connectionId = creating a new connection */
 type FormState = { connectionId: string | null };
 
@@ -30,8 +35,16 @@ type TabContentProps = {
 export function App() {
   const connections = useConnections();
   const queryClient = useQueryClient();
-  const { tabs, activeId, openTable, openEditor, openRedis, openHistory, keepConnections } =
-    useTabs();
+  const {
+    tabs,
+    activeId,
+    openTable,
+    openEditor,
+    openRedis,
+    openDiagram,
+    openHistory,
+    keepConnections
+  } = useTabs();
   const [form, setForm] = useState<FormState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -126,6 +139,10 @@ export function App() {
               showTabs();
               openRedis(target);
             }}
+            onOpenDiagram={target => {
+              showTabs();
+              openDiagram(target);
+            }}
           />
         )}
       </aside>
@@ -194,6 +211,7 @@ export function App() {
 
 function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const setSql = useTabs(state => state.setSql);
+  const openTable = useTabs(state => state.openTable);
 
   if (tab.kind === "history") {
     return <HistoryView connections={connections} onOpenInEditor={onOpenInEditor} />;
@@ -201,6 +219,13 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const connection = connections.find(c => c.id === tab.connectionId);
   if (!connection) {
     return null;
+  }
+  if (tab.kind === "diagram") {
+    return (
+      <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Carregando…</p>}>
+        <DiagramView connectionId={tab.connectionId} schema={tab.schema} onOpenTable={openTable} />
+      </Suspense>
+    );
   }
   if (tab.kind === "redis") {
     return <RedisView connection={connection} db={tab.db} />;
