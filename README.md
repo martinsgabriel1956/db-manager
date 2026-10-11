@@ -26,10 +26,11 @@ cargo llvm-cov --ignore-filename-regex '(main|lib)\.rs$' --fail-under-lines 70
 
 `src/bindings.ts` é gerado pelo `tauri-specta` a partir dos tipos Rust. Não edite à mão; o CI falha se estiver desatualizado.
 
-## Postgres de demonstração
+## Bancos de demonstração
 
 ```bash
-docker compose -f dev/demo/compose.yml up -d     # sobe e popula na 1ª vez (porta 55432)
+docker compose -f dev/demo/compose.yml up -d     # Postgres (55432) e MySQL (53306), populados na 1ª vez
+python3 dev/demo/make-sqlite.py                  # gera dev/demo/demo.sqlite
 docker compose -f dev/demo/compose.yml down -v   # para e apaga os dados
 ```
 

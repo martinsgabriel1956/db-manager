@@ -6,9 +6,9 @@
 //! Uses a real SQL parser: regexes break on comments, strings and CTEs.
 
 use sqlparser::ast::{AlterTableOperation, Query, SetExpr, Statement};
-use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 
+use crate::adapters::dialect::Dialect;
 use crate::domain::{Confirmation, Environment};
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -45,8 +45,8 @@ impl Risk {
     }
 }
 
-pub fn classify(statement: &str) -> Risk {
-    match Parser::parse_sql(&PostgreSqlDialect {}, statement) {
+pub fn classify(statement: &str, dialect: Dialect) -> Risk {
+    match Parser::parse_sql(dialect.parser().as_ref(), statement) {
         Ok(parsed) => parsed
             .iter()
             .map(classify_statement)
@@ -58,6 +58,7 @@ pub fn classify(statement: &str) -> Risk {
 /// `None` when the script can run as is.
 pub fn confirmation_for(
     statements: &[String],
+    dialect: Dialect,
     environment: Environment,
     read_only: bool,
 ) -> Option<Confirmation> {
@@ -65,7 +66,10 @@ pub fn confirmation_for(
     if read_only {
         return None;
     }
-    let risks: Vec<(&String, Risk)> = statements.iter().map(|s| (s, classify(s))).collect();
+    let risks: Vec<(&String, Risk)> = statements
+        .iter()
+        .map(|s| (s, classify(s, dialect)))
+        .collect();
 
     let destructive: Vec<&(&String, Risk)> = risks
         .iter()
@@ -274,7 +278,38 @@ mod tests {
             ("/* TRUNCATE */ SELECT 1", Risk::read()),
         ];
         for (sql, expected) in cases {
-            assert_eq!(classify(sql), expected, "{sql}");
+            assert_eq!(classify(sql, Dialect::Postgres), expected, "{sql}");
+        }
+    }
+
+    #[test]
+    fn mysql_and_sqlite_grammars() {
+        let mysql = Dialect::Mysql {
+            backslash_escapes: true,
+        };
+        let cases = [
+            (
+                mysql,
+                "DELETE FROM `orders`",
+                Risk::destructive("DELETE sem WHERE"),
+            ),
+            (
+                mysql,
+                "UPDATE `t` SET `a` = 1 WHERE `id` = 2",
+                Risk::write(),
+            ),
+            (mysql, "TRUNCATE TABLE logs", Risk::destructive("TRUNCATE")),
+            (mysql, "SELECT * FROM `t` WHERE a = 'x\\'", Risk::read()),
+            (
+                Dialect::Sqlite,
+                "DROP TABLE IF EXISTS t",
+                Risk::destructive("DROP"),
+            ),
+            (Dialect::Sqlite, "INSERT INTO t VALUES (1)", Risk::write()),
+            (Dialect::Sqlite, "SELECT [weird name] FROM t", Risk::read()),
+        ];
+        for (dialect, sql, expected) in cases {
+            assert_eq!(classify(sql, dialect), expected, "{sql}");
         }
     }
 
@@ -300,17 +335,23 @@ mod tests {
         let writes = script(&["SELECT 1", "UPDATE t SET a = 1 WHERE id = 1"]);
         let destructive = script(&["SELECT 1", "DELETE FROM t", "DROP TABLE x"]);
 
-        assert_eq!(confirmation_for(&reads, Environment::Prod, false), None);
-        assert_eq!(confirmation_for(&writes, Environment::Dev, false), None);
         assert_eq!(
-            confirmation_for(&writes, Environment::Prod, false),
+            confirmation_for(&reads, Dialect::Postgres, Environment::Prod, false),
+            None
+        );
+        assert_eq!(
+            confirmation_for(&writes, Dialect::Postgres, Environment::Dev, false),
+            None
+        );
+        assert_eq!(
+            confirmation_for(&writes, Dialect::Postgres, Environment::Prod, false),
             Some(Confirmation {
                 reason: "Conexão de produção: confirme antes de escrever".into(),
                 statements: script(&["UPDATE t SET a = 1 WHERE id = 1"]),
             })
         );
         assert_eq!(
-            confirmation_for(&destructive, Environment::Local, false),
+            confirmation_for(&destructive, Dialect::Postgres, Environment::Local, false),
             Some(Confirmation {
                 reason: "Comando destrutivo: DELETE sem WHERE, DROP".into(),
                 statements: script(&["DELETE FROM t", "DROP TABLE x"]),
@@ -318,7 +359,7 @@ mod tests {
         );
         // read-only sessions reject writes in the database itself
         assert_eq!(
-            confirmation_for(&destructive, Environment::Prod, true),
+            confirmation_for(&destructive, Dialect::Postgres, Environment::Prod, true),
             None
         );
     }

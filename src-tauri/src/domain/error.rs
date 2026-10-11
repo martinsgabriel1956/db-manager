@@ -86,8 +86,8 @@ impl From<serde_json::Error> for AppError {
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         if let sqlx::Error::Database(db) = &err {
-            // 57014 = query_canceled (pg_cancel_backend)
-            if db.code().as_deref() == Some("57014") {
+            // PostgreSQL 57014 (pg_cancel_backend), MySQL 70100 (KILL QUERY)
+            if matches!(db.code().as_deref(), Some("57014" | "70100")) {
                 return AppError::cancelled();
             }
             let code = db.code().map(|c| format!(" [{c}]")).unwrap_or_default();

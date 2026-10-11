@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use crate::adapters::postgres::{Cursor, PostgresAdapter};
+use crate::adapters::SqlConnection;
+use crate::adapters::stream::Cursor;
 use crate::domain::{AppError, Environment};
 
 // The locks guard plain maps and are never held across an await.
 
 /// An open session plus the connection settings the write rules depend on.
 pub struct OpenConnection {
-    pub adapter: PostgresAdapter,
+    pub adapter: SqlConnection,
     pub name: String,
     pub environment: Environment,
     pub read_only: bool,
@@ -17,7 +18,7 @@ pub struct OpenConnection {
 /// A running script: which backend to cancel.
 struct Run {
     connection: Arc<OpenConnection>,
-    pid: i32,
+    session: i64,
 }
 
 struct OpenCursor {
@@ -60,18 +61,24 @@ impl Registry {
         lock(&self.connections).remove(connection_id)
     }
 
-    pub fn start_run(&self, run_id: &str, connection: Arc<OpenConnection>, pid: i32) {
-        lock(&self.runs).insert(run_id.to_string(), Run { connection, pid });
+    pub fn start_run(&self, run_id: &str, connection: Arc<OpenConnection>, session: i64) {
+        lock(&self.runs).insert(
+            run_id.to_string(),
+            Run {
+                connection,
+                session,
+            },
+        );
     }
 
     pub fn finish_run(&self, run_id: &str) {
         lock(&self.runs).remove(run_id);
     }
 
-    pub fn running(&self, run_id: &str) -> Option<(Arc<OpenConnection>, i32)> {
+    pub fn running(&self, run_id: &str) -> Option<(Arc<OpenConnection>, i64)> {
         lock(&self.runs)
             .get(run_id)
-            .map(|run| (run.connection.clone(), run.pid))
+            .map(|run| (run.connection.clone(), run.session))
     }
 
     pub fn insert_cursor(&self, cursor_id: &str, connection_id: &str, cursor: Cursor) {

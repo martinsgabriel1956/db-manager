@@ -12,7 +12,12 @@ import type { ConnectionConfig, SchemaInfo } from "@/bindings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDisconnect, useSchemas } from "@/features/explorer/queries";
-import { ENGINE_LABEL, ENVIRONMENT_STYLE } from "@/features/connections/options";
+import {
+  defaultSchemaFor,
+  ENGINE_LABEL,
+  ENVIRONMENT_STYLE,
+  isSqlEngine
+} from "@/features/connections/options";
 import type { TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -31,6 +36,7 @@ type ConnectionNodeProps = TreeActions & { connection: ConnectionConfig };
 type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   connectionId: string;
   schema: SchemaInfo;
+  openByDefault: boolean;
 };
 
 export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps) {
@@ -54,7 +60,7 @@ function ConnectionNode({
   onOpenEditor
 }: ConnectionNodeProps) {
   const [expanded, setExpanded] = useState(false);
-  const isSupported = connection.engine === "postgres";
+  const isSupported = isSqlEngine(connection.engine);
   const schemas = useSchemas(connection.id, expanded && isSupported);
   const disconnect = useDisconnect();
   const environment = ENVIRONMENT_STYLE[connection.environment];
@@ -142,6 +148,7 @@ function ConnectionNode({
                   key={schema.name}
                   connectionId={connection.id}
                   schema={schema}
+                  openByDefault={schema.name === defaultSchemaFor(connection)}
                   activeTable={activeTable}
                   onOpenTable={onOpenTable}
                 />
@@ -154,8 +161,14 @@ function ConnectionNode({
   );
 }
 
-function SchemaNode({ connectionId, schema, activeTable, onOpenTable }: SchemaNodeProps) {
-  const [expanded, setExpanded] = useState(schema.name === "public");
+function SchemaNode({
+  connectionId,
+  schema,
+  openByDefault,
+  activeTable,
+  onOpenTable
+}: SchemaNodeProps) {
+  const [expanded, setExpanded] = useState(openByDefault);
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
   return (

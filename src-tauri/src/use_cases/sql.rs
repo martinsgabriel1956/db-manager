@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 use std::time::Instant;
 
-use crate::adapters::postgres::{PostgresAdapter, split_statements};
+use crate::adapters::SqlConnection;
+use crate::adapters::sql_builder;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, CompletionTable, Confirmation, ConnectionConfig,
     Engine, Environment, FilterOp, RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome,
@@ -24,13 +25,12 @@ pub async fn connect(
     if registry.is_connected(&config.id) {
         return Ok(());
     }
-    if config.engine != Engine::Postgres {
-        return Err(AppError::validation(
-            "por enquanto só PostgreSQL conecta (MySQL/SQLite no M3, MongoDB no M4, Redis no M5)",
-        ));
-    }
-    let password = secrets.get(&config.id)?;
-    let adapter = PostgresAdapter::connect(&config, password, config.read_only).await?;
+    // a file database has no password to look up
+    let password = match config.engine {
+        Engine::Sqlite => None,
+        _ => secrets.get(&config.id)?,
+    };
+    let adapter = SqlConnection::connect(&config, password, config.read_only).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -126,14 +126,19 @@ pub async fn run_script(
     sql: &str,
     confirmed: bool,
 ) -> Result<RunResponse, AppError> {
-    let statements = split_statements(sql);
+    let connection = registry.connection(connection_id)?;
+    let dialect = connection.adapter.dialect();
+    let statements = dialect.split(sql);
     if statements.is_empty() {
         return Err(AppError::validation("nenhum comando para executar"));
     }
-    let connection = registry.connection(connection_id)?;
     if !confirmed {
-        let confirmation =
-            guard::confirmation_for(&statements, connection.environment, connection.read_only);
+        let confirmation = guard::confirmation_for(
+            &statements,
+            dialect,
+            connection.environment,
+            connection.read_only,
+        );
         if let Some(confirmation) = confirmation {
             return Ok(RunResponse::NeedsConfirmation { confirmation });
         }
@@ -214,7 +219,14 @@ pub async fn apply_changes(
     let statements = changes
         .changes
         .iter()
-        .map(|change| PostgresAdapter::change_sql(&changes.schema, &changes.table, change))
+        .map(|change| {
+            sql_builder::change_sql(
+                connection.adapter.dialect(),
+                &changes.schema,
+                &changes.table,
+                change,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     if connection.environment == Environment::Prod && !confirmed {
@@ -318,7 +330,10 @@ pub fn close_cursor(registry: &Registry, cursor_id: &str) {
 /// Cancels a script that is still running (no-op if it already finished).
 pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppError> {
     match registry.running(run_id) {
-        Some((connection, pid)) => connection.adapter.cancel_backend(pid).await,
+        Some((connection, session)) => {
+            connection.adapter.cancel(session).await;
+            Ok(())
+        }
         None => Ok(()),
     }
 }
@@ -438,7 +453,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn only_postgres_connects_for_now() {
+    async fn document_stores_do_not_connect_yet() {
         let config = ConnectionConfig {
             id: "r".into(),
             name: "r".into(),
@@ -893,6 +908,101 @@ mod integration_tests {
         assert!(matches!(
             apply_changes(&registry, &history, "it", delete_three(), true).await,
             Err(AppError::ReadOnly(_))
+        ));
+    }
+
+    /// The whole path through the use case for a non-Postgres engine: enum dispatch,
+    /// the SQLite dialect in the guard and splitter, no keychain lookup.
+    #[tokio::test]
+    async fn sqlite_through_the_use_cases() {
+        struct NoKeychain;
+        impl SecretStore for NoKeychain {
+            fn get(&self, _: &str) -> Result<Option<String>, AppError> {
+                panic!("SQLite must not ask the keychain")
+            }
+            fn set(&self, _: &str, _: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+            fn delete(&self, _: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        std::fs::File::create(&path).unwrap();
+        let config = ConnectionConfig {
+            id: "lite".into(),
+            name: "lite".into(),
+            engine: Engine::Sqlite,
+            environment: Environment::Local,
+            read_only: false,
+            timeout_secs: 30,
+            target: Target::File {
+                path: path.to_string_lossy().into_owned(),
+            },
+            tls: TlsConfig {
+                mode: TlsMode::Disable,
+                ca_cert_path: None,
+            },
+            key_separator: None,
+        };
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &NoKeychain, config).await.unwrap();
+
+        let run = |run_id: &'static str, sql: &'static str, confirmed: bool| {
+            run_script(&registry, &history, "lite", run_id, sql, confirmed)
+        };
+        executed(
+            run(
+                "l1",
+                "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO t VALUES (1, 'a'), (2, 'b')",
+                false,
+            )
+            .await
+            .unwrap(),
+        );
+        assert!(matches!(
+            run("l2", "DELETE FROM t", false).await.unwrap(),
+            RunResponse::NeedsConfirmation { .. }
+        ));
+
+        let applied = apply_changes(
+            &registry,
+            &history,
+            "lite",
+            TableChanges {
+                schema: "main".into(),
+                table: "t".into(),
+                changes: vec![RowChange::Update {
+                    key: vec![KeyValue {
+                        column: "id".into(),
+                        value: Cell::Int("2".into()),
+                    }],
+                    values: vec![ColumnValue {
+                        column: "name".into(),
+                        value: Some("B".into()),
+                    }],
+                }],
+            },
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(applied, ApplyResponse::Applied { rows_changed: 1 });
+
+        let schemas = list_schemas(&registry, "lite").await.unwrap();
+        assert_eq!(schemas[0].name, "main");
+        let rows = executed(
+            run("l3", "SELECT name FROM t ORDER BY id", false)
+                .await
+                .unwrap(),
+        );
+        assert!(matches!(
+            rows.result,
+            StatementResult::Rows { batch, .. }
+                if batch.rows == vec![vec![Cell::Text("a".into())], vec![Cell::Text("B".into())]]
         ));
     }
 }

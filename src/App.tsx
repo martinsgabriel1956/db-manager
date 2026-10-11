@@ -4,6 +4,7 @@ import { History } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
+import { defaultSchemaFor } from "@/features/connections/options";
 import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { ConnectionTree } from "@/features/explorer/ConnectionTree";
@@ -207,6 +208,8 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
     <SqlWorkspace
       connectionId={tab.connectionId}
       connectionName={connection.name}
+      engine={connection.engine}
+      defaultSchema={defaultSchemaFor(connection)}
       sql={tab.sql}
       onSqlChange={sql => setSql(tab.id, sql)}
     />

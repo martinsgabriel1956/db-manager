@@ -16,6 +16,8 @@ function Workspace({ initialSql }: { initialSql: string }) {
     <SqlWorkspace
       connectionId="pg-1"
       connectionName="Postgres prod"
+      engine="postgres"
+      defaultSchema="public"
       sql={sql}
       onSqlChange={setSql}
     />

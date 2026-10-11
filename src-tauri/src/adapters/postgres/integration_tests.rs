@@ -7,7 +7,9 @@ use testcontainers_modules::testcontainers::ContainerAsync;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tokio::sync::oneshot;
 
-use super::{PostgresAdapter, ScriptRun};
+use super::PostgresAdapter;
+use crate::adapters::dialect::Dialect;
+use crate::adapters::stream::ScriptRun;
 use crate::domain::{
     AppError, BrowseRequest, Cell, ConnectionConfig, Engine, Environment, Filter, FilterOp,
     RelationKind, Sort, SortDirection, Target, TlsConfig, TlsMode,
@@ -49,7 +51,7 @@ async fn connect(config: &ConnectionConfig, read_only: bool) -> PostgresAdapter 
 
 async fn run(adapter: &PostgresAdapter, sql: &str) -> Result<ScriptRun, AppError> {
     adapter
-        .run_script(&super::split_statements(sql), 1000, |_| {})
+        .run_script(&Dialect::Postgres.split(sql), 1000, |_| {})
         .await
 }
 
@@ -265,7 +267,7 @@ async fn cancel_timeout_and_abandoned_cursor_stop_the_query_server_side() {
     let canceller = async {
         let pid = pid_rx.await.unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
-        db.cancel_backend(pid).await.unwrap();
+        db.cancel(pid).await;
     };
     let started = Instant::now();
     let (result, ()) = tokio::join!(running, canceller);
@@ -288,7 +290,7 @@ async fn cancel_timeout_and_abandoned_cursor_stop_the_query_server_side() {
     assert_eq!(still_sleeping, 0);
 
     // dropping a cursor mid-stream cancels instead of draining millions of rows
-    let mut pid = 0;
+    let mut pid = 0_i64;
     let huge = db
         .run_script(
             &["SELECT g FROM generate_series(1, 50000000) g".to_string()],

@@ -1,84 +1,43 @@
-mod browse;
 mod cell;
-mod edit;
-mod split;
 
 #[cfg(test)]
 pub(crate) mod integration_tests;
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use futures_util::StreamExt;
-use futures_util::stream::{BoxStream, Peekable};
-use sqlx::pool::PoolConnection;
 use sqlx::postgres::{
     PgColumn, PgConnectOptions, PgPool, PgPoolOptions, PgQueryResult, PgRow, PgSslMode,
 };
-use sqlx::{
-    AssertSqlSafe, Column, Either, Executor, Postgres, Row, SqlSafeStr, Statement, ValueRef,
-};
-use tokio::sync::{mpsc, oneshot};
+use sqlx::{AssertSqlSafe, Column, Executor, Postgres, Row, SqlSafeStr, Statement, ValueRef};
 
+use crate::adapters::dialect::Dialect;
+use crate::adapters::sql_builder;
+use crate::adapters::stream::{self, Engine, ScriptRun};
 use crate::domain::{
     AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, RowChange, SchemaInfo,
-    TableStructure, Target, TlsMode,
+    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableStructure, Target,
+    TlsMode,
 };
-
-pub use split::split_statements;
 
 const MAX_POOL_CONNECTIONS: u32 = 5;
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(10);
 
-type RowStream<'c> = Peekable<BoxStream<'c, Result<Either<PgQueryResult, PgRow>, sqlx::Error>>>;
-type BatchReply = oneshot::Sender<Result<BatchRead, AppError>>;
-
-/// One batch of rows, plus the affected-row count once the statement completed.
-#[derive(Debug)]
-pub struct BatchRead {
-    pub batch: RowBatch,
-    pub rows_affected: Option<u64>,
-}
-
-/// Handle to the last statement of a script, still streaming on its own connection.
-/// Dropping it cancels the query server-side and discards that connection.
-pub struct Cursor {
-    requests: mpsc::Sender<BatchReply>,
-}
-
-impl Cursor {
-    pub async fn next(&self) -> Result<BatchRead, AppError> {
-        let expired = || AppError::not_found("resultado (já foi fechado)");
-        let (reply, response) = oneshot::channel();
-        self.requests.send(reply).await.map_err(|_| expired())?;
-        response.await.map_err(|_| expired())?
-    }
-}
-
-pub struct ScriptRun {
-    pub first: BatchRead,
-    /// Some while the last statement has more rows to fetch
-    pub cursor: Option<Cursor>,
-}
-
 pub struct PostgresAdapter {
     pool: PgPool,
-    types: Types,
+    engine: PgEngine,
     timeout_secs: u32,
 }
 
 /// Turns rows into cells. Custom types (enums, domains) arrive unresolved on the
 /// text protocol, so their pg_type facts are looked up once and cached.
 #[derive(Clone)]
-struct Types {
+pub struct PgEngine {
     pool: PgPool,
     catalog: Arc<Mutex<cell::Catalog>>,
 }
 
-impl Types {
+impl PgEngine {
     async fn resolve(&self, columns: &[PgColumn]) -> Vec<(ResultColumn, cell::ValueType)> {
         let missing: Vec<i64> = {
             let catalog = self.catalog.lock().unwrap_or_else(PoisonError::into_inner);
@@ -135,6 +94,10 @@ impl Types {
             })
             .collect())
     }
+}
+
+impl Engine for PgEngine {
+    type Db = Postgres;
 
     async fn batch(&self, rows: Vec<PgRow>, has_more: bool) -> RowBatch {
         let Some(first) = rows.first() else {
@@ -168,9 +131,46 @@ impl Types {
             has_more,
         }
     }
+
+    fn rows_affected(result: &PgQueryResult) -> u64 {
+        result.rows_affected()
+    }
+
+    async fn session_id(&self, conn: &mut sqlx::PgConnection) -> Result<i64, AppError> {
+        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(conn)
+            .await?;
+        Ok(i64::from(pid))
+    }
+
+    async fn cancel(&self, session: i64) {
+        // best effort: the caller reports the timeout/abandon either way
+        let _ = sqlx::query("SELECT pg_cancel_backend($1)")
+            .bind(i32::try_from(session).unwrap_or_default())
+            .execute(&self.pool)
+            .await;
+    }
+
+    /// Runs on another connection, so statements depending on session state just
+    /// get no columns.
+    async fn describe(&self, sql: &str) -> Vec<ResultColumn> {
+        let Ok(statement) = (&self.pool)
+            .prepare(AssertSqlSafe(sql.to_string()).into_sql_str())
+            .await
+        else {
+            return Vec::new();
+        };
+        self.resolve(statement.columns())
+            .await
+            .into_iter()
+            .map(|(column, _)| column)
+            .collect()
+    }
 }
 
 impl PostgresAdapter {
+    pub const DIALECT: Dialect = Dialect::Postgres;
+
     pub async fn connect(
         config: &ConnectionConfig,
         password: Option<String>,
@@ -221,7 +221,7 @@ impl PostgresAdapter {
             .connect_with(options)
             .await?;
         Ok(Self {
-            types: Types {
+            engine: PgEngine {
                 pool: pool.clone(),
                 catalog: Arc::default(),
             },
@@ -375,215 +375,34 @@ impl PostgresAdapter {
     /// Primary key first (stable default ordering), then the page itself.
     pub async fn browse(&self, request: &BrowseRequest) -> Result<RowBatch, AppError> {
         let primary_key = self.primary_key(&request.schema, &request.table).await?;
-        let sql = browse::browse_sql(request, &primary_key)?;
-        let limit = request.page_size as usize;
-
-        let mut stream = sqlx::raw_sql(AssertSqlSafe(sql.clone()))
-            .fetch_many(&self.pool)
-            .peekable();
-        let read = read_batch(Pin::new(&mut stream), limit, &self.types).await?;
-        drop(stream);
-
-        let mut batch = read.batch;
-        if batch.columns.is_empty() {
-            batch.columns = self.describe_columns(&sql).await;
-        }
-        Ok(batch)
+        let sql = sql_builder::browse_sql(Self::DIALECT, request, &primary_key)?;
+        stream::fetch_page(&self.engine, &self.pool, sql, request.page_size as usize).await
     }
 
-    /// Runs every statement on one connection; the last one keeps streaming through
-    /// a `Cursor`. `on_started` receives the backend pid so the caller can cancel.
     pub async fn run_script(
         &self,
         statements: &[String],
         batch_size: usize,
-        on_started: impl FnOnce(i32),
+        on_started: impl FnOnce(i64),
     ) -> Result<ScriptRun, AppError> {
-        let (last, init) = statements
-            .split_last()
-            .ok_or_else(|| AppError::validation("nenhum comando para executar"))?;
-
-        let mut conn = self.pool.acquire().await?;
-        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-            .fetch_one(&mut *conn)
-            .await?;
-        on_started(pid);
-
-        for statement in init {
-            let execution = async {
-                sqlx::raw_sql(AssertSqlSafe(statement.clone()))
-                    .execute(&mut *conn)
-                    .await
-                    .map(|_| ())
-                    .map_err(AppError::from)
-            };
-            if let Err(err) = self.with_timeout(pid, execution).await {
-                if matches!(err, AppError::Timeout(_)) {
-                    // dropped mid-protocol: the connection is not reusable
-                    conn.close_on_drop();
-                }
-                return Err(err);
-            }
-        }
-
-        let (requests, receiver) = mpsc::channel(1);
-        tokio::spawn(stream_task(
-            self.pool.clone(),
-            self.types.clone(),
-            conn,
-            pid,
-            last.clone(),
+        stream::run_script(
+            &self.engine,
+            &self.pool,
+            statements,
             batch_size,
-            receiver,
-        ));
-        let cursor = Cursor { requests };
-
-        let mut first = self.with_timeout(pid, cursor.next()).await?;
-        if first.batch.rows.is_empty() && first.batch.columns.is_empty() {
-            first.batch.columns = self.describe_columns(last).await;
-        }
-        let cursor = first.batch.has_more.then_some(cursor);
-        Ok(ScriptRun { first, cursor })
+            self.timeout_secs,
+            on_started,
+        )
+        .await
     }
 
-    pub fn change_sql(schema: &str, table: &str, change: &RowChange) -> Result<String, AppError> {
-        edit::change_sql(schema, table, change)
-    }
-
-    /// Runs the statements in one transaction. Each one must touch exactly one row:
-    /// otherwise the row changed under us and everything is rolled back.
     pub async fn apply(&self, statements: &[String]) -> Result<u32, AppError> {
-        let mut tx = self.pool.begin().await?;
-        for statement in statements {
-            let result = sqlx::raw_sql(AssertSqlSafe(statement.clone()))
-                .execute(&mut *tx)
-                .await?;
-            if result.rows_affected() != 1 {
-                // dropping `tx` rolls back
-                return Err(AppError::conflict());
-            }
-        }
-        tx.commit().await?;
-        Ok(u32::try_from(statements.len()).unwrap_or(u32::MAX))
+        stream::apply::<PgEngine>(&self.pool, statements).await
     }
 
-    pub async fn cancel_backend(&self, pid: i32) -> Result<(), AppError> {
-        cancel_backend(&self.pool, pid).await
+    pub async fn cancel(&self, session: i64) {
+        self.engine.cancel(session).await;
     }
-
-    async fn with_timeout<T>(
-        &self,
-        pid: i32,
-        work: impl Future<Output = Result<T, AppError>>,
-    ) -> Result<T, AppError> {
-        if self.timeout_secs == 0 {
-            return work.await;
-        }
-        let limit = Duration::from_secs(u64::from(self.timeout_secs));
-        match tokio::time::timeout(limit, work).await {
-            Ok(result) => result,
-            Err(_) => {
-                // best effort: the timeout error is what the user needs to see
-                let _ = self.cancel_backend(pid).await;
-                Err(AppError::timeout(self.timeout_secs))
-            }
-        }
-    }
-
-    /// Column names of a statement that returned no rows (a SELECT with an empty
-    /// result still shows its header). Runs on another connection, so statements
-    /// depending on session state just get no columns.
-    async fn describe_columns(&self, sql: &str) -> Vec<ResultColumn> {
-        let Ok(statement) = (&self.pool)
-            .prepare(AssertSqlSafe(sql.to_string()).into_sql_str())
-            .await
-        else {
-            return Vec::new();
-        };
-        self.types
-            .resolve(statement.columns())
-            .await
-            .into_iter()
-            .map(|(column, _)| column)
-            .collect()
-    }
-}
-
-async fn cancel_backend(pool: &PgPool, pid: i32) -> Result<(), AppError> {
-    sqlx::query("SELECT pg_cancel_backend($1)")
-        .bind(pid)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
-/// Owns the connection and the row stream of the last statement, answering one
-/// batch per request. When the cursor is dropped before the end, the query is
-/// cancelled server-side and the connection discarded instead of drained.
-async fn stream_task(
-    pool: PgPool,
-    types: Types,
-    mut conn: PoolConnection<Postgres>,
-    pid: i32,
-    sql: String,
-    batch_size: usize,
-    mut requests: mpsc::Receiver<BatchReply>,
-) {
-    let mut finished = false;
-    {
-        let mut stream = sqlx::raw_sql(AssertSqlSafe(sql))
-            .fetch_many(&mut *conn)
-            .peekable();
-        while let Some(reply) = requests.recv().await {
-            let read = read_batch(Pin::new(&mut stream), batch_size, &types).await;
-            finished = read.as_ref().map_or(true, |r| !r.batch.has_more);
-            let _ = reply.send(read);
-            if finished {
-                break;
-            }
-        }
-    }
-    if !finished {
-        let _ = cancel_backend(&pool, pid).await;
-        conn.close_on_drop();
-    }
-}
-
-async fn read_batch(
-    mut stream: Pin<&mut RowStream<'_>>,
-    batch_size: usize,
-    types: &Types,
-) -> Result<BatchRead, AppError> {
-    let mut rows = Vec::new();
-
-    while rows.len() < batch_size {
-        match stream.next().await {
-            Some(Ok(Either::Right(row))) => rows.push(row),
-            Some(Ok(Either::Left(done))) => {
-                return Ok(BatchRead {
-                    batch: types.batch(rows, false).await,
-                    rows_affected: Some(done.rows_affected()),
-                });
-            }
-            Some(Err(err)) => return Err(err.into()),
-            None => {
-                return Ok(BatchRead {
-                    batch: types.batch(rows, false).await,
-                    rows_affected: None,
-                });
-            }
-        }
-    }
-
-    // an error right after a full batch must surface on the next fetch, not vanish
-    let has_more = matches!(
-        stream.as_mut().peek().await,
-        Some(Ok(Either::Right(_))) | Some(Err(_))
-    );
-    Ok(BatchRead {
-        batch: types.batch(rows, has_more).await,
-        rows_affected: None,
-    })
 }
 
 fn relation_kind(relkind: &str) -> RelationKind {

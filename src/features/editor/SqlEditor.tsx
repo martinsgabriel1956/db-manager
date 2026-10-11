@@ -1,9 +1,9 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { basicSetup } from "codemirror";
-import { PostgreSQL, sql, type SQLNamespace } from "@codemirror/lang-sql";
+import { MySQL, PostgreSQL, sql, SQLite, type SQLNamespace } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import type { CompletionTable } from "@/bindings";
+import type { CompletionTable, Engine } from "@/bindings";
 
 type SqlEditorProps = {
   value: string;
@@ -11,6 +11,8 @@ type SqlEditorProps = {
   /** receives the selection, or the whole document when nothing is selected */
   onRun: (sql: string) => void;
   completion: CompletionTable[] | undefined;
+  engine: Engine;
+  defaultSchema: string;
   /** lets the Run button apply the same selection-or-all rule as Ctrl+Enter */
   apiRef: RefObject<SqlEditorApi | null>;
 };
@@ -32,16 +34,28 @@ export function textToRun(state: EditorState): string {
   return from === to ? state.doc.toString() : state.sliceDoc(from, to);
 }
 
-function sqlLanguage(completion: CompletionTable[] | undefined) {
+const DIALECT = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
+
+type LanguageOptions = Pick<SqlEditorProps, "completion" | "engine" | "defaultSchema">;
+
+function sqlLanguage({ completion, engine, defaultSchema }: LanguageOptions) {
   return sql({
-    dialect: PostgreSQL,
+    dialect: engine === "mysql" || engine === "sqlite" ? DIALECT[engine] : DIALECT.postgres,
     schema: toNamespace(completion ?? []),
-    defaultSchema: "public",
+    defaultSchema,
     upperCaseKeywords: true
   });
 }
 
-export function SqlEditor({ value, onChange, onRun, completion, apiRef }: SqlEditorProps) {
+export function SqlEditor({
+  value,
+  onChange,
+  onRun,
+  completion,
+  engine,
+  defaultSchema,
+  apiRef
+}: SqlEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const languageRef = useRef(new Compartment());
@@ -61,7 +75,7 @@ export function SqlEditor({ value, onChange, onRun, completion, apiRef }: SqlEdi
         doc: value,
         extensions: [
           basicSetup,
-          languageRef.current.of(sqlLanguage(undefined)),
+          languageRef.current.of(sqlLanguage({ completion, engine, defaultSchema })),
           Prec.highest(
             keymap.of([
               {
@@ -96,9 +110,9 @@ export function SqlEditor({ value, onChange, onRun, completion, apiRef }: SqlEdi
 
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: languageRef.current.reconfigure(sqlLanguage(completion))
+      effects: languageRef.current.reconfigure(sqlLanguage({ completion, engine, defaultSchema }))
     });
-  }, [completion]);
+  }, [completion, engine, defaultSchema]);
 
   useEffect(() => {
     const view = viewRef.current;

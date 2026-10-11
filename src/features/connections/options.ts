@@ -1,4 +1,4 @@
-import type { Engine, Environment, TlsMode } from "@/bindings";
+import type { ConnectionConfig, Engine, Environment, TlsMode } from "@/bindings";
 
 export const ENGINES = [
   "postgres",
@@ -54,3 +54,19 @@ export const TLS_LABEL: Record<TlsMode, string> = {
 export const DEFAULT_REDIS_SEPARATOR = ":";
 
 export const DEFAULT_TIMEOUT_SECS = 30;
+
+/** Engines the explorer and the SQL editor can open (document stores come later). */
+export function isSqlEngine(engine: Engine): boolean {
+  return engine === "postgres" || engine === "mysql" || engine === "sqlite";
+}
+
+/** Schema opened by default in the tree and used for unqualified autocomplete. */
+export function defaultSchemaFor(connection: ConnectionConfig): string {
+  if (connection.engine === "sqlite") {
+    return "main";
+  }
+  if (connection.engine === "mysql" && connection.target.kind === "network") {
+    return connection.target.database;
+  }
+  return "public";
+}

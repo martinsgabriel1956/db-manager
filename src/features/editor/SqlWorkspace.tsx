@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import type { Engine } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
 import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunner";
@@ -12,6 +13,8 @@ import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 type SqlWorkspaceProps = {
   connectionId: string;
   connectionName: string;
+  engine: Engine;
+  defaultSchema: string;
   sql: string;
   onSqlChange: (sql: string) => void;
 };
@@ -40,6 +43,8 @@ export function summary(state: RunState): string | null {
 export function SqlWorkspace({
   connectionId,
   connectionName,
+  engine,
+  defaultSchema,
   sql,
   onSqlChange
 }: SqlWorkspaceProps) {
@@ -85,6 +90,8 @@ export function SqlWorkspace({
                 onChange={onSqlChange}
                 onRun={runFromEditor}
                 completion={completion.data}
+                engine={engine}
+                defaultSchema={defaultSchema}
                 apiRef={editorApi}
               />
             </div>
