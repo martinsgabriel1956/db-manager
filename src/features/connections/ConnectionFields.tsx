@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Engine } from "@/bindings";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import type { ConnectionFormValues, FormErrors } from "@/features/connections/form";
 import {
   ENGINE_LABEL,
@@ -26,9 +27,6 @@ type FieldProps = {
   error?: string;
   children: ReactNode;
 };
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 function Field({ id, label, error, children }: FieldProps) {
   return (
@@ -79,9 +77,9 @@ export function ConnectionFields({
           {textInput("name", { placeholder: "ex.: Postgres prod" })}
         </Field>
         <Field id="engine" label="Banco">
-          <select
+          <NativeSelect
             id="engine"
-            className={SELECT_CLASS}
+            className="w-full px-2.5"
             value={values.engine}
             onChange={event => onEngineChange(event.target.value as Engine)}
           >
@@ -90,7 +88,7 @@ export function ConnectionFields({
                 {ENGINE_LABEL[engine]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
       </div>
 
@@ -183,9 +181,9 @@ export function ConnectionFields({
           )}
           <div className="grid grid-cols-2 gap-4">
             <Field id="tlsMode" label="TLS">
-              <select
+              <NativeSelect
                 id="tlsMode"
-                className={SELECT_CLASS}
+                className="w-full px-2.5"
                 value={values.tlsMode}
                 onChange={event =>
                   onChange({ tlsMode: event.target.value as ConnectionFormValues["tlsMode"] })
@@ -196,7 +194,7 @@ export function ConnectionFields({
                     {TLS_LABEL[mode]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Field>
             <Field id="caCertPath" label="Certificado CA (opcional)">
               {textInput("caCertPath", { placeholder: "/caminho/para/ca.pem" })}
@@ -213,9 +211,9 @@ export function ConnectionFields({
 
       <div className="grid grid-cols-2 gap-4">
         <Field id="environment" label="Ambiente">
-          <select
+          <NativeSelect
             id="environment"
-            className={SELECT_CLASS}
+            className="w-full px-2.5"
             value={values.environment}
             onChange={event =>
               onChange({ environment: event.target.value as ConnectionFormValues["environment"] })
@@ -226,7 +224,7 @@ export function ConnectionFields({
                 {ENVIRONMENT_STYLE[environment].label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </Field>
         <Field id="timeoutSecs" label="Timeout (s, 0 = sem limite)" error={errors.timeoutSecs}>
           {textInput("timeoutSecs", { type: "number" })}

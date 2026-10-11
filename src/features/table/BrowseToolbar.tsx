@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { Filter, FilterOp } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 type BrowseToolbarProps = {
   columns: string[];
@@ -20,8 +21,6 @@ const OP_LABEL: Record<FilterOp, string> = {
 };
 
 const OPS = Object.keys(OP_LABEL) as FilterOp[];
-
-const SELECT_CLASS = "h-7 rounded-md border border-input bg-transparent px-2 text-sm";
 
 export function BrowseToolbar({
   columns,
@@ -45,11 +44,14 @@ export function BrowseToolbar({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-      <span className="text-xs text-muted-foreground">Filtro</span>
-      <select
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-2"
+    >
+      <span className="label-caps text-muted-foreground">Filtro</span>
+      <NativeSelect
         aria-label="Coluna do filtro"
-        className={SELECT_CLASS}
+        className="h-7"
         value={selectedColumn}
         onChange={event => setColumn(event.target.value)}
       >
@@ -58,10 +60,10 @@ export function BrowseToolbar({
             {name}
           </option>
         ))}
-      </select>
-      <select
+      </NativeSelect>
+      <NativeSelect
         aria-label="Operador do filtro"
-        className={SELECT_CLASS}
+        className="h-7"
         value={op}
         onChange={event => setOp(event.target.value as FilterOp)}
       >
@@ -70,7 +72,7 @@ export function BrowseToolbar({
             {OP_LABEL[option]}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       {needsValue && (
         <Input
           aria-label="Valor do filtro"

@@ -6,6 +6,7 @@ import { DocumentCard } from "@/features/mongo/DocumentCard";
 import { isValidJson } from "@/features/mongo/ejson";
 import { JsonEditor } from "@/features/mongo/JsonEditor";
 import { useAggregation } from "@/features/mongo/useAggregation";
+import { RUN_SHORTCUT } from "@/lib/platform";
 
 type AggregationPanelProps = { connectionId: string; database: string; collection: string };
 
@@ -32,13 +33,13 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5">
+      <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5">
         <span className="text-xs text-muted-foreground">
-          Pipeline em Extended JSON · Ctrl+Enter executa
+          Pipeline em Extended JSON · {RUN_SHORTCUT} executa
         </span>
         <div className="ml-auto">
           {isRunning ? (
-            <Button size="sm" variant="destructive" onClick={aggregation.cancel}>
+            <Button size="sm" variant="outline" onClick={aggregation.cancel}>
               <Square /> Cancelar
             </Button>
           ) : (
@@ -81,6 +82,7 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
         )}
       </div>
       <ConfirmDialog
+        connectionId={connectionId}
         confirmation={state.status === "confirm" ? state.confirmation : null}
         confirmLabel="Executar mesmo assim"
         onConfirm={aggregation.confirm}

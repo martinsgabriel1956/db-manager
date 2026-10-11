@@ -15,7 +15,7 @@ type CellDetailProps = {
 export function CellDetail({ column, cell, onClose, onSetNull }: CellDetailProps) {
   return (
     <aside aria-label="Valor da célula" className="flex w-80 shrink-0 flex-col border-l">
-      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b bg-muted px-3 py-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{column.name}</p>
           <p className="truncate text-xs text-muted-foreground">{column.typeName}</p>

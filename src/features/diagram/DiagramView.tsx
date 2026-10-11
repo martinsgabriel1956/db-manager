@@ -61,10 +61,10 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
   }
   return (
     <div className="flex h-full flex-col">
-      <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
+      <p className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">
         {plural(diagram.data.nodes.length, "tabela", "tabelas")} ·{" "}
         {plural(diagram.data.edges.length, "chave estrangeira", "chaves estrangeiras")} · duplo
-        clique abre a tabela
+        clique ou Enter abre a tabela
       </p>
       <div className="min-h-0 flex-1">
         <ReactFlow
@@ -76,7 +76,19 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
           deleteKeyCode={null}
           minZoom={0.05}
           fitView
+          colorMode="system"
           onNodeDoubleClick={(_, node) => onOpenTable({ connectionId, schema, table: node.id })}
+          onKeyDown={event => {
+            // React Flow has no node key handler; nodes are focusable wrappers with data-id
+            const node =
+              event.key === "Enter" && event.target instanceof HTMLElement
+                ? event.target.closest(".react-flow__node")
+                : null;
+            const table = node?.getAttribute("data-id");
+            if (table) {
+              onOpenTable({ connectionId, schema, table });
+            }
+          }}
         >
           <Background />
           <Controls showInteractive={false} />
@@ -91,7 +103,7 @@ function TableNodeView({ data }: NodeProps<TableNode>) {
   return (
     <div
       aria-label={`Tabela ${data.name}`}
-      className="overflow-hidden rounded-md border bg-background text-xs shadow-sm"
+      className="overflow-hidden rounded-[3px] border bg-card text-xs shadow-[0_1px_0_rgb(0_0_0/0.25)]"
       style={{ width: NODE_WIDTH }}
     >
       <Handle type="target" position={Position.Left} className="opacity-0" />
@@ -109,9 +121,12 @@ function TableNodeView({ data }: NodeProps<TableNode>) {
             style={{ height: ROW_HEIGHT }}
           >
             {column.isPrimaryKey ? (
-              <KeyRound aria-label="chave primária" className="size-3 shrink-0 text-amber-600" />
+              <KeyRound aria-label="chave primária" className="size-3 shrink-0 text-warning" />
             ) : data.foreignKeyColumns.includes(column.name) ? (
-              <Link aria-label="chave estrangeira" className="size-3 shrink-0 text-sky-600" />
+              <Link
+                aria-label="chave estrangeira"
+                className="size-3 shrink-0 text-muted-foreground"
+              />
             ) : (
               <span className="size-3 shrink-0" />
             )}

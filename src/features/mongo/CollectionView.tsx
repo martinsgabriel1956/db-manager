@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AggregationPanel } from "@/features/mongo/AggregationPanel";
 import { DocumentsPanel } from "@/features/mongo/DocumentsPanel";
 import { useIndexes } from "@/features/mongo/queries";
 import { errorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
 
 type CollectionViewProps = {
   connectionId: string;
@@ -27,51 +27,39 @@ export function CollectionView({
   collection,
   readOnly
 }: CollectionViewProps) {
-  const [section, setSection] = useState<Section>("documents");
+  const [section, setSection] = useState("documents");
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-4 border-b px-3">
+    <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
+      <div className="flex items-center gap-4 border-b bg-muted px-3">
         <h2 className="py-2 font-mono text-sm font-semibold">
           {database}.{collection}
         </h2>
-        <div role="tablist" className="flex gap-1">
+        <TabsList aria-label="Seções da coleção">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={section === id}
-              onClick={() => setSection(id)}
-              className={cn(
-                "border-b-2 px-2 py-2 text-sm",
-                section === id
-                  ? "border-primary font-medium"
-                  : "border-transparent text-muted-foreground"
-              )}
-            >
+            <TabsTrigger key={id} value={id}>
               {SECTION_LABEL[id]}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
         {readOnly && <Badge variant="outline">Somente leitura</Badge>}
       </div>
       {/* panels stay mounted so filters, results and editors survive switching */}
-      <div className={cn("min-h-0 flex-1", section !== "documents" && "hidden")}>
+      <TabsContent value="documents" forceMount className="min-h-0 flex-1">
         <DocumentsPanel
           connectionId={connectionId}
           database={database}
           collection={collection}
           readOnly={readOnly}
         />
-      </div>
-      <div className={cn("min-h-0 flex-1", section !== "aggregation" && "hidden")}>
+      </TabsContent>
+      <TabsContent value="aggregation" forceMount className="min-h-0 flex-1">
         <AggregationPanel connectionId={connectionId} database={database} collection={collection} />
-      </div>
-      {section === "indexes" && (
+      </TabsContent>
+      <TabsContent value="indexes" className="min-h-0 flex-1 overflow-auto">
         <IndexesPanel connectionId={connectionId} database={database} collection={collection} />
-      )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -94,14 +82,14 @@ function IndexesPanel({
   return (
     <table className="m-4 border-collapse text-sm">
       <thead>
-        <tr className="border-b text-left text-xs text-muted-foreground">
+        <tr className="h-7 border-b text-left label-caps text-muted-foreground">
           <th className="py-1.5 pr-6 font-medium">Nome</th>
           <th className="py-1.5 font-medium">Chaves</th>
         </tr>
       </thead>
       <tbody className="font-mono text-xs">
         {indexes.data.map(index => (
-          <tr key={index.name} className="border-b">
+          <tr key={index.name} className="h-7 border-b">
             <td className="py-1.5 pr-6 font-semibold">{index.name}</td>
             <td className="py-1.5">{index.definition}</td>
           </tr>

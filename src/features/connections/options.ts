@@ -37,11 +37,21 @@ export const DEFAULT_PORT: Record<Exclude<Engine, "sqlite">, number> = {
   redis: 6379
 };
 
-export const ENVIRONMENT_STYLE: Record<Environment, { label: string; dotClass: string }> = {
-  local: { label: "Local", dotClass: "bg-neutral-400" },
-  dev: { label: "Dev", dotClass: "bg-emerald-500" },
-  staging: { label: "Staging", dotClass: "bg-amber-500" },
-  prod: { label: "Prod", dotClass: "bg-red-600" }
+/** Printed environment tag: the label always says it, colour only reinforces. */
+export const ENVIRONMENT_STYLE: Record<Environment, { label: string; tagClass: string }> = {
+  local: { label: "Local", tagClass: "border border-dashed border-current" },
+  dev: { label: "Dev", tagClass: "border border-current" },
+  staging: { label: "Staging", tagClass: "bg-warning text-primary-foreground" },
+  prod: { label: "Prod", tagClass: "bg-seal text-white" }
+};
+
+/** Tube-cap colour per engine, used on connection labels and tabs. */
+export const ENGINE_CAP: Record<Engine, string> = {
+  postgres: "bg-cap-postgres",
+  mysql: "bg-cap-mysql",
+  sqlite: "bg-cap-sqlite",
+  mongo: "bg-cap-mongo",
+  redis: "bg-cap-redis"
 };
 
 export const TLS_LABEL: Record<TlsMode, string> = {

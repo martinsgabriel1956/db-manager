@@ -4,6 +4,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { Download, Square } from "lucide-react";
 import { commands, type ExportOutcome } from "@/bindings";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { errorMessage } from "@/lib/errors";
 
 export type ExportFormat = {
@@ -62,7 +63,7 @@ export function ExportButton({ baseName, formats }: ExportButtonProps) {
         Exportando…
         <Button
           size="xs"
-          variant="destructive"
+          variant="outline"
           onClick={() => commands.cancelRun(state.runId).catch(() => undefined)}
         >
           <Square /> Cancelar export
@@ -74,7 +75,7 @@ export function ExportButton({ baseName, formats }: ExportButtonProps) {
   return (
     <span className="flex items-center gap-2 text-xs">
       {state.status === "done" && (
-        <span role="status" className="text-emerald-700 dark:text-emerald-400" title={state.path}>
+        <span role="status" className="text-success" title={state.path}>
           {state.rows.toLocaleString("pt-BR")} {state.rows === 1 ? "item" : "itens"} →{" "}
           {fileName(state.path)}
         </span>
@@ -85,9 +86,9 @@ export function ExportButton({ baseName, formats }: ExportButtonProps) {
         </span>
       )}
       {formats.length > 1 && (
-        <select
+        <NativeSelect
           aria-label="Formato do export"
-          className="h-7 rounded-md border border-input bg-transparent px-1"
+          className="h-7 text-xs"
           value={formatId}
           onChange={event => setFormatId(event.target.value)}
         >
@@ -96,7 +97,7 @@ export function ExportButton({ baseName, formats }: ExportButtonProps) {
               {option.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )}
       <Button size="xs" variant="outline" onClick={start}>
         <Download /> Exportar {formats.length === 1 ? format.label : ""}

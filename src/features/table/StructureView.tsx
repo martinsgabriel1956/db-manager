@@ -15,7 +15,7 @@ function Section({ title, headers, children, empty }: SectionProps) {
       ) : (
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
+            <tr className="h-7 border-b text-left label-caps text-muted-foreground">
               {headers.map(header => (
                 <th key={header} className="py-1.5 pr-4 font-medium">
                   {header}
@@ -49,7 +49,7 @@ export function StructureView({ connectionId, schema, table }: StructureViewProp
     <div className="grid gap-6 overflow-auto p-4">
       <Section title="Colunas" headers={["Nome", "Tipo", "Nulo", "Default", "PK"]} empty={false}>
         {columns.map(column => (
-          <tr key={column.name} className="border-b">
+          <tr key={column.name} className="h-7 border-b">
             <td className="py-1.5 pr-4 font-semibold">{column.name}</td>
             <td className="py-1.5 pr-4">{column.dataType}</td>
             <td className="py-1.5 pr-4">{column.nullable ? "sim" : "não"}</td>
@@ -60,7 +60,7 @@ export function StructureView({ connectionId, schema, table }: StructureViewProp
       </Section>
       <Section title="Índices" headers={["Nome", "Definição"]} empty={indexes.length === 0}>
         {indexes.map(index => (
-          <tr key={index.name} className="border-b">
+          <tr key={index.name} className="h-7 border-b">
             <td className="py-1.5 pr-4 font-semibold">{index.name}</td>
             <td className="py-1.5 pr-4">{index.definition}</td>
           </tr>
@@ -72,7 +72,7 @@ export function StructureView({ connectionId, schema, table }: StructureViewProp
         empty={foreignKeys.length === 0}
       >
         {foreignKeys.map(foreignKey => (
-          <tr key={foreignKey.name} className="border-b">
+          <tr key={foreignKey.name} className="h-7 border-b">
             <td className="py-1.5 pr-4 font-semibold">{foreignKey.name}</td>
             <td className="py-1.5 pr-4">{foreignKey.definition}</td>
           </tr>

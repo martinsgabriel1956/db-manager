@@ -4,6 +4,7 @@ import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExportButton } from "@/features/export/ExportButton";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
@@ -12,7 +13,6 @@ import { BrowseToolbar } from "@/features/table/BrowseToolbar";
 import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
 import { errorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
 
 type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
 
@@ -22,8 +22,6 @@ type TableDataProps = TableViewProps & {
   onSortChange: (update: (prev: Sort | null) => Sort | null) => void;
   onFilterChange: (filter: Filter | null) => void;
 };
-
-type Tab = "data" | "structure";
 
 export const PAGE_SIZE = 100;
 
@@ -36,36 +34,21 @@ export function nextSort(current: Sort | null, column: string): Sort | null {
 }
 
 export function TableView(props: TableViewProps) {
-  const [tab, setTab] = useState<Tab>("data");
+  const [tab, setTab] = useState("data");
   // owned here so the export matches what the grid shows
   const [sort, setSort] = useState<Sort | null>(null);
   const [filter, setFilter] = useState<Filter | null>(null);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-4 border-b px-3">
+    <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
+      <div className="flex items-center gap-4 border-b bg-muted px-3">
         <h2 className="py-2 font-mono text-sm font-semibold">
           {props.schema}.{props.table}
         </h2>
-        <div role="tablist" className="flex gap-1">
-          {(["data", "structure"] as const).map(id => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "border-b-2 px-2 py-2 text-sm",
-                tab === id
-                  ? "border-primary font-medium"
-                  : "border-transparent text-muted-foreground"
-              )}
-            >
-              {id === "data" ? "Dados" : "Estrutura"}
-            </button>
-          ))}
-        </div>
+        <TabsList aria-label="Seções da tabela">
+          <TabsTrigger value="data">Dados</TabsTrigger>
+          <TabsTrigger value="structure">Estrutura</TabsTrigger>
+        </TabsList>
         {props.readOnly && <Badge variant="outline">Somente leitura</Badge>}
         <div className="ml-auto">
           <ExportButton
@@ -96,8 +79,8 @@ export function TableView(props: TableViewProps) {
           />
         </div>
       </div>
-      {/* both stay mounted: switching tabs must not drop staged edits */}
-      <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "data" && "hidden")}>
+      {/* the data panel stays mounted: switching tabs must not drop staged edits */}
+      <TabsContent value="data" forceMount className="flex min-h-0 flex-1 flex-col">
         <TableData
           {...props}
           sort={sort}
@@ -105,15 +88,15 @@ export function TableView(props: TableViewProps) {
           onSortChange={setSort}
           onFilterChange={setFilter}
         />
-      </div>
-      {tab === "structure" && (
+      </TabsContent>
+      <TabsContent value="structure" className="min-h-0 flex-1 overflow-auto">
         <StructureView
           connectionId={props.connectionId}
           schema={props.schema}
           table={props.table}
         />
-      )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -165,7 +148,7 @@ function TableData({
         onClear={() => restart(() => onFilterChange(null))}
       />
       {batch && !readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-1.5 text-sm">
           {edit.canEdit ? (
             <>
               <Button size="sm" variant="outline" onClick={edit.addRow}>
@@ -188,7 +171,7 @@ function TableData({
                 )}
               </Button>
               <span className="text-xs text-muted-foreground">
-                Duplo clique numa célula para editar
+                Duplo clique ou Enter numa célula para editar
               </span>
             </>
           ) : (
@@ -212,7 +195,7 @@ function TableData({
             </div>
           )}
           {edit.notice && !dirty && (
-            <span role="status" className="ml-auto text-xs text-emerald-700">
+            <span role="status" className="ml-auto text-xs text-success">
               {edit.notice}
             </span>
           )}
@@ -262,7 +245,7 @@ function TableData({
           />
         )}
       </div>
-      <div className="flex items-center gap-2 border-t px-3 py-1.5 text-sm">
+      <div className="flex items-center gap-2 border-t bg-muted px-3 py-1.5 text-sm">
         <Button
           size="sm"
           variant="outline"
@@ -294,8 +277,9 @@ function TableData({
         {browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>}
       </div>
       <ConfirmDialog
+        connectionId={connectionId}
         confirmation={edit.confirmation}
-        confirmLabel="Salvar em produção"
+        confirmLabel="Romper lacre e salvar"
         pending={edit.saving}
         onConfirm={edit.confirm}
         onCancel={edit.dismiss}

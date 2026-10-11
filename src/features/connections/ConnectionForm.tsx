@@ -64,7 +64,9 @@ export function ConnectionForm({ connection, onSaved, onDeleted }: ConnectionFor
 
   return (
     <form onSubmit={handleSubmit} className="grid max-w-xl gap-6" noValidate>
-      <h2 className="text-lg font-semibold">{isEditing ? "Editar conexão" : "Nova conexão"}</h2>
+      <h2 className="border-b-2 border-foreground pb-2 text-[1.75rem] leading-none font-extrabold tracking-[0.05em] uppercase [font-stretch:66%]">
+        {isEditing ? "Editar conexão" : "Nova conexão"}
+      </h2>
 
       <ConnectionFields
         values={values}
@@ -87,9 +89,12 @@ export function ConnectionForm({ connection, onSaved, onDeleted }: ConnectionFor
         {isEditing && (
           <Button
             type="button"
-            variant="destructive"
+            variant={confirmingDelete ? "destructive" : "outline"}
+            className={confirmingDelete ? undefined : "text-destructive"}
             disabled={remove.isPending}
             onClick={handleDelete}
+            onBlur={() => setConfirmingDelete(false)}
+            onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
           >
             {confirmingDelete ? "Confirmar exclusão" : "Excluir"}
           </Button>

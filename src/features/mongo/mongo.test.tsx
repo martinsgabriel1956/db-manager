@@ -77,7 +77,7 @@ test("documents show typed values, switch to JSON, filter and page", async () =>
     pageSize: 20
   });
 
-  await user.click(screen.getByRole("tab", { name: "JSON" }));
+  await user.click(screen.getByRole("button", { name: "JSON" }));
   expect(screen.getByText(/"\$numberLong": "9007199254740993"/)).toBeInTheDocument();
 
   await user.type(screen.getByLabelText("Filtro"), '{{"name": "Ana"}');
@@ -180,7 +180,7 @@ test("delete asks first; on prod the statement is confirmed", async () => {
   await user.click(screen.getAllByRole("button", { name: "Excluir documento" })[1]);
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   expect(await screen.findByRole("dialog")).toHaveTextContent("deleteOne");
-  await user.click(screen.getByRole("button", { name: "Executar em produção" }));
+  await user.click(screen.getByRole("button", { name: "Romper lacre e executar" }));
 
   await waitFor(() => expect(callsTo(calls, "write_document")).toHaveLength(2));
   const writes = callsTo(calls, "write_document") as WriteArgs[];

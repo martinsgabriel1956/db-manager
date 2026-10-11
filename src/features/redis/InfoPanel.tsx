@@ -25,7 +25,7 @@ export function InfoPanel({ connectionId }: { connectionId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-2">
+      <div className="flex items-center gap-2 border-b bg-muted px-3 py-2">
         <Input
           aria-label="Filtrar INFO"
           placeholder="Filtrar (memory, clients…)"
@@ -57,7 +57,7 @@ export function InfoPanel({ connectionId }: { connectionId: string }) {
               <table className="w-full border-collapse text-xs">
                 <tbody className="font-mono">
                   {section.entries.map(([field, value]) => (
-                    <tr key={field} className="border-b">
+                    <tr key={field} className="h-7 border-b">
                       <td className="py-1 pr-4 text-muted-foreground">{field}</td>
                       <td className="py-1 break-all">{value}</td>
                     </tr>

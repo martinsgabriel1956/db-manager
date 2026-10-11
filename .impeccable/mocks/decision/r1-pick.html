@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DB Manager · Tarja de Medicamento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#fff;--ink:#1a1a1a;--muted:#5c5c5c;--rule:#d6d6d6;--hair:#ececec;--wash:#f6f6f4;--black:#111;--red:#d7191f;--green:#00a859;--yellow:#ffd400;--pend:#fff3b0}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden;background:var(--paper);color:var(--ink);font:400 13px/1.3 "Figtree",sans-serif}
+.cond{font-family:"Barlow Condensed",sans-serif;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.mono{font-family:"Red Hat Mono",monospace}
+.app{display:grid;grid-template-rows:28px 1fr;height:900px}
+.tarja{display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--black);color:#fff;font-size:14px;position:relative;z-index:3}
+.tarja .sep{width:1px;height:12px;background:#fff;opacity:.5}
+.tarja .rest{font-family:"Figtree";font-weight:500;font-size:12px;letter-spacing:0;text-transform:none}
+.body{display:grid;grid-template-columns:288px 1fr;min-height:0}
+aside{border-right:1px solid var(--rule);background:var(--wash);display:flex;flex-direction:column}
+.side-h{display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 8px 0 16px;border-bottom:1px solid var(--rule)}
+.side-h .t{font-size:15px;font-weight:700}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);font:500 12.5px "Figtree";color:var(--ink);white-space:nowrap}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ink{background:var(--black);border-color:var(--black);color:#fff;font-weight:600}
+.btn.sm{height:24px;padding:0 8px;font-size:12px}
+.plus{position:relative;width:9px;height:9px}
+.plus::before,.plus::after{content:"";position:absolute;background:currentColor}
+.plus::before{left:4px;top:0;width:1px;height:9px}.plus::after{top:4px;left:0;width:9px;height:1px}
+.tree{padding:8px 0;overflow:hidden}
+.conn{margin:0 0 4px}
+.row{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px 0 10px}
+.chev{width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(-45deg);margin:0 3px}
+.chev.open{transform:rotate(45deg) translate(-2px,-1px)}
+.name{flex:1;font-weight:600}
+.eng{font-size:11px;color:var(--muted)}
+.band{display:flex;align-items:center;justify-content:space-between;height:18px;padding:0 12px 0 28px;color:#fff;font-size:12px}
+.band.prod{background:var(--black)}.band.stg{background:var(--red)}
+.band .eng2{font-family:"Figtree";font-weight:500;letter-spacing:0;text-transform:none;font-size:11px;opacity:.9}
+.semtarja{font-size:12px;color:var(--muted);padding:0 4px;border:1px solid var(--rule);border-radius:3px;line-height:16px}
+.kids{padding:4px 0 4px 28px}
+.kids div{display:flex;align-items:center;gap:8px;height:26px;padding:0 8px}
+.kids .sch{color:var(--muted);font-weight:500}
+.kids .t1{padding-left:24px}
+.kids .on{background:var(--paper);box-shadow:inset 3px 0 0 var(--black),0 0 0 1px var(--rule);font-weight:600}
+.tb{width:11px;height:9px;border:1.5px solid currentColor;border-top-width:3px;border-radius:1px;color:var(--muted)}
+.vw{width:10px;height:10px;border:1.5px dashed var(--muted);border-radius:50%}
+main{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;align-items:flex-end;height:36px;padding:0 8px;border-bottom:1px solid var(--rule);background:var(--wash);gap:2px}
+.tab{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border:1px solid transparent;border-bottom:0;border-radius:4px 4px 0 0;color:var(--muted);font-weight:500}
+.tab.on{background:var(--paper);border-color:var(--rule);color:var(--ink);font-weight:600;margin-bottom:-1px;height:31px;box-shadow:inset 0 3px 0 var(--black)}
+.x{position:relative;width:8px;height:8px}.x::before,.x::after{content:"";position:absolute;left:3.5px;top:-1px;width:1px;height:10px;background:var(--muted);transform:rotate(45deg)}.x::after{transform:rotate(-45deg)}
+.head{display:flex;align-items:center;gap:16px;height:48px;padding:0 16px;border-bottom:1px solid var(--hair)}
+.head h1{margin:0;font:700 18px "Figtree";letter-spacing:-.01em}
+.seg{display:flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.seg span{padding:4px 12px;font-weight:500}.seg .on{background:var(--black);color:#fff}
+.sp{flex:1}
+.bar{display:flex;align-items:center;gap:8px;height:44px;padding:0 16px;border-bottom:1px solid var(--hair)}
+.lbl{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.sel,.inp{display:inline-flex;align-items:center;justify-content:space-between;gap:12px;height:28px;padding:0 8px 0 10px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);font-size:12.5px}
+.sel::after{content:"";width:5px;height:5px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg) translateY(-2px)}
+.inp{width:200px;font-family:"Red Hat Mono";font-size:12px}
+.edit{height:40px}
+.hint{font-size:12px;color:var(--muted);margin-left:8px}
+.pending{display:flex;align-items:center;gap:8px;font-weight:600;font-size:12.5px}
+.pending i{width:12px;height:12px;background:var(--yellow);border:1px solid #b89a00}
+.gridwrap{flex:1;overflow:hidden;position:relative}
+table{border-collapse:collapse;width:100%;font-family:"Red Hat Mono";font-size:12.5px}
+th{height:30px;padding:0 12px;text-align:left;font:600 12px "Figtree";border-bottom:1px solid var(--ink);border-right:1px solid var(--hair);background:var(--paper);white-space:nowrap}
+th small{font:500 11px "Red Hat Mono";color:var(--muted);margin-left:6px}
+th.sort::after{content:"";display:inline-block;margin-left:6px;border:4px solid transparent;border-bottom:5px solid var(--ink);transform:translateY(-2px)}
+td{height:28px;padding:0 12px;border-bottom:1px solid var(--hair);border-right:1px solid var(--hair);white-space:nowrap}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+th.n{text-align:right}
+td.mut{color:var(--muted)}
+td.ed{background:var(--pend);box-shadow:inset 3px 0 0 var(--yellow);font-weight:600}
+tr:nth-child(even) td{background-color:#fafaf9}
+tr:nth-child(even) td.ed{background:var(--pend)}
+.foot{display:flex;align-items:center;gap:8px;height:36px;padding:0 16px;border-top:1px solid var(--rule);background:var(--wash)}
+.foot .pg{font-weight:600;padding:0 8px}
+.foot .meta{margin-left:auto;font-size:12px;color:var(--muted)}
+.veil{position:absolute;left:0;right:0;top:28px;bottom:0;background:rgba(17,17,17,.45);z-index:2}
+.rx{position:absolute;z-index:4;left:calc(50% - 280px + 144px);top:190px;width:560px;background:var(--paper);border:1px solid var(--black);box-shadow:0 24px 48px rgba(0,0,0,.28)}
+.rx-h{display:flex;align-items:center;justify-content:space-between;height:40px;padding:0 20px;background:var(--black);color:#fff;font-size:18px}
+.rx-h span:last-child{font-size:13px;opacity:.85}
+.rx-b{padding:16px 20px 20px}
+.rx-b p{margin:0 0 12px;font-size:13.5px;line-height:1.45}
+.f{display:grid;grid-template-columns:96px 1fr;align-items:end;gap:12px;height:30px;border-bottom:1px solid var(--rule);padding-bottom:5px}
+.f .k{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.f .v{font-weight:600}
+.chip{display:inline-block;background:var(--black);color:#fff;padding:0 6px;font-size:13px;line-height:18px;margin-right:6px}
+.sql{margin:16px 0 8px;padding:12px 14px;border:1px solid var(--ink);background:var(--wash);font-size:12.5px;line-height:1.75}
+.sql b{font-weight:600}.sql .s{color:#8a1116}
+.rx-n{font-size:12px;color:var(--muted)}
+.rx-a{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--rule);background:var(--wash)}
+.rx-a .btn{height:32px;padding:0 16px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="tarja cond"><span>Tarja preta · Produção</span><span class="sep"></span><span class="rest">Postgres prod · só executa com a receita retida</span></div>
+  <div class="body">
+    <aside>
+      <div class="side-h"><span class="t">Conexões</span><span><span class="btn ghost sm">Histórico</span> <span class="btn sm"><span class="plus"></span>Nova</span></span></div>
+      <div class="tree">
+        <div class="conn">
+          <div class="row"><span class="chev open"></span><span class="name">Postgres prod</span><span class="eng">PostgreSQL</span></div>
+          <div class="band prod cond"><span>Prod · Tarja preta</span><span class="eng2">db.prod.interno</span></div>
+          <div class="kids">
+            <div class="sch"><span class="chev open"></span>public</div>
+            <div class="t1 on"><span class="tb"></span>users</div>
+            <div class="t1"><span class="tb"></span>orders</div>
+            <div class="t1"><span class="tb"></span>invoices</div>
+            <div class="t1"><span class="vw"></span>active_users</div>
+            <div class="sch"><span class="chev"></span>audit</div>
+          </div>
+        </div>
+        <div class="conn"><div class="row"><span class="chev"></span><span class="name">Postgres dev</span><span class="semtarja cond">Sem tarja · Dev</span><span class="eng">PostgreSQL</span></div></div>
+        <div class="conn"><div class="row"><span class="chev"></span><span class="name">Mongo dev</span><span class="semtarja cond">Sem tarja · Dev</span><span class="eng">MongoDB</span></div></div>
+        <div class="conn">
+          <div class="row"><span class="chev"></span><span class="name">Staging API</span><span class="eng">MySQL</span></div>
+          <div class="band stg cond"><span>Staging · Tarja vermelha</span><span class="eng2">api-stg</span></div>
+        </div>
+        <div class="conn"><div class="row"><span class="chev"></span><span class="name">Cache</span><span class="semtarja cond">Sem tarja · Local</span><span class="eng">Redis</span></div></div>
+      </div>
+    </aside>
+    <main>
+      <div class="tabs"><span class="tab on">users <span class="x"></span></span><span class="tab">Postgres dev · SQL 1 <span class="x"></span></span><span class="tab">orders <span class="x"></span></span></div>
+      <div class="head"><h1>public.users</h1><span class="seg"><span class="on">Dados</span><span>Estrutura</span></span><span class="sp"></span><span class="btn">Exportar CSV</span></div>
+      <div class="bar"><span class="lbl">Filtro</span><span class="sel" style="width:120px">email</span><span class="sel" style="width:88px">LIKE</span><span class="inp">%@gmail.com</span><span class="btn ink">Aplicar</span><span class="btn ghost">Limpar filtro</span></div>
+      <div class="bar edit"><span class="btn"><span class="plus" style="color:var(--green)"></span>Adicionar linha</span><span class="btn">Excluir linha</span><span class="hint">Duplo clique ou Enter numa célula para editar</span><span class="sp"></span><span class="pending"><i></i>2 alterações pendentes</span><span class="btn ghost">Descartar</span><span class="btn ink">Salvar</span></div>
+      <div class="gridwrap">
+        <table>
+          <tr><th class="n sort">id<small>int4</small></th><th>email<small>text</small></th><th>name<small>text</small></th><th>plan<small>text</small></th><th>created_at<small>timestamptz</small></th><th class="n">logins<small>int4</small></th></tr>
+          <tr><td class="n">1041</td><td>ana.souza@gmail.com</td><td>Ana Souza</td><td>pro</td><td>2026-03-02 09:14:22-03</td><td class="n">214</td></tr>
+          <tr><td class="n">1042</td><td>bruno.lima@gmail.com</td><td>Bruno Lima</td><td>free</td><td>2026-03-02 11:40:05-03</td><td class="n">7</td></tr>
+          <tr><td class="n">1043</td><td>carla.mendes@gmail.com</td><td>Carla Mendes</td><td class="ed">team</td><td>2026-03-03 08:02:51-03</td><td class="n">1.392</td></tr>
+          <tr><td class="n">1044</td><td>diego.ferreira@gmail.com</td><td>Diego Ferreira</td><td>free</td><td>2026-03-04 17:25:10-03</td><td class="n">0</td></tr>
+          <tr><td class="n">1045</td><td>eduarda.rocha@gmail.com</td><td>Eduarda Rocha</td><td>pro</td><td>2026-03-05 13:48:37-03</td><td class="n">88</td></tr>
+          <tr><td class="n">1046</td><td>felipe.araujo@gmail.com</td><td>Felipe Araújo</td><td>team</td><td>2026-03-07 10:11:09-03</td><td class="n">501</td></tr>
+          <tr><td class="n">1047</td><td>gabriela.nunes@gmail.com</td><td>Gabriela Nunes</td><td>free</td><td>2026-03-08 22:56:44-03</td><td class="n">13</td></tr>
+          <tr><td class="n">1048</td><td>henrique.costa@gmail.com</td><td>Henrique Costa</td><td>pro</td><td>2026-03-10 07:30:00-03</td><td class="n">276</td></tr>
+          <tr><td class="n">1049</td><td>isabela.martins@gmail.com</td><td>Isabela Martins</td><td>free</td><td>2026-03-11 15:19:28-03</td><td class="n">42</td></tr>
+          <tr><td class="n">1050</td><td>joao.pereira@gmail.com</td><td>João Pereira</td><td>team</td><td>2026-03-12 09:05:16-03</td><td class="n">3.018</td></tr>
+          <tr><td class="n">1051</td><td>larissa.gomes@gmail.com</td><td>Larissa Gomes</td><td>free</td><td>2026-03-14 18:44:02-03</td><td class="n">5</td></tr>
+          <tr><td class="n">1052</td><td>marcos.ribeiro@gmail.com</td><td>Marcos Ribeiro</td><td>pro</td><td>2026-03-15 12:27:39-03</td><td class="n">167</td></tr>
+          <tr><td class="n">1053</td><td>natalia.carvalho@gmail.com</td><td>Natália Carvalho</td><td>free</td><td>2026-03-17 20:03:55-03</td><td class="n">21</td></tr>
+          <tr><td class="n">1054</td><td>otavio.barbosa@gmail.com</td><td>Otávio Barbosa</td><td>pro</td><td>2026-03-18 08:58:12-03</td><td class="n">309</td></tr>
+          <tr><td class="n">1055</td><td>paula.teixeira@gmail.com</td><td>Paula Teixeira</td><td>free</td><td>2026-03-20 14:36:47-03</td><td class="n">2</td></tr>
+          <tr><td class="n">1056</td><td>rafael.almeida@gmail.com</td><td>Rafael Almeida</td><td>team</td><td>2026-03-21 11:12:30-03</td><td class="n">744</td></tr>
+          <tr><td class="n">1057</td><td>sabrina.cardoso@gmail.com</td><td>Sabrina Cardoso</td><td>free</td><td>2026-03-23 16:50:19-03</td><td class="n">19</td></tr>
+          <tr><td class="n">1058</td><td>thiago.moreira@gmail.com</td><td>Thiago Moreira</td><td class="ed">pro</td><td>2026-03-24 10:21:03-03</td><td class="n">56</td></tr>
+        </table>
+      </div>
+      <div class="foot"><span class="btn sm">Anterior</span><span class="pg">Página 3</span><span class="btn sm">Próxima</span><span class="meta mono">100 linhas · 18 ms</span></div>
+    </main>
+  </div>
+  <div class="veil"></div>
+  <div class="rx" role="dialog" aria-labelledby="rx-t">
+    <div class="rx-h cond"><span id="rx-t">Receita retida · Produção</span><span>Nº 0412</span></div>
+    <div class="rx-b">
+      <p>Você vai gravar <b>2 alterações</b> numa conexão de produção. Confira os comandos exatos antes de confirmar.</p>
+      <div class="f"><span class="k">Conexão</span><span class="v">Postgres prod · PostgreSQL · public.users</span></div>
+      <div class="f"><span class="k">Ambiente</span><span class="v"><span class="chip cond">Tarja preta</span>Produção</span></div>
+      <div class="f"><span class="k">Comandos</span><span class="v">2 × UPDATE, numa transação</span></div>
+      <div class="f"><span class="k">Data</span><span class="v mono">11/10/2026 14:32</span></div>
+      <div class="sql mono"><b>UPDATE</b> public.users <b>SET</b> plan = <span class="s">'team'</span> <b>WHERE</b> id = 1043;<br><b>UPDATE</b> public.users <b>SET</b> plan = <span class="s">'pro'</span> <b>WHERE</b> id = 1058;</div>
+      <div class="rx-n">Uma cópia desta receita fica retida no Histórico da conexão.</div>
+    </div>
+    <div class="rx-a"><span class="btn">Cancelar</span><span class="btn ink">Salvar em produção</span></div>
+  </div>
+</div>
+</body>
+</html>

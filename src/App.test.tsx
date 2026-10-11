@@ -21,7 +21,9 @@ test("lists connections with engine and read-only marker", async () => {
   const item = await screen.findByRole("button", { name: /^Postgres prod/ });
 
   expect(item).toHaveTextContent("PostgreSQL");
-  expect(item).toHaveTextContent("RO");
+  expect(item).toHaveTextContent("somente leitura");
+  // prod is named in words, not only by the dot's color
+  expect(item).toHaveTextContent("Prod");
 });
 
 test("shows an empty state when there are no connections", async () => {

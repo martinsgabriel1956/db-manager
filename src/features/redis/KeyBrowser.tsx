@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,12 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
   const scan = useKeyScan(connectionId, db, pattern);
   const editor = useKeyEdit(connectionId, db);
 
-  const keys = uniqueKeys(scan.data?.pages.map(page => page.keys) ?? []);
-  const tree = buildKeyTree(keys, separator);
+  const pages = scan.data?.pages;
+  // sorting thousands of keys must not rerun on every keystroke in the pattern input
+  const { keys, tree } = useMemo(() => {
+    const unique = uniqueKeys(pages?.map(page => page.keys) ?? []);
+    return { keys: unique, tree: buildKeyTree(unique, separator) };
+  }, [pages, separator]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -137,8 +141,9 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
         />
       )}
       <ConfirmDialog
+        connectionId={connectionId}
         confirmation={editor.confirmation}
-        confirmLabel="Executar em produção"
+        confirmLabel="Romper lacre e executar"
         statementSuffix=""
         pending={editor.isPending}
         onConfirm={editor.confirm}

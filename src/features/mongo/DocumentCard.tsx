@@ -29,7 +29,15 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
           )}
           {onDelete &&
             (confirmingDelete ? (
-              <Button size="xs" variant="destructive" onClick={onDelete}>
+              // focused so Enter confirms; leaving it or Escape disarms the delete
+              <Button
+                size="xs"
+                variant="destructive"
+                autoFocus
+                onClick={onDelete}
+                onBlur={() => setConfirmingDelete(false)}
+                onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
+              >
                 Confirmar exclusão
               </Button>
             ) : (

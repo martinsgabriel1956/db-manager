@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Cell, ResultColumn, Sort } from "@/bindings";
@@ -37,6 +37,40 @@ const ROW_HEIGHT = 28;
 /** start fetching the next batch when this close to the end */
 const LOAD_MORE_THRESHOLD = 50;
 
+/** Where a navigation key moves the selection; null = the key is not a grid move. */
+function moveSelection(
+  key: string,
+  ctrlKey: boolean,
+  from: SelectedCell,
+  rowCount: number,
+  columnCount: number,
+  pageRows: number
+): SelectedCell | null {
+  const lastRow = rowCount - 1;
+  const lastColumn = columnCount - 1;
+  const clampRow = (row: number) => Math.min(lastRow, Math.max(0, row));
+  switch (key) {
+    case "ArrowUp":
+      return { ...from, row: clampRow(from.row - 1) };
+    case "ArrowDown":
+      return { ...from, row: clampRow(from.row + 1) };
+    case "ArrowLeft":
+      return { ...from, column: Math.max(0, from.column - 1) };
+    case "ArrowRight":
+      return { ...from, column: Math.min(lastColumn, from.column + 1) };
+    case "PageUp":
+      return { ...from, row: clampRow(from.row - pageRows) };
+    case "PageDown":
+      return { ...from, row: clampRow(from.row + pageRows) };
+    case "Home":
+      return ctrlKey ? { row: 0, column: 0 } : { ...from, column: 0 };
+    case "End":
+      return ctrlKey ? { row: lastRow, column: lastColumn } : { ...from, column: lastColumn };
+    default:
+      return null;
+  }
+}
+
 export function ResultGrid({
   columns,
   rows,
@@ -50,7 +84,12 @@ export function ResultGrid({
   editing
 }: ResultGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<CellEditor | null>(null);
+  /** Escape closes the inline input without the blur that follows committing it */
+  const cancelEdit = useRef(false);
+  const cellIdPrefix = useId();
+  const cellId = (cell: SelectedCell) => `${cellIdPrefix}-${cell.row}-${cell.column}`;
 
   function startEditing(row: number, column: number) {
     if (editing?.canEdit(row, column)) {
@@ -59,10 +98,67 @@ export function ResultGrid({
   }
 
   function commit() {
-    if (editor && editing) {
+    if (cancelEdit.current) {
+      cancelEdit.current = false;
+    } else if (editor && editing) {
       editing.onCommit(editor.row, editor.column, editor.text);
     }
     setEditor(null);
+  }
+
+  /** Scrolls just enough to show the cell below the sticky header. */
+  function reveal({ row, column }: SelectedCell) {
+    const element = scrollRef.current;
+    if (!element) {
+      return;
+    }
+    const header = headerRef.current?.offsetHeight ?? 0;
+    const top = row * ROW_HEIGHT;
+    const visibleRows = element.clientHeight - header;
+    if (top < element.scrollTop) {
+      element.scrollTop = top;
+    } else if (top + ROW_HEIGHT > element.scrollTop + visibleRows) {
+      element.scrollTop = top + ROW_HEIGHT - visibleRows;
+    }
+    const left = column * COLUMN_WIDTH;
+    if (left < element.scrollLeft) {
+      element.scrollLeft = left;
+    } else if (left + COLUMN_WIDTH > element.scrollLeft + element.clientWidth) {
+      element.scrollLeft = left + COLUMN_WIDTH - element.clientWidth;
+    }
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // keys typed into the inline input belong to the input
+    if (event.target !== event.currentTarget || rows.length === 0 || columns.length === 0) {
+      return;
+    }
+    if (selected && (event.key === "Enter" || event.key === "F2")) {
+      event.preventDefault();
+      startEditing(selected.row, selected.column);
+      return;
+    }
+    const pageRows = Math.max(
+      1,
+      Math.floor((scrollRef.current?.clientHeight ?? 0) / ROW_HEIGHT) - 1
+    );
+    const next = selected
+      ? moveSelection(
+          event.key,
+          event.ctrlKey || event.metaKey,
+          selected,
+          rows.length,
+          columns.length,
+          pageRows
+        )
+      : event.key.startsWith("Arrow")
+        ? { row: 0, column: 0 }
+        : null;
+    if (next) {
+      event.preventDefault();
+      onSelect(next);
+      reveal(next);
+    }
   }
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -92,10 +188,21 @@ export function ResultGrid({
     <div
       ref={scrollRef}
       role="grid"
-      aria-rowcount={rows.length}
-      className="relative h-full overflow-auto font-mono text-xs"
+      aria-label="Resultado"
+      aria-rowcount={rows.length + 1}
+      aria-colcount={columns.length}
+      aria-activedescendant={selected && !editor ? cellId(selected) : undefined}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className="relative h-full overflow-auto font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
     >
-      <div role="row" className="sticky top-0 z-10 flex border-b bg-muted" style={{ width }}>
+      <div
+        ref={headerRef}
+        role="row"
+        aria-rowindex={1}
+        className="sticky top-0 z-10 flex border-b bg-muted"
+        style={{ width }}
+      >
         {columns.map((column, index) => {
           const sortedHere = sort?.column === column.name ? sort.direction : null;
           const label = (
@@ -115,6 +222,15 @@ export function ResultGrid({
             <div
               key={`${index}:${column.name}`}
               role="columnheader"
+              aria-sort={
+                sortedHere === "asc"
+                  ? "ascending"
+                  : sortedHere === "desc"
+                    ? "descending"
+                    : onSortChange
+                      ? "none"
+                      : undefined
+              }
               style={{ width: COLUMN_WIDTH }}
               className="shrink-0 border-r"
             >
@@ -145,13 +261,12 @@ export function ResultGrid({
               <div
                 key={item.key}
                 role="row"
-                aria-rowindex={item.index + 1}
+                aria-rowindex={item.index + 2}
                 data-status={status ?? undefined}
                 className={cn(
                   "absolute top-0 left-0 flex border-b",
-                  status === "new" && "bg-emerald-50 dark:bg-emerald-950/40",
-                  status === "deleted" &&
-                    "bg-red-50 text-muted-foreground line-through dark:bg-red-950/40"
+                  status === "new" && "bg-success/10",
+                  status === "deleted" && "bg-destructive/10 text-muted-foreground line-through"
                 )}
                 style={{ height: ROW_HEIGHT, width, transform: `translateY(${item.start}px)` }}
               >
@@ -163,6 +278,7 @@ export function ResultGrid({
                   return (
                     <div
                       key={`${columnIndex}:${columns[columnIndex]?.name}`}
+                      id={cellId({ row: item.index, column: columnIndex })}
                       role="gridcell"
                       aria-selected={isSelected}
                       data-edited={isEdited || undefined}
@@ -174,9 +290,9 @@ export function ResultGrid({
                         isNumeric(cell) && "text-right",
                         cell.t === "null" && "text-muted-foreground italic",
                         cell.t === "unknown" && "text-muted-foreground",
-                        isEdited && "bg-amber-100 dark:bg-amber-900/40",
+                        isEdited && "opened-hatch",
                         isSelected &&
-                          "bg-primary/10 outline outline-1 -outline-offset-1 outline-primary"
+                          "bg-select/10 outline outline-2 -outline-offset-2 outline-select"
                       )}
                     >
                       {isEditing ? (
@@ -188,15 +304,28 @@ export function ResultGrid({
                           onChange={event => setEditor({ ...editor, text: event.target.value })}
                           onBlur={commit}
                           onKeyDown={event => {
+                            // handing focus back to the grid blurs the input, which commits
                             if (event.key === "Enter") {
-                              commit();
+                              event.preventDefault();
+                              scrollRef.current?.focus();
                             } else if (event.key === "Escape") {
-                              setEditor(null);
+                              event.preventDefault();
+                              cancelEdit.current = true;
+                              scrollRef.current?.focus();
                             }
                           }}
                         />
                       ) : (
-                        gridText(cell)
+                        <>
+                          {gridText(cell)}
+                          {columnIndex === 0 && status === "new" && (
+                            <span className="sr-only"> (linha nova, não salva)</span>
+                          )}
+                          {columnIndex === 0 && status === "deleted" && (
+                            <span className="sr-only"> (linha marcada para exclusão)</span>
+                          )}
+                          {isEdited && <span className="sr-only"> (alteração pendente)</span>}
+                        </>
                       )}
                     </div>
                   );

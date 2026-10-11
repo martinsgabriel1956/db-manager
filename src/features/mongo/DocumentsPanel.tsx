@@ -107,10 +107,10 @@ export function DocumentsPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <form onSubmit={apply} className="grid gap-2 border-b px-3 py-2">
+      <form onSubmit={apply} className="grid gap-2 border-b bg-muted px-3 py-2">
         <div className="grid grid-cols-[2fr_1fr_1fr_auto] items-end gap-2">
           {(Object.keys(FIELD_LABEL) as (keyof Query)[]).map(field => (
-            <label key={field} className="grid gap-1 text-xs text-muted-foreground">
+            <label key={field} className="grid gap-1.5 label-caps text-muted-foreground">
               {FIELD_LABEL[field]}
               <Input
                 aria-label={FIELD_LABEL[field]}
@@ -133,16 +133,19 @@ export function DocumentsPanel({
         )}
       </form>
 
-      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-sm">
-        <div role="tablist" aria-label="Visualização" className="flex rounded-md border">
+      <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5 text-sm">
+        {/* a toggle between two renderings of the same documents, not tabs with panels */}
+        <div role="group" aria-label="Visualização" className="flex rounded-lg border p-0.5">
           {(["tree", "json"] as const).map(option => (
             <button
               key={option}
               type="button"
-              role="tab"
-              aria-selected={view === option}
+              aria-pressed={view === option}
               onClick={() => setView(option)}
-              className={cn("px-2 py-0.5 text-xs", view === option && "bg-muted font-medium")}
+              className={cn(
+                "rounded-md px-2 py-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                view === option && "bg-muted font-medium text-foreground"
+              )}
             >
               {option === "tree" ? "Árvore" : "JSON"}
             </button>
@@ -193,7 +196,7 @@ export function DocumentsPanel({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 border-t px-3 py-1.5 text-sm">
+      <div className="flex items-center gap-2 border-t bg-muted px-3 py-1.5 text-sm">
         <Button
           size="sm"
           variant="outline"
@@ -231,8 +234,9 @@ export function DocumentsPanel({
         />
       )}
       <ConfirmDialog
+        connectionId={connectionId}
         confirmation={writer.confirmation}
-        confirmLabel="Executar em produção"
+        confirmLabel="Romper lacre e executar"
         pending={writer.isPending}
         onConfirm={writer.confirm}
         onCancel={writer.dismiss}

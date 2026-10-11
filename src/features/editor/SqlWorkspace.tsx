@@ -10,6 +10,7 @@ import { ExportButton } from "@/features/export/ExportButton";
 import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
+import { RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
   connectionId: string;
@@ -70,14 +71,14 @@ export function SqlWorkspace({
       <Group orientation="vertical" className="h-full">
         <Panel defaultSize="45" minSize={80}>
           <div className="flex h-full flex-col">
-            <div className="flex items-center gap-2 border-b px-3 py-1.5">
+            <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5">
               <h2 className="text-sm font-semibold">SQL · {connectionName}</h2>
               <span className="text-xs text-muted-foreground">
-                Ctrl+Enter executa a seleção ou tudo
+                {RUN_SHORTCUT} executa a seleção ou tudo
               </span>
               <div className="ml-auto flex gap-2">
                 {isRunning ? (
-                  <Button size="sm" variant="destructive" onClick={runner.cancel}>
+                  <Button size="sm" variant="outline" onClick={runner.cancel}>
                     <Square /> Cancelar
                   </Button>
                 ) : (
@@ -103,7 +104,8 @@ export function SqlWorkspace({
             </div>
           </div>
         </Panel>
-        <Separator className="h-1 bg-border hover:bg-primary/40" />
+        {/* 1px line with a 9px grab area */}
+        <Separator className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring data-[separator=active]:bg-primary/40" />
         <Panel minSize={80}>
           {/* keyed per run so a stale cell selection never points into a new result */}
           <ResultsPanel
@@ -116,6 +118,7 @@ export function SqlWorkspace({
         </Panel>
       </Group>
       <ConfirmDialog
+        connectionId={connectionId}
         confirmation={runner.state.status === "confirm" ? runner.state.confirmation : null}
         confirmLabel="Executar mesmo assim"
         onConfirm={runner.confirm}
@@ -158,7 +161,7 @@ function ResultsPanel({ connectionId, sql, state, onLoadMore }: ResultsPanelProp
   const selectedCell = selected && state.rows[selected.row]?.[selected.column];
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1">
+      <div className="flex items-center gap-2 border-b bg-muted px-3 py-1">
         <p role="status" className="text-xs text-muted-foreground">
           {text}
         </p>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DB Manager — Console Grafite</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#0d1117;--pn:#151a22;--ln:#262c36;--ln2:#1a2029;--tx:#e6edf3;--mu:#8b949e;--bl:#79c0ff;--gr:#56d364;--pu:#c678dd;--am:#e3b341;--rd:#f85149;--ui:"Onest",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden}
+body{background:var(--bg);color:var(--tx);font:13px/1.4 var(--ui);display:grid;grid-template-columns:288px 1152px;-webkit-font-smoothing:antialiased}
+button,select,input{font:inherit;color:inherit;margin:0}
+.btn{height:24px;padding:0 10px;border:1px solid var(--ln);border-radius:4px;background:transparent;color:var(--tx);font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:var(--bl);border-color:var(--bl);color:#0d1117;font-weight:600}
+.btn.ghost{border-color:transparent;color:var(--mu)}
+.btn.del{border:1px dashed var(--rd);color:var(--rd);padding:0 12px}
+.caps{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mu)}
+.mono{font-family:var(--mono)}
+.mu{color:var(--mu)}
+.sp{flex:1}
+.bar{flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--pn);border-bottom:1px solid var(--ln)}
+aside{background:var(--pn);border-right:1px solid var(--ln);display:flex;flex-direction:column;height:900px}
+aside .bar{height:36px;padding:0 8px 0 12px;gap:4px}
+.tree{flex:1;list-style:none;margin:0;padding:4px 0}
+.tree li{height:28px;display:flex;align-items:center;gap:8px;padding-right:12px;white-space:nowrap}
+.d0{padding-left:8px}.d1{padding-left:28px}.d2{padding-left:48px}
+.chev{width:12px;flex:none;color:var(--mu);font-size:10px;text-align:center}
+.eng{font:500 10px/14px var(--mono);color:var(--mu);border:1px solid var(--ln);border-radius:3px;padding:0 4px}
+.env{font:600 10px/16px var(--ui);letter-spacing:.08em;padding:0 6px;border-radius:3px;border:1px solid}
+.prod{color:var(--rd);border-color:rgba(248,81,73,.45)}
+.dev{color:var(--gr);border-color:rgba(86,211,100,.4)}
+.loc{color:var(--mu);border-color:var(--ln)}
+.ro{font:500 10px var(--mono);color:var(--mu)}
+.ic{width:11px;height:9px;flex:none;border:1px solid var(--mu);border-top-width:3px;border-radius:1px}
+.ic.v{border-style:dashed}
+.cnt{margin-left:auto;font:11px var(--mono);color:var(--mu)}
+.tree li.sel{background:rgba(121,192,255,.08);outline:1px solid var(--bl);outline-offset:-1px}
+.sfoot{border-top:1px solid var(--ln);border-bottom:0;font-size:12px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--am);flex:none}
+.dot.ok{background:var(--gr)}
+main{display:flex;flex-direction:column;min-width:0;height:900px}
+.tabs{flex:none;height:36px;display:flex;background:var(--bg);border-bottom:1px solid var(--ln)}
+.tab{display:flex;align-items:center;gap:8px;padding:0 12px;border-right:1px solid var(--ln);color:var(--mu);font-size:12px}
+.tab.on{background:var(--pn);color:var(--tx);box-shadow:inset 0 1px 0 var(--bl);margin-bottom:-1px}
+.x{color:var(--mu);font-size:12px;margin-left:4px}
+.head{height:44px;gap:16px}
+.title{font-size:14px;font-weight:600}
+.seg{display:flex;gap:2px;border:1px solid var(--ln);border-radius:4px;padding:1px}
+.seg button{height:22px;padding:0 12px;border:0;border-radius:3px;background:transparent;color:var(--mu);font-size:12px}
+.seg .on{background:var(--bg);color:var(--tx);outline:1px solid var(--bl);outline-offset:-1px}
+.fbar,.ebar{height:40px}
+select,input{height:24px;border:1px solid var(--ln);border-radius:4px;background-color:var(--bg);font-size:12px;padding:0 8px}
+select{appearance:none;padding-right:24px;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238b949e'/%3E%3C/svg%3E") no-repeat right 8px center}
+input{font-family:var(--mono);width:220px}
+.fbar .caps{margin-right:4px}
+.hint{font-size:12px;margin-left:8px}
+kbd{font:500 11px var(--mono);border:1px solid var(--ln);border-radius:3px;padding:0 4px;color:var(--tx)}
+.pend{color:var(--am);font-size:12px;display:flex;align-items:center;gap:6px;margin-right:4px}
+.danger{align-self:stretch;display:flex;align-items:center;justify-content:flex-end;width:208px;margin-left:48px;padding-left:24px;border-left:1px solid var(--ln)}
+.grid{flex:1;overflow:hidden;background:var(--bg)}
+table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;font:12px var(--mono);font-variant-numeric:tabular-nums}
+th{height:32px;background:var(--pn);border-bottom:1px solid var(--ln);border-right:1px solid var(--ln);text-align:left;padding:0 10px;font:600 12px var(--ui);white-space:nowrap}
+th small{font:400 11px var(--mono);color:var(--mu);margin-left:6px}
+td{height:28px;padding:0 10px;border-bottom:1px solid var(--ln2);border-right:1px solid var(--ln2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n{text-align:right}
+.sort{color:var(--pu);font-size:9px;margin-left:4px}
+td.g,th.g{color:var(--mu);text-align:right;padding:0 8px;font-size:11px;background:var(--pn);border-right-color:var(--ln)}
+.null{font-style:italic;color:var(--mu)}
+tr.new td{background:rgba(86,211,100,.06)}
+tr.new td.g{color:var(--gr);box-shadow:inset 2px 0 0 var(--gr)}
+tr.chg td.g{color:var(--am);box-shadow:inset 2px 0 0 var(--am)}
+td.edit{background:rgba(227,179,65,.12);outline:1px solid var(--am);outline-offset:-1px;color:var(--am)}
+td.cur{background:rgba(121,192,255,.06);outline:1px solid var(--bl);outline-offset:-1px}
+.foot{height:36px;border-top:1px solid var(--ln);border-bottom:0}
+.pg{font-size:12px;padding:0 8px}
+</style>
+</head>
+<body>
+<aside>
+<div class="bar"><span class="caps">Conexões</span><span class="sp"></span><button class="btn ghost">Histórico</button><button class="btn"><span class="mu">+</span>Nova</button></div>
+<ul class="tree">
+<li class="d0"><span class="chev">▸</span><span class="eng">PG</span>Postgres prod<span class="sp"></span><span class="ro">só leitura</span><span class="env prod">PROD</span></li>
+<li class="d0"><span class="chev">▾</span><span class="eng">PG</span>Postgres dev<span class="sp"></span><span class="env dev">DEV</span></li>
+<li class="d1"><span class="chev">▾</span>public<span class="cnt">4</span></li>
+<li class="d2 sel"><span class="ic"></span>users<span class="cnt">12.480</span></li>
+<li class="d2"><span class="ic"></span>orders<span class="cnt">48.913</span></li>
+<li class="d2"><span class="ic"></span>invoices<span class="cnt">31.207</span></li>
+<li class="d2"><span class="ic v"></span>active_users<span class="cnt">view</span></li>
+<li class="d1"><span class="chev">▸</span>audit<span class="cnt">2</span></li>
+<li class="d0"><span class="chev">▸</span><span class="eng">MG</span>Mongo dev<span class="sp"></span><span class="env dev">DEV</span></li>
+<li class="d0"><span class="chev">▸</span><span class="eng">RD</span>Cache<span class="sp"></span><span class="env loc">LOCAL</span></li>
+</ul>
+<div class="bar sfoot"><span class="dot ok"></span><span class="mu">Postgres dev conectado</span></div>
+</aside>
+<main>
+<nav class="tabs"><div class="tab on"><span class="eng">PG</span>users<span class="x">×</span></div><div class="tab"><span class="eng">SQL</span>Postgres dev · SQL 1<span class="x">×</span></div><div class="tab"><span class="eng">PG</span>orders<span class="x">×</span></div></nav>
+<div class="bar head"><span class="title"><span class="mu">public.</span>users</span><div class="seg"><button class="on">Dados</button><button>Estrutura</button></div><span class="sp"></span><button class="btn">Exportar CSV</button></div>
+<div class="bar fbar"><span class="caps">Filtro</span><select><option>email</option></select><select><option>LIKE</option></select><input value="%@gmail.com"><button class="btn pri">Aplicar</button><button class="btn ghost">Limpar filtro</button></div>
+<div class="bar ebar"><button class="btn"><span class="mu">+</span>Adicionar linha</button><span class="mu hint">Duplo clique ou <kbd>Enter</kbd> numa célula para editar</span><span class="sp"></span><span class="pend"><span class="dot"></span>2 alterações pendentes</span><button class="btn ghost">Descartar</button><button class="btn pri">Salvar</button><div class="danger"><button class="btn del">Excluir linha</button></div></div>
+<div class="grid">
+<table>
+<colgroup><col style="width:48px"><col style="width:96px"><col style="width:296px"><col style="width:200px"><col style="width:120px"><col style="width:248px"><col style="width:104px"><col></colgroup>
+<thead><tr><th class="g">#</th><th class="n">id<small>int4</small><span class="sort">▲</span></th><th>email<small>text</small></th><th>name<small>text</small></th><th>plan<small>text</small></th><th>created_at<small>timestamptz</small></th><th class="n">logins<small>int4</small></th><th></th></tr></thead>
+<tbody>
+<tr class="new"><td class="g">+</td><td class="n null">DEFAULT</td><td>renata.vieira@gmail.com</td><td>Renata Vieira</td><td>free</td><td class="null">now()</td><td class="n">0</td><td></td></tr>
+<tr><td class="g">201</td><td class="n">1042</td><td>ana.souza@gmail.com</td><td>Ana Souza</td><td>pro</td><td>2026-03-14 09:12:44+00</td><td class="n">318</td><td></td></tr>
+<tr><td class="g">202</td><td class="n">1047</td><td>bruno.lima@gmail.com</td><td>Bruno Lima</td><td>free</td><td>2026-03-14 11:40:02+00</td><td class="n">12</td><td></td></tr>
+<tr><td class="g">203</td><td class="n">1051</td><td>carla.mendes@gmail.com</td><td>Carla Mendes</td><td>team</td><td>2026-03-15 08:03:19+00</td><td class="n">1204</td><td></td></tr>
+<tr><td class="g">204</td><td class="n">1058</td><td>diego.ferreira@gmail.com</td><td>Diego Ferreira</td><td>pro</td><td>2026-03-15 14:27:51+00</td><td class="n">87</td><td></td></tr>
+<tr><td class="g">205</td><td class="n">1063</td><td>eduarda.rocha@gmail.com</td><td>Eduarda Rocha</td><td class="null">NULL</td><td>2026-03-16 07:55:10+00</td><td class="n">3</td><td></td></tr>
+<tr><td class="g">206</td><td class="n">1066</td><td>felipe.castro@gmail.com</td><td>Felipe Castro</td><td>free</td><td>2026-03-16 19:02:36+00</td><td class="n">41</td><td></td></tr>
+<tr class="chg"><td class="g">207</td><td class="n">1071</td><td>gabriela.nunes@gmail.com</td><td>Gabriela Nunes</td><td class="edit">team</td><td>2026-03-17 10:18:44+00</td><td class="n">256</td><td></td></tr>
+<tr><td class="g">208</td><td class="n">1079</td><td>henrique.alves@gmail.com</td><td>Henrique Alves</td><td>enterprise</td><td>2026-03-18 13:09:27+00</td><td class="n">2931</td><td></td></tr>
+<tr><td class="g">209</td><td class="n">1084</td><td>isabela.martins@gmail.com</td><td>Isabela Martins</td><td>free</td><td>2026-03-18 21:44:05+00</td><td class="n">7</td><td></td></tr>
+<tr><td class="g">210</td><td class="n">1090</td><td class="cur">joao.pereira@gmail.com</td><td>João Pereira</td><td>pro</td><td>2026-03-19 06:31:58+00</td><td class="n">412</td><td></td></tr>
+<tr><td class="g">211</td><td class="n">1095</td><td>karina.dias@gmail.com</td><td>Karina Dias</td><td>team</td><td>2026-03-20 09:47:13+00</td><td class="n">638</td><td></td></tr>
+<tr><td class="g">212</td><td class="n">1102</td><td>lucas.ribeiro@gmail.com</td><td>Lucas Ribeiro</td><td>free</td><td>2026-03-20 16:20:40+00</td><td class="n">0</td><td></td></tr>
+<tr><td class="g">213</td><td class="n">1108</td><td>mariana.costa@gmail.com</td><td>Mariana Costa</td><td>pro</td><td>2026-03-21 12:05:22+00</td><td class="n">175</td><td></td></tr>
+<tr><td class="g">214</td><td class="n">1113</td><td>nicolas.barbosa@gmail.com</td><td>Nicolas Barbosa</td><td>free</td><td>2026-03-22 08:58:09+00</td><td class="n">23</td><td></td></tr>
+<tr><td class="g">215</td><td class="n">1119</td><td>olivia.cardoso@gmail.com</td><td>Olívia Cardoso</td><td>enterprise</td><td>2026-03-22 17:36:51+00</td><td class="n">1580</td><td></td></tr>
+<tr><td class="g">216</td><td class="n">1124</td><td>pedro.araujo@gmail.com</td><td>Pedro Araújo</td><td>pro</td><td>2026-03-23 10:11:30+00</td><td class="n">299</td><td></td></tr>
+<tr><td class="g">217</td><td class="n">1130</td><td>rafaela.gomes@gmail.com</td><td>Rafaela Gomes</td><td>team</td><td>2026-03-24 07:22:47+00</td><td class="n">504</td><td></td></tr>
+<tr><td class="g">218</td><td class="n">1136</td><td>samuel.teixeira@gmail.com</td><td>Samuel Teixeira</td><td>free</td><td>2026-03-24 22:49:15+00</td><td class="n">16</td><td></td></tr>
+<tr><td class="g">219</td><td class="n">1141</td><td>tatiane.moura@gmail.com</td><td>Tatiane Moura</td><td>pro</td><td>2026-03-25 13:33:02+00</td><td class="n">341</td><td></td></tr>
+<tr><td class="g">220</td><td class="n">1147</td><td>vinicius.santos@gmail.com</td><td>Vinícius Santos</td><td>free</td><td>2026-03-26 09:06:38+00</td><td class="n">58</td><td></td></tr>
+<tr><td class="g">221</td><td class="n">1152</td><td>wesley.prado@gmail.com</td><td>Wesley Prado</td><td>pro</td><td>2026-03-26 15:41:20+00</td><td class="n">92</td><td></td></tr>
+<tr><td class="g">222</td><td class="n">1158</td><td>yasmin.freitas@gmail.com</td><td>Yasmin Freitas</td><td>free</td><td>2026-03-27 08:14:57+00</td><td class="n">5</td><td></td></tr>
+<tr><td class="g">223</td><td class="n">1163</td><td>thiago.monteiro@gmail.com</td><td>Thiago Monteiro</td><td>team</td><td>2026-03-27 18:30:09+00</td><td class="n">763</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<footer class="bar foot"><button class="btn">Anterior</button><span class="pg">Página 3</span><button class="btn">Próxima</button><span class="sp"></span><span class="mono mu">100 linhas · 18 ms</span></footer>
+</main>
+</body>
+</html>

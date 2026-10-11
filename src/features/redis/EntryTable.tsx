@@ -107,7 +107,7 @@ export function EntryTable({
       )}
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b text-left text-xs text-muted-foreground">
+          <tr className="h-7 border-b text-left label-caps text-muted-foreground">
             {showIndex && <th className="w-12 px-2 py-1.5 font-medium">#</th>}
             <th className="px-2 py-1.5 font-medium">{firstLabel}</th>
             {secondLabel && <th className="px-2 py-1.5 font-medium">{secondLabel}</th>}
@@ -120,13 +120,10 @@ export function EntryTable({
             editing?.id === entry.id ? (
               <Fragment key={entry.id}>{draftInputs(entry)}</Fragment>
             ) : (
-              <tr key={entry.id} className="group border-b align-top">
+              <tr key={entry.id} className="group h-7 border-b align-top">
                 {showIndex && <td className="px-2 py-1 text-muted-foreground">{entry.index}</td>}
                 <td
-                  className={cn(
-                    "px-2 py-1 break-all",
-                    entry.first.binary && "text-violet-700 dark:text-violet-300"
-                  )}
+                  className={cn("px-2 py-1 break-all", entry.first.binary && "text-syntax-keyword")}
                 >
                   {entry.first.text}
                 </td>
@@ -134,7 +131,7 @@ export function EntryTable({
                   <td
                     className={cn(
                       "px-2 py-1 break-all whitespace-pre-wrap",
-                      entry.second?.binary && "text-violet-700 dark:text-violet-300"
+                      entry.second?.binary && "text-syntax-keyword"
                     )}
                   >
                     {entry.second?.text}
@@ -152,14 +149,18 @@ export function EntryTable({
                         <Pencil />
                       </Button>
                       {removingId === entry.id ? (
+                        // focused so Enter confirms; leaving it or Escape disarms the removal
                         <Button
                           size="xs"
                           variant="destructive"
+                          autoFocus
                           disabled={pending}
                           onClick={() => {
                             setRemovingId(null);
                             onRemove(entry);
                           }}
+                          onBlur={() => setRemovingId(null)}
+                          onKeyDown={event => event.key === "Escape" && setRemovingId(null)}
                         >
                           Confirmar
                         </Button>

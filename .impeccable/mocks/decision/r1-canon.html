@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DB Manager — O padrão da categoria</title>
+<style>
+:root{--bg:#ffffff;--side:#f3f4f6;--text:#111827;--muted:#6b7280;--faint:#6f7581;--line:#e5e7eb;--line2:#f0f1f3;--accent:#2563eb;--accent-tint:#eff6ff;--red:#dc2626;--amber:#fef3c7;--amber-line:#f59e0b;--green:#ecfdf5;--green-line:#10b981;--sans:-apple-system,"Segoe UI",Cantarell,"Noto Sans",sans-serif;--mono:ui-monospace,"JetBrains Mono","DejaVu Sans Mono","Liberation Mono",monospace}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden}
+body{background:var(--bg);color:var(--text);font:13px/1.4 var(--sans);display:grid;grid-template-columns:288px 1fr}
+*{box-sizing:border-box}
+button,select,input{font:inherit;color:inherit}
+.btn{height:28px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 0 rgba(17,24,39,.04)}
+.btn.sm{height:24px;padding:0 8px;font-size:12px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent;box-shadow:none;color:var(--muted)}
+.btn.danger{color:var(--red)}
+.btn:disabled{color:var(--faint)}
+aside{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.side-head{height:48px;padding:0 12px 0 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.side-head h1{font-size:13px;font-weight:600;margin:0;flex:1}
+.tree{padding:8px;display:flex;flex-direction:column;gap:1px}
+.node{height:28px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:6px;white-space:nowrap}
+.node .chev{width:12px;color:#9ca3af;font-size:10px;text-align:center}
+.node .name{flex:1;overflow:hidden;text-overflow:ellipsis}
+.engine{width:18px;height:18px;border-radius:4px;font:600 9.5px/18px var(--sans);text-align:center;color:#fff;letter-spacing:-.02em}
+.pg{background:#336791}.mg{background:#13854e}.rd{background:#c6302b}
+.env{font-size:10px;font-weight:600;letter-spacing:.04em;padding:1px 6px;border-radius:999px;background:#e5e7eb;color:#374151}
+.env.prod{background:var(--red);color:#fff}
+.ro{font-size:10.5px;color:#4b5563}
+.lvl1{padding-left:28px}.lvl2{padding-left:48px}
+.ico{width:14px;height:14px;border:1.5px solid var(--faint);border-radius:3px;position:relative}
+.ico.tbl::after{content:"";position:absolute;left:0;right:0;top:3px;border-top:1.5px solid var(--faint)}
+.ico.view{border-style:dashed}
+.ico.schema{border-radius:50%}
+.node.sel{background:var(--accent);color:#fff}
+.node.sel .ico{border-color:#fff}.node.sel .ico.tbl::after{border-color:#fff}
+.side-foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tabs{height:36px;display:flex;align-items:flex-end;background:var(--side);border-bottom:1px solid var(--line);padding:0 8px;gap:2px}
+.tab{height:30px;padding:0 12px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#4b5563;border:1px solid transparent;border-bottom:0;border-radius:6px 6px 0 0}
+.tab.on{background:#fff;color:var(--text);border-color:var(--line);margin-bottom:-1px;height:31px;font-weight:500}
+.tab .x{color:var(--faint);font-size:14px;line-height:1}
+.head{height:48px;padding:0 16px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--line)}
+.head h2{margin:0;font:600 14px var(--mono)}
+.head h2 span{color:var(--muted);font-weight:400}
+.seg{display:inline-flex;background:var(--side);border-radius:6px;padding:2px}
+.seg b{font-weight:500;padding:3px 12px;border-radius:4px;color:#4b5563;font-size:12.5px}
+.seg b.on{background:#fff;color:var(--text);box-shadow:0 1px 2px rgba(17,24,39,.1)}
+.spacer{flex:1}
+.bar{height:40px;padding:0 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.bar label{font-size:12px;color:var(--muted);font-weight:500;margin-right:4px}
+.sel-in,.txt{height:28px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:0 8px;font-size:12.5px}
+.sel-in{padding-right:24px;appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 8px center}
+.txt{width:220px;font-family:var(--mono);font-size:12px}
+.edit{height:36px;background:#fafafa}
+.hint{font-size:12px;color:var(--faint);margin-left:8px}
+.pending{font-size:12px;color:#92400e;font-weight:500;display:flex;align-items:center;gap:6px}
+.pending::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber-line)}
+.grid{flex:1;overflow:hidden;min-height:0}
+table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%}
+th,td{height:28px;padding:0 12px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+th{height:40px;text-align:left;background:#f9fafb;border-bottom:1px solid var(--line);font-weight:600;font-size:12px;vertical-align:middle;line-height:1.25}
+th small{display:block;font:400 10.5px var(--mono);color:var(--faint)}
+th.sorted{color:var(--accent)}
+th.sorted::after{content:"▲";font-size:8px;float:right;margin-top:-14px}
+td{font:12.5px var(--mono)}
+.n{text-align:right}
+.g{width:44px;text-align:right;color:var(--faint);background:#f9fafb;border-right:1px solid var(--line);font-size:11px;padding:0 8px}
+td.null{color:var(--faint);font-style:italic}
+td.dirty{background:var(--amber);box-shadow:inset 2px 0 0 var(--amber-line)}
+td.focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-tint)}
+tr.new td{background:var(--green)}
+tr.new td.g{color:#047857;box-shadow:inset 2px 0 0 var(--green-line);font-weight:600}
+tr.new td.def{color:var(--faint);font-style:italic}
+tr.cur td{background:#f8fafc}
+footer{height:40px;border-top:1px solid var(--line);padding:0 16px;display:flex;align-items:center;gap:8px;font-size:12.5px;background:#fff}
+footer .page{padding:0 8px;font-weight:500}
+footer .meta{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<aside>
+  <div class="side-head"><h1>Conexões</h1><button class="btn sm ghost">Histórico</button><button class="btn sm primary">+ Nova</button></div>
+  <div class="tree">
+    <div class="node"><span class="chev">▸</span><span class="engine pg">PG</span><span class="name">Postgres prod</span><span class="ro">somente leitura</span><span class="env prod">PROD</span></div>
+    <div class="node"><span class="chev">▾</span><span class="engine pg">PG</span><span class="name">Postgres dev</span><span class="env">DEV</span></div>
+    <div class="node lvl1"><span class="chev">▾</span><span class="ico schema"></span><span class="name">public</span></div>
+    <div class="node lvl2 sel"><span class="ico tbl"></span><span class="name">users</span></div>
+    <div class="node lvl2"><span class="ico tbl"></span><span class="name">orders</span></div>
+    <div class="node lvl2"><span class="ico tbl"></span><span class="name">invoices</span></div>
+    <div class="node lvl2"><span class="ico view"></span><span class="name">active_users</span></div>
+    <div class="node lvl1"><span class="chev">▸</span><span class="ico schema"></span><span class="name">audit</span></div>
+    <div class="node"><span class="chev">▸</span><span class="engine mg">MG</span><span class="name">Mongo dev</span><span class="env">DEV</span></div>
+    <div class="node"><span class="chev">▸</span><span class="engine rd">RD</span><span class="name">Cache</span><span class="env">LOCAL</span></div>
+  </div>
+  <div class="side-foot">4 conexões · Postgres dev conectado</div>
+</aside>
+<main>
+  <nav class="tabs">
+    <div class="tab on">users <span class="x">×</span></div>
+    <div class="tab">Postgres dev · SQL 1 <span class="x">×</span></div>
+    <div class="tab">orders <span class="x">×</span></div>
+  </nav>
+  <div class="head">
+    <h2><span>public.</span>users</h2>
+    <div class="seg"><b class="on">Dados</b><b>Estrutura</b></div>
+    <div class="spacer"></div>
+    <button class="btn">Exportar CSV</button>
+  </div>
+  <div class="bar">
+    <label>Filtro</label>
+    <select class="sel-in"><option>email</option></select>
+    <select class="sel-in"><option>LIKE</option></select>
+    <input class="txt" value="%@gmail.com">
+    <button class="btn primary">Aplicar</button>
+    <button class="btn ghost">Limpar filtro</button>
+  </div>
+  <div class="bar edit">
+    <button class="btn sm">+ Adicionar linha</button>
+    <button class="btn sm danger">Excluir linha</button>
+    <span class="hint">Duplo clique ou Enter numa célula para editar</span>
+    <div class="spacer"></div>
+    <span class="pending">2 alterações pendentes</span>
+    <button class="btn sm">Descartar</button>
+    <button class="btn sm primary">Salvar</button>
+  </div>
+  <div class="grid">
+    <table>
+      <colgroup><col style="width:44px"><col style="width:96px"><col style="width:290px"><col style="width:210px"><col style="width:110px"><col style="width:250px"><col style="width:100px"><col></colgroup>
+      <thead><tr><th class="g"></th><th class="n sorted">id<small>int4</small></th><th>email<small>text</small></th><th>name<small>text</small></th><th>plan<small>text</small></th><th>created_at<small>timestamptz</small></th><th class="n">logins<small>int4</small></th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="g">201</td><td class="n">1042</td><td>ana.souza@gmail.com</td><td>Ana Souza</td><td>pro</td><td>2026-03-14 09:12:44+00</td><td class="n">318</td><td></td></tr>
+        <tr><td class="g">202</td><td class="n">1047</td><td>bruno.lima@gmail.com</td><td>Bruno Lima</td><td>free</td><td>2026-03-14 11:40:02+00</td><td class="n">12</td><td></td></tr>
+        <tr><td class="g">203</td><td class="n">1051</td><td>carla.mendes@gmail.com</td><td>Carla Mendes</td><td>team</td><td>2026-03-15 08:03:19+00</td><td class="n">1204</td><td></td></tr>
+        <tr><td class="g">204</td><td class="n">1058</td><td>diego.ferreira@gmail.com</td><td>Diego Ferreira</td><td class="null">NULL</td><td>2026-03-15 17:22:51+00</td><td class="n">0</td><td></td></tr>
+        <tr><td class="g">205</td><td class="n">1063</td><td>eduarda.rocha@gmail.com</td><td>Eduarda Rocha</td><td>pro</td><td>2026-03-16 10:15:37+00</td><td class="n">87</td><td></td></tr>
+        <tr class="cur"><td class="g">206</td><td class="n">1066</td><td>felipe.araujo@gmail.com</td><td>Felipe Araújo</td><td class="dirty focus">team</td><td>2026-03-16 13:48:09+00</td><td class="n">455</td><td></td></tr>
+        <tr><td class="g">207</td><td class="n">1071</td><td>gabriela.costa@gmail.com</td><td>Gabriela Costa</td><td>free</td><td>2026-03-17 07:55:14+00</td><td class="n">6</td><td></td></tr>
+        <tr><td class="g">208</td><td class="n">1079</td><td>henrique.alves@gmail.com</td><td>Henrique Alves</td><td>pro</td><td>2026-03-17 19:31:26+00</td><td class="n">263</td><td></td></tr>
+        <tr><td class="g">209</td><td class="n">1084</td><td>isabela.ribeiro@gmail.com</td><td>Isabela Ribeiro</td><td>free</td><td>2026-03-18 09:02:58+00</td><td class="n">31</td><td></td></tr>
+        <tr><td class="g">210</td><td class="n">1090</td><td>joao.pereira@gmail.com</td><td>João Pereira</td><td>team</td><td>2026-03-18 14:26:40+00</td><td class="n">2017</td><td></td></tr>
+        <tr><td class="g">211</td><td class="n">1093</td><td>larissa.gomes@gmail.com</td><td>Larissa Gomes</td><td>pro</td><td>2026-03-19 06:47:13+00</td><td class="n">149</td><td></td></tr>
+        <tr><td class="g">212</td><td class="n">1101</td><td>marcos.oliveira@gmail.com</td><td>Marcos Oliveira</td><td>free</td><td>2026-03-19 21:10:05+00</td><td class="n">3</td><td></td></tr>
+        <tr><td class="g">213</td><td class="n">1108</td><td>natalia.martins@gmail.com</td><td>Natália Martins</td><td>pro</td><td>2026-03-20 08:38:47+00</td><td class="n">722</td><td></td></tr>
+        <tr><td class="g">214</td><td class="n">1112</td><td>otavio.barbosa@gmail.com</td><td>Otávio Barbosa</td><td>free</td><td>2026-03-20 12:59:31+00</td><td class="n">18</td><td></td></tr>
+        <tr><td class="g">215</td><td class="n">1117</td><td>paula.cardoso@gmail.com</td><td>Paula Cardoso</td><td>team</td><td>2026-03-21 10:04:22+00</td><td class="n">936</td><td></td></tr>
+        <tr><td class="g">216</td><td class="n">1125</td><td>rafael.teixeira@gmail.com</td><td>Rafael Teixeira</td><td>pro</td><td>2026-03-21 16:41:50+00</td><td class="n">204</td><td></td></tr>
+        <tr><td class="g">217</td><td class="n">1130</td><td>sabrina.nunes@gmail.com</td><td>Sabrina Nunes</td><td>free</td><td>2026-03-22 09:17:36+00</td><td class="n">47</td><td></td></tr>
+        <tr><td class="g">218</td><td class="n">1136</td><td>thiago.carvalho@gmail.com</td><td>Thiago Carvalho</td><td>pro</td><td>2026-03-22 18:33:08+00</td><td class="n">381</td><td></td></tr>
+        <tr><td class="g">219</td><td class="n">1141</td><td>vanessa.moreira@gmail.com</td><td>Vanessa Moreira</td><td>team</td><td>2026-03-23 07:26:59+00</td><td class="n">1568</td><td></td></tr>
+        <tr class="new"><td class="g">+</td><td class="n def">DEFAULT</td><td>wesley.santos@gmail.com</td><td>Wesley Santos</td><td>free</td><td class="def">DEFAULT</td><td class="n">0</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <footer>
+    <button class="btn sm">‹ Anterior</button>
+    <span class="page">Página 3</span>
+    <button class="btn sm">Próxima ›</button>
+    <span class="meta">100 linhas · 18 ms</span>
+  </footer>
+</main>
+</body>
+</html>

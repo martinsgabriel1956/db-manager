@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- DB Manager: a sample label on the lab bench, under the production seal -->
+  <defs>
+    <clipPath id="label">
+      <rect x="168" y="268" width="688" height="488" rx="28" />
+    </clipPath>
+    <pattern id="tape" width="56" height="56" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="56" height="56" fill="#c62828" />
+      <rect width="12" height="56" fill="#a21f1f" />
+    </pattern>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="#22272b" />
+  <rect x="168" y="282" width="688" height="488" rx="28" fill="#000" opacity="0.35" />
+  <g clip-path="url(#label)">
+    <rect x="168" y="268" width="688" height="488" fill="#fbfbf9" />
+    <rect x="168" y="268" width="88" height="488" fill="#6e4fa3" />
+    <rect x="320" y="352" width="344" height="64" rx="10" fill="#17191b" />
+    <rect x="696" y="352" width="96" height="64" rx="8" fill="none" stroke="#17191b" stroke-width="14" />
+    <rect x="320" y="456" width="472" height="30" rx="8" fill="#585e63" />
+    <rect x="320" y="516" width="300" height="30" rx="8" fill="#585e63" />
+    <rect x="168" y="620" width="688" height="136" fill="url(#tape)" />
+  </g>
+</svg>

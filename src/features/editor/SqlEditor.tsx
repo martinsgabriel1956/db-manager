@@ -4,6 +4,7 @@ import { MySQL, PostgreSQL, sql, SQLite, type SQLNamespace } from "@codemirror/l
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
+import { editorLabel, editorTheme } from "@/lib/codemirror";
 
 type SqlEditorProps = {
   value: string;
@@ -92,10 +93,8 @@ export function SqlEditor({
               onChangeRef.current(update.state.doc.toString());
             }
           }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { fontFamily: "ui-monospace, monospace" }
-          })
+          editorTheme,
+          editorLabel("Editor SQL")
         ]
       })
     });
@@ -121,5 +120,5 @@ export function SqlEditor({
     }
   }, [value]);
 
-  return <div ref={hostRef} aria-label="Editor SQL" className="h-full overflow-hidden" />;
+  return <div ref={hostRef} className="h-full overflow-hidden" />;
 }

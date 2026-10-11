@@ -19,16 +19,16 @@ export function DocumentTree({ document }: { document: Record<string, JsonValue>
 function scalar(value: JsonValue): { text: string; className: string } {
   const wrapper = describeWrapper(value);
   if (wrapper !== null) {
-    return { text: wrapper, className: "text-violet-700 dark:text-violet-300" };
+    return { text: wrapper, className: "text-syntax-keyword" };
   }
   if (value === null) {
     return { text: "null", className: "text-muted-foreground italic" };
   }
   if (typeof value === "string") {
-    return { text: JSON.stringify(value), className: "text-emerald-700 dark:text-emerald-300" };
+    return { text: JSON.stringify(value), className: "text-syntax-string" };
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return { text: String(value), className: "text-sky-700 dark:text-sky-300" };
+    return { text: String(value), className: "text-syntax-number" };
   }
   return { text: "", className: "" };
 }

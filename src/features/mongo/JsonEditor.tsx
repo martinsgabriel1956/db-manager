@@ -3,11 +3,12 @@ import { basicSetup } from "codemirror";
 import { json } from "@codemirror/lang-json";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { editorLabel, editorTheme } from "@/lib/codemirror";
 
 type JsonEditorProps = {
   value: string;
   onChange: (value: string) => void;
-  /** Ctrl+Enter */
+  /** Mod-Enter (Ctrl, or Cmd on macOS) */
   onRun?: () => void;
   label: string;
 };
@@ -48,10 +49,8 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
               onChangeRef.current(update.state.doc.toString());
             }
           }),
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { fontFamily: "ui-monospace, monospace" }
-          })
+          editorTheme,
+          editorLabel(label)
         ]
       })
     });
@@ -67,7 +66,5 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
     }
   }, [value]);
 
-  return (
-    <div ref={hostRef} aria-label={label} className="h-full overflow-hidden rounded-md border" />
-  );
+  return <div ref={hostRef} className="h-full overflow-hidden rounded-[3px] border border-input" />;
 }

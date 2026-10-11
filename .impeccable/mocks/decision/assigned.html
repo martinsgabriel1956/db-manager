@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--ground:#f4f5f2;--enclosure:#dfe2de;--surface:#fff;--rule:#c9cdc8;--hair:#e3e5e1;--ink:#1d2226;--muted:#5b6267;--red:#c8102e;--yellow:#f6b600;--green:#00843d;--blue:#005ea8}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden;background:var(--ground);color:var(--ink);font:400 13px/1.35 "Archivo",sans-serif}
+.app{display:grid;grid-template-rows:30px 1fr;height:900px;box-shadow:inset 0 0 0 4px var(--red)}
+.band{display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--red);color:#fff;font-stretch:72%;font-weight:700;letter-spacing:.07em;text-transform:uppercase;font-size:12px}
+.band .hole{width:9px;height:9px;border-radius:50%;background:var(--ground)}
+.band .rest{font-stretch:100%;font-weight:500;letter-spacing:0;text-transform:none;opacity:.92}
+.body{display:grid;grid-template-columns:288px 1fr;min-height:0;padding:0 4px 4px}
+aside{background:var(--enclosure);border-right:1px solid var(--rule);padding:12px 8px;display:flex;flex-direction:column;gap:10px}
+.head{display:flex;align-items:center;justify-content:space-between;padding:0 4px}
+.cap{font-stretch:72%;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--rule);background:var(--surface);border-radius:3px;font:500 12.5px "Archivo";color:var(--ink)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ink{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.danger{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
+ul{list-style:none;margin:0;padding:0}
+.conn{display:flex;align-items:center;gap:7px;height:30px;padding:0 6px;border-radius:3px}
+.conn .name{flex:1;font-weight:600}
+.conn .eng{font-size:11.5px;color:var(--muted)}
+.chev{width:12px;color:var(--muted);font-size:10px}
+.tag{position:relative;display:inline-flex;align-items:center;height:18px;padding:0 7px 0 13px;font-stretch:68%;font-weight:800;font-size:11px;letter-spacing:.08em;clip-path:polygon(6px 0,100% 0,100% 100%,6px 100%,0 50%)}
+.tag::before{content:"";position:absolute;left:6px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--enclosure)}
+.prod{background:var(--red);color:#fff}.dev{background:var(--green);color:#fff}.local{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.lock{font-size:11px;color:var(--muted)}
+.kids{padding-left:22px}
+.kids li{display:flex;align-items:center;gap:7px;height:26px;padding:0 6px;border-radius:3px;color:var(--ink)}
+.kids .sch{color:var(--muted);font-weight:500}
+.kids .on{background:var(--surface);box-shadow:inset 2px 0 0 var(--blue);font-weight:600}
+.ico{width:12px;height:10px;border:1.5px solid var(--muted);border-radius:1px}
+main{display:flex;flex-direction:column;min-width:0;background:var(--surface)}
+.tabs{display:flex;background:var(--ground);border-bottom:1px solid var(--rule)}
+.tab{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-right:1px solid var(--hair);color:var(--muted)}
+.tab.on{background:var(--surface);color:var(--ink);box-shadow:inset 0 2px 0 var(--blue);font-weight:600}
+.tab .x{color:var(--muted);font-size:11px}
+.bar{display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--hair);min-height:44px}
+.title{font:600 14px "Red Hat Mono",monospace}
+.vtabs{display:flex;gap:2px;margin-left:8px}
+.vtab{padding:12px 10px 10px;border-bottom:2px solid transparent;color:var(--muted)}
+.vtab.on{border-color:var(--blue);color:var(--ink);font-weight:600}
+.sel,.inp{height:28px;border:1px solid var(--rule);border-radius:3px;padding:0 8px;display:inline-flex;align-items:center;gap:18px;background:var(--surface)}
+.inp{width:220px;font:12.5px "Red Hat Mono",monospace}
+.hint{color:var(--muted);font-size:12px}
+.pend{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px}
+.pend i{width:10px;height:10px;background:var(--yellow);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.grid{flex:1;overflow:hidden;font:12.5px/28px "Red Hat Mono",monospace;font-variant-numeric:tabular-nums;position:relative}
+.row{display:grid;grid-template-columns:90px 270px 200px 110px 250px 100px 1fr;border-bottom:1px solid var(--hair)}
+.row>div{padding:0 10px;border-right:1px solid var(--hair);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd{background:#eceeea;border-bottom:1px solid var(--rule);font-family:"Archivo";font-size:12.5px}
+.hd b{font-weight:700}.hd span{color:var(--muted);font:11.5px "Red Hat Mono"}
+.num{text-align:right}.null{color:var(--muted);font-style:italic}
+.ed{background:color-mix(in oklch,var(--yellow) 26%,white)}
+.foot{display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-top:1px solid var(--rule);background:var(--ground)}
+.veil{position:absolute;inset:0;background:color-mix(in oklch,var(--ink) 28%,transparent)}
+.tagdlg{position:absolute;left:50%;top:84px;width:560px;transform:translateX(-30%);background:var(--surface);border-radius:14px 14px 4px 4px;box-shadow:0 18px 40px -12px rgb(29 34 38/.45),0 0 0 1px rgb(29 34 38/.18);overflow:hidden}
+.tagdlg .top{background:var(--red);color:#fff;padding:26px 24px 14px;position:relative}
+.tagdlg .grommet{position:absolute;top:10px;left:50%;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:var(--ground);box-shadow:inset 0 0 0 3px #a50d26}
+.tagdlg h2{margin:0;font-stretch:66%;font-weight:800;font-size:44px;line-height:.95;letter-spacing:.04em}
+.tagdlg .sub{font-stretch:80%;font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin-top:4px}
+.fields{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--rule)}
+.fields div{padding:9px 24px;border-top:1px solid var(--hair)}
+.fields div:nth-child(odd){border-right:1px solid var(--hair)}
+.fields small{display:block;font-stretch:72%;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px;color:var(--muted)}
+.fields b{font-weight:600}
+pre{margin:16px 24px;padding:12px 14px;background:var(--ground);border:1px solid var(--rule);border-radius:3px;font:12.5px/1.6 "Red Hat Mono",monospace;white-space:pre-wrap}
+.kw{color:#6b2fa8;font-weight:600}.str{color:#00703a}.n{color:#005ea8}
+.act{display:flex;justify-content:flex-end;gap:10px;padding:14px 24px 18px;border-top:1px solid var(--hair);background:var(--ground)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="band"><span class="hole"></span>Perigo · Produção<span class="rest">Postgres prod — toda escrita pede confirmação com o comando exato</span></div>
+  <div class="body">
+    <aside>
+      <div class="head"><span class="cap">Conexões</span><span><span class="btn ghost">Histórico</span> <span class="btn">Nova</span></span></div>
+      <ul>
+        <li class="conn"><span class="chev">▾</span><span class="name">Postgres prod</span><span class="tag prod">PROD</span><span class="eng">PostgreSQL</span></li>
+        <li><ul class="kids">
+          <li class="sch"><span class="chev">▾</span>public <span class="hint">4</span></li>
+          <li class="on"><span class="ico"></span>users</li>
+          <li><span class="ico"></span>orders</li>
+          <li><span class="ico"></span>invoices</li>
+          <li><span class="ico" style="border-radius:50%"></span>active_users</li>
+          <li class="sch"><span class="chev">▸</span>audit <span class="hint">0</span></li>
+        </ul></li>
+        <li class="conn"><span class="chev">▸</span><span class="name">Postgres dev</span><span class="tag dev">DEV</span><span class="eng">PostgreSQL</span></li>
+        <li class="conn"><span class="chev">▸</span><span class="name">Mongo dev</span><span class="tag dev">DEV</span><span class="eng">MongoDB</span></li>
+        <li class="conn"><span class="chev">▸</span><span class="name">Cache</span><span class="tag local">LOCAL</span><span class="eng">Redis</span></li>
+      </ul>
+    </aside>
+    <main>
+      <div class="tabs"><div class="tab on">users <span class="x">✕</span></div><div class="tab">Postgres dev · SQL 1 <span class="x">✕</span></div><div class="tab">orders <span class="x">✕</span></div></div>
+      <div class="bar"><span class="title">public.users</span><span class="vtabs"><span class="vtab on">Dados</span><span class="vtab">Estrutura</span></span><span style="flex:1"></span><span class="btn">Exportar CSV</span></div>
+      <div class="bar"><span class="cap" style="color:var(--muted)">Filtro</span><span class="sel">email ▾</span><span class="sel">LIKE ▾</span><span class="inp">%@gmail.com</span><span class="btn">Aplicar</span><span class="btn ghost">Limpar filtro</span></div>
+      <div class="bar"><span class="btn">+ Adicionar linha</span><span class="btn">Excluir linha</span><span class="hint">Duplo clique ou Enter numa célula para editar</span><span style="flex:1"></span><span class="pend"><i></i>2 alterações pendentes</span><span class="btn">Descartar</span><span class="btn ink">Salvar</span></div>
+      <div class="grid">
+        <div class="row hd"><div><b>id</b> <span>int4</span></div><div><b>email</b> <span>text</span></div><div><b>name</b> <span>text</span></div><div><b>plan</b> <span>text</span></div><div><b>created_at</b> <span>timestamptz</span></div><div><b>logins</b> <span>int4</span></div><div></div></div>
+        <div class="row"><div class="num">1042</div><div>ana.souza@gmail.com</div><div>Ana Souza</div><div>pro</div><div>2026-03-14 09:12:44+00</div><div class="num">318</div><div></div></div>
+        <div class="row"><div class="num">1043</div><div>bruno.lima@gmail.com</div><div>Bruno Lima</div><div class="ed">team</div><div>2026-03-14 11:40:02+00</div><div class="num">87</div><div></div></div>
+        <div class="row"><div class="num">1047</div><div>carla.mendes@gmail.com</div><div>Carla Mendes</div><div class="null">NULL</div><div>2026-03-15 08:03:19+00</div><div class="num">4</div><div></div></div>
+        <div class="row"><div class="num">1051</div><div>diego.ramos@gmail.com</div><div>Diego Ramos</div><div>free</div><div>2026-03-16 17:21:50+00</div><div class="num">1209</div><div></div></div>
+        <div class="row"><div class="num">1058</div><div>elisa.prado@gmail.com</div><div>Elisa Prado</div><div class="ed">pro</div><div>2026-03-18 10:55:07+00</div><div class="num">42</div><div></div></div>
+        <div class="row"><div class="num">1063</div><div>fabio.nunes@gmail.com</div><div>Fábio Nunes</div><div>free</div><div>2026-03-19 22:14:31+00</div><div class="num">16</div><div></div></div>
+        <div class="row"><div class="num">1070</div><div>gabi.torres@gmail.com</div><div>Gabriela Torres</div><div>team</div><div>2026-03-21 06:48:00+00</div><div class="num">530</div><div></div></div>
+        <div class="row"><div class="num">1074</div><div>heitor.costa@gmail.com</div><div>Heitor Costa</div><div>pro</div><div>2026-03-22 13:30:12+00</div><div class="num">77</div><div></div></div>
+        <div class="row"><div class="num">1081</div><div>isabela.reis@gmail.com</div><div>Isabela Reis</div><div>free</div><div>2026-03-24 19:02:45+00</div><div class="num">3</div><div></div></div>
+        <div class="row"><div class="num">1088</div><div>joao.pires@gmail.com</div><div>João Pires</div><div>pro</div><div>2026-03-25 08:17:39+00</div><div class="num">264</div><div></div></div>
+        <div class="row"><div class="num">1092</div><div>karen.alves@gmail.com</div><div>Karen Alves</div><div>team</div><div>2026-03-27 15:44:20+00</div><div class="num">91</div><div></div></div>
+        <div class="row"><div class="num">1099</div><div>lucas.moura@gmail.com</div><div>Lucas Moura</div><div>free</div><div>2026-03-29 09:09:09+00</div><div class="num">12</div><div></div></div>
+        <div class="row"><div class="num">1105</div><div>marina.dias@gmail.com</div><div>Marina Dias</div><div>pro</div><div>2026-04-01 12:00:51+00</div><div class="num">402</div><div></div></div>
+        <div class="row"><div class="num">1112</div><div>nicolas.braga@gmail.com</div><div>Nicolas Braga</div><div>free</div><div>2026-04-02 20:36:14+00</div><div class="num">58</div><div></div></div>
+        <div class="row"><div class="num">1118</div><div>olivia.santos@gmail.com</div><div>Olívia Santos</div><div>team</div><div>2026-04-04 07:25:33+00</div><div class="num">176</div><div></div></div>
+        <div class="row"><div class="num">1124</div><div>pedro.farias@gmail.com</div><div>Pedro Farias</div><div>pro</div><div>2026-04-05 16:50:02+00</div><div class="num">23</div><div></div></div>
+        <div class="row"><div class="num">1131</div><div>rafaela.cruz@gmail.com</div><div>Rafaela Cruz</div><div>free</div><div>2026-04-07 10:11:48+00</div><div class="num">9</div><div></div></div>
+        <div class="row"><div class="num">1137</div><div>sergio.melo@gmail.com</div><div>Sérgio Melo</div><div>pro</div><div>2026-04-08 21:58:30+00</div><div class="num">651</div><div></div></div>
+        <div class="veil"></div>
+        <div class="tagdlg">
+          <div class="top"><span class="grommet"></span><h2>PERIGO</h2><div class="sub">Escrita em produção · confira antes de executar</div></div>
+          <div class="fields"><div><small>Conexão</small><b>Postgres prod</b></div><div><small>Ambiente</small><b>PROD</b></div><div><small>Motivo</small><b>Toda escrita em produção pede confirmação</b></div><div><small>Comandos</small><b>2 UPDATE · 1 transação</b></div></div>
+          <pre><span class="kw">UPDATE</span> public.users <span class="kw">SET</span> plan = <span class="str">'team'</span> <span class="kw">WHERE</span> id = <span class="n">1043</span>;
+
+<span class="kw">UPDATE</span> public.users <span class="kw">SET</span> plan = <span class="str">'pro'</span> <span class="kw">WHERE</span> id = <span class="n">1058</span>;</pre>
+          <div class="act"><span class="btn">Cancelar</span><span class="btn danger">Salvar em produção</span></div>
+        </div>
+      </div>
+      <div class="foot"><span class="btn">Anterior</span><span class="hint">Página 3</span><span class="btn">Próxima</span><span style="flex:1"></span><span class="hint" style="font-variant-numeric:tabular-nums">100 linhas · 18 ms</span></div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

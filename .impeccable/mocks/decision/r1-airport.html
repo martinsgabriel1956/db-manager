@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DB Manager — Placa de Aeroporto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400..800&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--sign:#ffcc00;--black:#0b0b0b;--ink:#111;--panel:#e6e6e6;--work:#fff;--hair:#e6e6e6;--rule:#bdbdbd;--ctl:#8c8c8c;--muted:#555}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden;background:var(--work);color:var(--ink);font:400 13px/1.3 "Figtree",sans-serif}
+.app{display:grid;grid-template-columns:288px 1fr;height:900px}
+aside{background:var(--panel);border-right:1px solid var(--rule);display:flex;flex-direction:column}
+.shead{height:56px;flex:none;display:flex;align-items:center;gap:4px;padding:0 12px 0 16px;border-bottom:1px solid var(--rule)}
+.shead h1{margin:0;flex:1;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--ctl);border-radius:2px;background:#fff;font:600 12.5px "Figtree",sans-serif;color:var(--ink);white-space:nowrap}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ink{background:var(--black);border-color:var(--black);color:#fff}
+.tree{list-style:none;margin:0;padding:8px 0}
+.tree li{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px 0 calc(10px + var(--d,0) * 18px)}
+.chev{flex:none;width:6px;height:6px;margin:0 3px;border-right:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);transform:rotate(-45deg)}
+.chev.open{transform:translateY(-2px) rotate(45deg)}
+.pic{flex:none;width:20px;height:20px;background:var(--black);display:grid;place-items:center}
+.pic svg{width:14px;height:14px}
+.cn{flex:1;font-weight:700}
+.eng{font-size:11.5px;color:var(--muted)}
+.tag{font:800 11px/1 "Figtree",sans-serif;letter-spacing:.06em;padding:3px 5px;border:1.5px solid var(--black);color:var(--black)}
+.tag.prod{background:var(--black);color:#fff}
+.tag.local{border-style:dashed}
+.ico{flex:none;width:12px;height:12px;color:var(--ink)}
+.tbl{flex:none;width:12px;height:10px;border:1.5px solid var(--ink);background:linear-gradient(var(--ink),var(--ink)) 0 2px/100% 1.5px no-repeat}
+.tbl.view{border-style:dashed;background:none}
+.sch{color:var(--muted);font-weight:600}
+.cnt{margin-left:auto;font:500 11.5px "Red Hat Mono",monospace;color:var(--muted)}
+.tree li.here{background:var(--sign);color:var(--black);font-weight:700}
+.here .ico{margin-left:auto;width:16px;height:16px;color:var(--black)}
+main{display:flex;flex-direction:column;min-width:0}
+.sign{height:56px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px 0 8px;background:var(--sign);color:var(--black);border-bottom:2px solid var(--black)}
+.sign .pic{width:40px;height:40px}.sign .pic svg{width:26px;height:26px}
+.where{font-size:26px;font-weight:800;letter-spacing:-.015em}
+.kind{font-size:13px;font-weight:600;margin-top:6px}
+.vr{width:2px;height:30px;background:var(--black)}
+.path{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:700}
+.path .ico{width:22px;height:22px;color:var(--black)}
+.env{margin-left:auto;font:800 20px/1 "Figtree",sans-serif;letter-spacing:.08em;padding:6px 10px;border:1.5px solid var(--black)}
+.tabs{height:36px;flex:none;display:flex;background:var(--panel);border-bottom:1px solid var(--rule)}
+.tab{display:flex;align-items:center;gap:10px;padding:0 14px;border-right:1px solid var(--rule);color:var(--muted);font-weight:600}
+.tab.on{background:var(--work);color:var(--ink);font-weight:700;margin-bottom:-1px}
+.x{width:9px;height:9px;background:linear-gradient(45deg,transparent 42%,currentColor 42% 58%,transparent 58%),linear-gradient(-45deg,transparent 42%,currentColor 42% 58%,transparent 58%)}
+.bar{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--hair)}
+.title{font:600 15px "Red Hat Mono",monospace}
+.seg{display:flex;align-self:stretch;margin-left:12px}
+.seg span{display:flex;align-items:center;padding:3px 12px 0;color:var(--muted);font-weight:600;border-bottom:3px solid transparent}
+.seg .on{color:var(--ink);font-weight:700;border-color:var(--black)}
+.sp{flex:1}
+.lbl{font-weight:700;margin-right:4px}
+.sel,.inp{height:28px;display:inline-flex;align-items:center;gap:28px;padding:0 10px;border:1px solid var(--ctl);border-radius:2px;background:#fff;font:500 12.5px "Red Hat Mono",monospace}
+.sel::after{content:"";border:4px solid transparent;border-top:5px solid var(--ink);margin-top:5px}
+.inp{width:240px;box-shadow:inset 0 0 0 1px var(--ink);border-color:var(--ink)}
+.hint{color:var(--muted);font-size:12px;margin-left:8px}
+.pend{font-weight:800;font-size:13px;text-decoration:underline dotted 2px;text-underline-offset:5px;margin-right:6px}
+.grid{flex:1;overflow:hidden;font:12.5px/27px "Red Hat Mono",monospace;font-variant-numeric:tabular-nums}
+.r{display:grid;grid-template-columns:88px 268px 196px 110px 236px 96px 1fr;border-bottom:1px solid var(--hair)}
+.r>div{padding:0 10px;border-right:1px solid var(--hair);white-space:nowrap;overflow:hidden}
+.hd{background:var(--panel);border-bottom:1px solid var(--black);font:12.5px/31px "Figtree",sans-serif}
+.hd>div{border-right-color:var(--rule)}
+.hd b{font-weight:700}.hd small{font:11px "Red Hat Mono",monospace;color:var(--muted);margin-left:6px}
+.sort b::after{content:"";display:inline-block;margin-left:6px;border:4px solid transparent;border-bottom:5px solid var(--ink);vertical-align:2px}
+.n{text-align:right}
+.null{color:var(--muted);font-style:italic}
+.ed span,.new .v{font-weight:600;text-decoration:underline dotted 2px;text-underline-offset:5px}
+.new{background:#f4f4f4;box-shadow:inset 3px 0 0 var(--black)}
+.newtag{font:800 11px/1 "Figtree",sans-serif;letter-spacing:.06em;padding:2px 4px;border:1.5px solid var(--black)}
+.foot{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;border-top:1px solid var(--rule);background:var(--panel)}
+.page{font-weight:700;padding:0 6px}
+.meta{font:500 12px "Red Hat Mono",monospace;color:var(--muted)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="db" viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="2.2"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"/><path d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></g></symbol>
+  <symbol id="leaf" viewBox="0 0 24 24"><path d="M12 2.5c5 4.5 5.5 10 0 19c-5.5-9-5-14.5 0-19zM12 8v14" fill="none" stroke="#fff" stroke-width="2.2"/></symbol>
+  <symbol id="stack" viewBox="0 0 24 24"><path d="M3 8l9-4.5L21 8l-9 4.5zM3 12.5l9 4.5 9-4.5M3 16.5l9 4.5 9-4.5" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="arr" viewBox="0 0 24 24"><path d="M3 12h15M11.5 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/></symbol>
+  <symbol id="lock" viewBox="0 0 16 16"><rect x="2.5" y="7" width="11" height="7.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+</svg>
+<div class="app">
+  <aside>
+    <div class="shead"><h1>Conexões</h1><span class="btn ghost">Histórico</span><span class="btn">Nova</span></div>
+    <ul class="tree">
+      <li><span class="chev"></span><span class="pic"><svg><use href="#db"/></svg></span><span class="cn">Postgres prod</span><svg class="ico" aria-label="Somente leitura"><use href="#lock"/></svg><span class="tag prod">PROD</span></li>
+      <li style="--d:1;height:20px;margin-top:-6px"><span class="eng" style="padding-left:34px">PostgreSQL · somente leitura</span></li>
+      <li><span class="chev open"></span><span class="pic"><svg><use href="#db"/></svg></span><span class="cn">Postgres dev</span><span class="eng">PostgreSQL</span><span class="tag">DEV</span></li>
+      <li class="sch" style="--d:1"><span class="chev open"></span>public<span class="cnt">4</span></li>
+      <li class="here" style="--d:2"><span class="tbl"></span>users<svg class="ico"><use href="#arr"/></svg></li>
+      <li style="--d:2"><span class="tbl"></span>orders</li>
+      <li style="--d:2"><span class="tbl"></span>invoices</li>
+      <li style="--d:2"><span class="tbl view"></span>active_users<span class="cnt">view</span></li>
+      <li class="sch" style="--d:1"><span class="chev"></span>audit<span class="cnt">2</span></li>
+      <li><span class="chev"></span><span class="pic"><svg><use href="#leaf"/></svg></span><span class="cn">Mongo dev</span><span class="eng">MongoDB</span><span class="tag">DEV</span></li>
+      <li><span class="chev"></span><span class="pic"><svg><use href="#stack"/></svg></span><span class="cn">Cache</span><span class="eng">Redis</span><span class="tag local">LOCAL</span></li>
+    </ul>
+  </aside>
+  <main>
+    <div class="sign">
+      <span class="pic"><svg><use href="#db"/></svg></span>
+      <span class="where">Postgres dev</span><span class="kind">PostgreSQL</span>
+      <span class="vr"></span>
+      <span class="path">public<svg class="ico"><use href="#arr"/></svg>users</span>
+      <span class="env">DEV</span>
+    </div>
+    <div class="tabs"><div class="tab on">users <span class="x"></span></div><div class="tab">Postgres dev · SQL 1 <span class="x"></span></div><div class="tab">orders <span class="x"></span></div></div>
+    <div class="bar"><span class="title">public.users</span><span class="seg"><span class="on">Dados</span><span>Estrutura</span></span><span class="sp"></span><span class="btn">Exportar CSV</span></div>
+    <div class="bar"><span class="lbl">Filtro</span><span class="sel">email</span><span class="sel">LIKE</span><span class="inp">%@gmail.com</span><span class="btn">Aplicar</span><span class="btn ghost">Limpar filtro</span></div>
+    <div class="bar"><span class="btn">+ Adicionar linha</span><span class="btn">Excluir linha</span><span class="hint">Duplo clique ou Enter numa célula para editar</span><span class="sp"></span><span class="pend">2 alterações pendentes</span><span class="btn">Descartar</span><span class="btn ink">Salvar</span></div>
+    <div class="grid">
+      <div class="r hd"><div class="n sort"><b>id</b><small>int4</small></div><div><b>email</b><small>text</small></div><div><b>name</b><small>text</small></div><div><b>plan</b><small>text</small></div><div><b>created_at</b><small>timestamptz</small></div><div class="n"><b>logins</b><small>int4</small></div><div></div></div>
+      <div class="r"><div class="n">1042</div><div>ana.souza@gmail.com</div><div>Ana Souza</div><div>pro</div><div>2026-03-14 09:12:44+00</div><div class="n">318</div><div></div></div>
+      <div class="r"><div class="n">1043</div><div>bruno.lima@gmail.com</div><div>Bruno Lima</div><div class="ed"><span>team</span></div><div>2026-03-14 11:40:02+00</div><div class="n">87</div><div></div></div>
+      <div class="r"><div class="n">1047</div><div>carla.mendes@gmail.com</div><div>Carla Mendes</div><div class="null">NULL</div><div>2026-03-15 08:03:19+00</div><div class="n">4</div><div></div></div>
+      <div class="r"><div class="n">1051</div><div>diego.ramos@gmail.com</div><div>Diego Ramos</div><div>free</div><div>2026-03-16 17:21:50+00</div><div class="n">1209</div><div></div></div>
+      <div class="r"><div class="n">1058</div><div>elisa.prado@gmail.com</div><div>Elisa Prado</div><div>pro</div><div>2026-03-18 10:55:07+00</div><div class="n">42</div><div></div></div>
+      <div class="r"><div class="n">1063</div><div>fabio.nunes@gmail.com</div><div>Fábio Nunes</div><div>free</div><div>2026-03-19 22:14:31+00</div><div class="n">16</div><div></div></div>
+      <div class="r"><div class="n">1070</div><div>gabi.torres@gmail.com</div><div>Gabriela Torres</div><div>team</div><div>2026-03-21 06:48:00+00</div><div class="n">530</div><div></div></div>
+      <div class="r"><div class="n">1074</div><div>heitor.costa@gmail.com</div><div>Heitor Costa</div><div>pro</div><div>2026-03-22 13:30:12+00</div><div class="n">77</div><div></div></div>
+      <div class="r"><div class="n">1081</div><div>isabela.reis@gmail.com</div><div>Isabela Reis</div><div>free</div><div>2026-03-24 19:02:45+00</div><div class="n">3</div><div></div></div>
+      <div class="r"><div class="n">1088</div><div>joao.pires@gmail.com</div><div>João Pires</div><div>pro</div><div>2026-03-25 08:17:39+00</div><div class="n">264</div><div></div></div>
+      <div class="r"><div class="n">1092</div><div>karen.alves@gmail.com</div><div>Karen Alves</div><div>team</div><div>2026-03-27 15:44:20+00</div><div class="n">91</div><div></div></div>
+      <div class="r"><div class="n">1099</div><div>lucas.moura@gmail.com</div><div>Lucas Moura</div><div>free</div><div>2026-03-29 09:09:09+00</div><div class="n">12</div><div></div></div>
+      <div class="r"><div class="n">1105</div><div>marina.dias@gmail.com</div><div>Marina Dias</div><div>pro</div><div>2026-04-01 12:00:51+00</div><div class="n">402</div><div></div></div>
+      <div class="r"><div class="n">1112</div><div>nicolas.braga@gmail.com</div><div>Nicolas Braga</div><div>free</div><div>2026-04-02 20:36:14+00</div><div class="n">58</div><div></div></div>
+      <div class="r"><div class="n">1118</div><div>olivia.santos@gmail.com</div><div>Olívia Santos</div><div>team</div><div>2026-04-04 07:25:33+00</div><div class="n">176</div><div></div></div>
+      <div class="r"><div class="n">1124</div><div>pedro.farias@gmail.com</div><div>Pedro Farias</div><div>pro</div><div>2026-04-05 16:50:02+00</div><div class="n">23</div><div></div></div>
+      <div class="r"><div class="n">1131</div><div>rafaela.cruz@gmail.com</div><div>Rafaela Cruz</div><div>free</div><div>2026-04-07 10:11:48+00</div><div class="n">9</div><div></div></div>
+      <div class="r"><div class="n">1137</div><div>sergio.melo@gmail.com</div><div>Sérgio Melo</div><div>pro</div><div>2026-04-08 21:58:30+00</div><div class="n">651</div><div></div></div>
+      <div class="r new"><div class="n"><span class="newtag">NOVA</span></div><div class="v">renata.vieira@gmail.com</div><div class="v">Renata Vieira</div><div class="v">free</div><div class="null">default now()</div><div class="n v">0</div><div></div></div>
+    </div>
+    <div class="foot"><span class="btn">Anterior</span><span class="page">Página 3</span><span class="btn">Próxima</span><span class="sp"></span><span class="meta">100 linhas · 18 ms</span></div>
+  </main>
+</div>
+</body>
+</html>

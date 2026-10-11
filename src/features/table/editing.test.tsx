@@ -23,8 +23,14 @@ async function openUsers(connection: ConnectionConfig) {
   return user;
 }
 
+/** Matches the value shown in the cell, ignoring the screen-reader-only state text. */
 function cell(text: string) {
-  return screen.getAllByRole("gridcell").find(element => element.textContent === text)!;
+  return screen
+    .getAllByRole("gridcell")
+    .find(
+      element =>
+        element.firstChild?.nodeType === Node.TEXT_NODE && element.firstChild.textContent === text
+    )!;
 }
 
 async function editCell(user: ReturnType<typeof userEvent.setup>, from: string, to: string) {
@@ -163,7 +169,7 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
 
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toHaveTextContent(`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2';`);
-  await user.click(screen.getByRole("button", { name: "Salvar em produção" }));
+  await user.click(screen.getByRole("button", { name: "Romper lacre e salvar" }));
 
   expect(await screen.findByText("1 alteração salva")).toBeInTheDocument();
   expect(applied(calls).map(call => call.confirmed)).toEqual([false, true]);
@@ -207,4 +213,32 @@ test("tables without a primary key are read-only", async () => {
   ).toBeInTheDocument();
   await user.dblClick(cell("2"));
   expect(screen.queryByRole("textbox", { name: /^Editar / })).not.toBeInTheDocument();
+});
+
+test("the grid is operable from the keyboard: arrows select, Enter edits and commits", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+  const grid = screen.getByRole("grid", { name: "Resultado" });
+
+  await user.click(cell("1"));
+  expect(grid).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(cell("2")).toHaveAttribute("aria-selected", "true");
+  expect(grid).toHaveAttribute("aria-activedescendant", cell("2").id);
+
+  await user.keyboard("{Enter}");
+  const input = screen.getByRole("textbox", { name: "Editar id" });
+  await user.clear(input);
+  await user.type(input, "20{Enter}");
+
+  expect(cell("20")).toHaveAttribute("data-edited", "true");
+  // the pending state is spoken, not only hatched
+  expect(cell("20")).toHaveTextContent("alteração pendente");
+  expect(grid).toHaveFocus();
+
+  await user.keyboard("{F2}");
+  await user.type(screen.getByRole("textbox", { name: "Editar id" }), "9{Escape}");
+  expect(cell("20")).toBeInTheDocument();
+  expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();
+  expect(grid).toHaveFocus();
 });

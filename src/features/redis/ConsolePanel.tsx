@@ -84,7 +84,7 @@ export function ConsolePanel({ connectionId, db }: ConsolePanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">
         <span>Executa no db{db}. Bloqueantes, pub/sub, MULTI e SELECT não são aceitos.</span>
         <Button size="xs" variant="ghost" className="ml-auto" onClick={() => setLines([])}>
           Limpar
@@ -108,7 +108,11 @@ export function ConsolePanel({ connectionId, db }: ConsolePanelProps) {
         ))}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={run} className="flex items-center gap-2 border-t px-3 py-2 font-mono text-xs">
+      <form
+        onSubmit={run}
+        // the prompt input has no box of its own: the whole line shows where focus is
+        className="flex items-center gap-2 border-t px-3 py-2 font-mono text-xs focus-within:shadow-[inset_0_2px_0_var(--ring)]"
+      >
         <span className="text-muted-foreground">db{db}&gt;</span>
         <input
           aria-label="Comando Redis"
@@ -126,6 +130,7 @@ export function ConsolePanel({ connectionId, db }: ConsolePanelProps) {
         {runner.isPending && <span className="text-muted-foreground">executando…</span>}
       </form>
       <ConfirmDialog
+        connectionId={connectionId}
         confirmation={runner.confirmation}
         confirmLabel="Executar"
         statementSuffix=""

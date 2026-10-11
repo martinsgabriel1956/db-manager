@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DB Manager · Mapa Noturno em Esmalte</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Red+Hat+Mono:wght@400;500&display=swap">
+<style>
+:root{--navy:#0b1230;--mut:#5b6482;--line:#dde2ec;--hair:#edf0f5;--ground:#f7f8fb;--red:#e21d2d;--cob:#1e5bff;--amb:#ffc20e;--grn:#22b14c}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden}
+body{display:flex;background:var(--ground);color:var(--navy);font:13px/1.2 "Overpass",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit;margin:0}
+.mono{font-family:"Red Hat Mono",monospace;font-variant-numeric:tabular-nums}
+/* enamel rail */
+.side{position:relative;width:288px;flex:none;background:linear-gradient(180deg,#111a3d 0,#0b1230 180px);color:#fff;box-shadow:inset -1px 0 #1c2650}
+.side header{height:56px;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+.side h1{margin:0 auto 0 0;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+.sb{height:28px;padding:2px 10px 0;border-radius:5px;border:1px solid rgba(255,255,255,.26);background:none;font-size:12px;font-weight:600;color:#fff}
+.sb.w{background:#fff;border-color:#fff;color:var(--navy)}
+.tree{position:absolute;top:64px;left:0;right:0}
+.r{display:flex;align-items:center;gap:8px;height:28px;padding:2px 16px 0 66px;color:rgba(255,255,255,.8)}
+.r.c{height:36px;padding-left:48px;color:#fff;font-weight:600}
+.r.s{padding-left:46px;font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.58)}
+.r.sel{background:rgba(255,255,255,.1);color:#fff;font-weight:700}
+.pill{font-size:9.5px;font-weight:800;letter-spacing:.1em;line-height:1;padding:3px 5px 2px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.34);color:rgba(255,255,255,.78)}
+.pill.prod{background:var(--red);box-shadow:none;color:#fff}
+.ro{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.66)}
+.chev{margin-left:auto;width:7px;height:7px;border:solid rgba(255,255,255,.55);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}
+.ro+.chev{margin-left:4px}
+.chev.open{transform:rotate(45deg)}
+.tag{font-size:9px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.64)}
+.map{position:absolute;top:0;left:0;pointer-events:none}
+.side footer{position:absolute;bottom:0;left:0;right:0;height:40px;display:flex;align-items:center;gap:8px;padding:0 16px;border-top:1px solid rgba(255,255,255,.1);font-size:11px;color:rgba(255,255,255,.66)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--grn)}
+/* porcelain work area */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.tabs{height:40px;flex:none;display:flex;align-items:flex-end;gap:2px;padding:0 8px;border-bottom:1px solid var(--navy)}
+.tab{height:32px;display:flex;align-items:center;gap:8px;padding:2px 12px 0;border:0;border-radius:6px 6px 0 0;background:none;font-weight:600;color:var(--mut)}
+.tab.on{background:var(--navy);color:#fff}
+.tab i{width:8px;height:8px;border-radius:50%;background:var(--cob)}
+.tab b{font-weight:400;opacity:.55;margin-left:4px}
+.bar{flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line)}
+.head{height:48px;gap:16px}
+.head h2{margin:0;font-size:17px;font-weight:800}
+.head h2 span{font-weight:400;color:var(--mut)}
+.seg{display:flex;align-self:stretch;margin-left:8px}
+.seg button{border:0;background:none;padding:3px 12px 0;font-weight:600;color:var(--mut);box-shadow:inset 0 -3px transparent}
+.seg button.on{color:var(--navy);box-shadow:inset 0 -3px var(--navy)}
+.btn{height:28px;padding:2px 12px 0;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:12.5px;font-weight:600}
+.pri{background:var(--navy);border-color:var(--navy);color:#fff}
+.ghost{border-color:transparent;background:none;color:var(--mut)}
+.danger{color:var(--red)}
+.right{margin-left:auto}
+.filter,.edit{height:44px}
+.edit{height:40px;background:var(--ground)}
+.lbl{font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;margin-right:4px}
+select,input{height:28px;border:1px solid var(--line);border-radius:5px;background:#fff;padding:0 10px;font-size:12.5px}
+select{appearance:none;padding-right:28px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230b1230' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center}
+input{width:220px;font-family:"Red Hat Mono",monospace}
+.hint{color:var(--mut);font-size:12px;margin-left:8px}
+kbd{font:500 11px "Red Hat Mono",monospace;padding:1px 4px;border:1px solid var(--line);border-radius:3px;background:#fff}
+.pend{display:flex;align-items:center;gap:8px;font-weight:700;font-size:12.5px}
+.pend i{width:10px;height:10px;border-radius:2px;background:var(--amb)}
+.grid{flex:1;overflow:hidden;background:#fff}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font:12.5px/1 "Red Hat Mono",monospace;font-variant-numeric:tabular-nums}
+th{height:32px;padding:2px 12px 0;text-align:left;background:#f1f3f8;border-bottom:1px solid var(--line);border-right:1px solid var(--hair);font:700 12px "Overpass",sans-serif;white-space:nowrap}
+th em{font:400 10.5px "Red Hat Mono",monospace;color:var(--mut);margin-left:6px}
+th .s{font-size:8px;color:var(--cob);margin-left:6px}
+td{height:28px;padding:0 12px;border-bottom:1px solid var(--hair);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n{text-align:right}
+td.g,th.g{text-align:right;color:#6b7390;font-size:11px;background:#fafbfd;border-right:1px solid var(--line)}
+.nul{color:#6b7390;font-style:italic}
+.ed{background:#fff3c4;outline:2px solid var(--navy);outline-offset:-2px}
+tr.chg td.g{box-shadow:inset 3px 0 var(--amb);color:var(--navy)}
+tr.new td{background:#e8f6ec}
+tr.new td.g{box-shadow:inset 3px 0 var(--grn);color:var(--grn);font-weight:700}
+.foot{height:40px;border-top:1px solid var(--line);border-bottom:0}
+.page{font-weight:700;padding:2px 8px 0}
+.stat{margin-left:auto;font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<aside class="side">
+<header><h1>Conexões</h1><button class="sb">Histórico</button><button class="sb w">+ Nova</button></header>
+<div class="tree">
+<div class="r c" title="PostgreSQL · somente leitura">Postgres prod<span class="pill prod">PROD</span><span class="ro">SÓ LEITURA</span><i class="chev"></i></div>
+<div class="r c" title="PostgreSQL">Postgres dev<span class="pill">DEV</span><i class="chev open"></i></div>
+<div class="r s">public</div>
+<div class="r sel">users</div>
+<div class="r">orders</div>
+<div class="r">invoices</div>
+<div class="r">active_users<span class="tag">VIEW</span></div>
+<div class="r s">audit</div>
+<div class="r c" title="MongoDB">Mongo dev<span class="pill">DEV</span><i class="chev"></i></div>
+<div class="r c" title="Redis">Cache<span class="pill">LOCAL</span><i class="chev"></i></div>
+</div>
+<svg class="map" width="288" height="420" viewBox="0 0 288 420" fill="none" stroke-width="6" stroke-linejoin="round" font-family="Overpass,sans-serif" font-size="8.5" font-weight="800" text-anchor="middle">
+<path d="M0 82H28" stroke="#e21d2d"/>
+<path d="M0 118H28V154L48 174V266L28 286V296" stroke="#1e5bff"/>
+<path d="M18 297H38" stroke="#1e5bff"/>
+<path d="M0 322H28" stroke="#22b14c"/>
+<path d="M0 358H28" stroke="#ffc20e"/>
+<g fill="#fff"><rect x="31" y="148.5" width="8" height="3"/><rect x="31" y="288.5" width="8" height="3"/><rect x="51" y="204.5" width="7" height="3"/><rect x="51" y="232.5" width="7" height="3"/><rect x="51" y="260.5" width="7" height="3"/></g>
+<circle cx="48" cy="178" r="7" fill="#fff" stroke="#0b1230" stroke-width="2"/>
+<circle cx="28" cy="82" r="10" fill="#e21d2d"/><text x="28" y="85.5" fill="#fff">PG</text>
+<circle cx="28" cy="118" r="10" fill="#1e5bff"/><text x="28" y="121.5" fill="#fff">PG</text>
+<circle cx="28" cy="322" r="10" fill="#22b14c"/><text x="28" y="325.5" fill="#fff">MG</text>
+<circle cx="28" cy="358" r="10" fill="#ffc20e"/><text x="28" y="361.5" fill="#0b1230">RD</text>
+</svg>
+<footer class="mono"><i class="dot"></i>postgres dev · localhost:5432 · 16.4</footer>
+</aside>
+<main class="main">
+<nav class="tabs"><button class="tab on"><i></i>users<b>×</b></button><button class="tab"><i></i>Postgres dev · SQL 1<b>×</b></button><button class="tab"><i></i>orders<b>×</b></button></nav>
+<div class="bar head"><h2><span>public.</span>users</h2><div class="seg"><button class="on">Dados</button><button>Estrutura</button></div><button class="btn right">Exportar CSV</button></div>
+<div class="bar filter"><span class="lbl">Filtro</span><select><option>email</option></select><select><option>LIKE</option></select><input value="%@gmail.com"><button class="btn pri">Aplicar</button><button class="btn ghost">Limpar filtro</button></div>
+<div class="bar edit"><button class="btn">+ Adicionar linha</button><button class="btn danger">Excluir linha</button><span class="hint">Duplo clique ou <kbd>Enter</kbd> numa célula para editar</span><span class="pend right"><i></i>2 alterações pendentes</span><button class="btn ghost">Descartar</button><button class="btn pri">Salvar</button></div>
+<div class="grid">
+<table>
+<colgroup><col style="width:52px"><col style="width:88px"><col style="width:280px"><col style="width:200px"><col style="width:104px"><col style="width:248px"><col style="width:100px"><col></colgroup>
+<thead><tr><th class="g">#</th><th class="n">id<em>int4</em><span class="s">▲</span></th><th>email<em>text</em></th><th>name<em>text</em></th><th>plan<em>text</em></th><th>created_at<em>timestamptz</em></th><th class="n">logins<em>int4</em></th><th></th></tr></thead>
+<tbody>
+<tr><td class="g">201</td><td class="n">1042</td><td>ana.souza@gmail.com</td><td>Ana Souza</td><td>pro</td><td>2026-03-14 09:12:44+00</td><td class="n">318</td><td></td></tr>
+<tr><td class="g">202</td><td class="n">1047</td><td>bruno.lima@gmail.com</td><td>Bruno Lima</td><td>free</td><td>2026-03-14 11:40:02+00</td><td class="n">12</td><td></td></tr>
+<tr><td class="g">203</td><td class="n">1053</td><td>carla.mendes@gmail.com</td><td>Carla Mendes</td><td>team</td><td>2026-03-15 08:03:19+00</td><td class="n">1204</td><td></td></tr>
+<tr><td class="g">204</td><td class="n">1061</td><td>diego.ferreira@gmail.com</td><td>Diego Ferreira</td><td>pro</td><td>2026-03-15 17:22:51+00</td><td class="n">87</td><td></td></tr>
+<tr><td class="g">205</td><td class="n">1066</td><td>eduarda.rocha@gmail.com</td><td>Eduarda Rocha</td><td class="nul">NULL</td><td>2026-03-16 10:05:37+00</td><td class="n">3</td><td></td></tr>
+<tr><td class="g">206</td><td class="n">1072</td><td>felipe.araujo@gmail.com</td><td>Felipe Araújo</td><td>free</td><td>2026-03-17 13:48:10+00</td><td class="n">41</td><td></td></tr>
+<tr><td class="g">207</td><td class="n">1079</td><td>gabriela.nunes@gmail.com</td><td>Gabriela Nunes</td><td>pro</td><td>2026-03-18 07:31:56+00</td><td class="n">559</td><td></td></tr>
+<tr><td class="g">208</td><td class="n">1085</td><td>henrique.castro@gmail.com</td><td>Henrique Castro</td><td>team</td><td>2026-03-18 19:14:23+00</td><td class="n">2310</td><td></td></tr>
+<tr><td class="g">209</td><td class="n">1090</td><td>isabela.pires@gmail.com</td><td>Isabela Pires</td><td>free</td><td>2026-03-19 09:57:42+00</td><td class="n">6</td><td></td></tr>
+<tr class="chg"><td class="g">210</td><td class="n">1096</td><td>joao.batista@gmail.com</td><td>João Batista</td><td class="ed">team</td><td>2026-03-20 12:26:08+00</td><td class="n">274</td><td></td></tr>
+<tr><td class="g">211</td><td class="n">1103</td><td>karina.alves@gmail.com</td><td>Karina Alves</td><td>free</td><td>2026-03-21 15:09:33+00</td><td class="n">19</td><td></td></tr>
+<tr><td class="g">212</td><td class="n">1108</td><td>lucas.teixeira@gmail.com</td><td>Lucas Teixeira</td><td>pro</td><td>2026-03-22 08:44:17+00</td><td class="n">402</td><td></td></tr>
+<tr><td class="g">213</td><td class="n">1114</td><td>mariana.costa@gmail.com</td><td>Mariana Costa</td><td>team</td><td>2026-03-22 21:37:50+00</td><td class="n">978</td><td></td></tr>
+<tr><td class="g">214</td><td class="n">1121</td><td>nicolas.ribeiro@gmail.com</td><td>Nícolas Ribeiro</td><td>free</td><td>2026-03-23 10:18:04+00</td><td class="n">27</td><td></td></tr>
+<tr><td class="g">215</td><td class="n">1127</td><td>olivia.martins@gmail.com</td><td>Olívia Martins</td><td>pro</td><td>2026-03-24 14:52:29+00</td><td class="n">166</td><td></td></tr>
+<tr><td class="g">216</td><td class="n">1132</td><td>paulo.cardoso@gmail.com</td><td>Paulo Cardoso</td><td>free</td><td>2026-03-25 06:40:13+00</td><td class="n">2</td><td></td></tr>
+<tr><td class="g">217</td><td class="n">1138</td><td>rafaela.gomes@gmail.com</td><td>Rafaela Gomes</td><td>pro</td><td>2026-03-25 18:03:46+00</td><td class="n">731</td><td></td></tr>
+<tr><td class="g">218</td><td class="n">1145</td><td>samuel.duarte@gmail.com</td><td>Samuel Duarte</td><td>team</td><td>2026-03-26 09:29:58+00</td><td class="n">1458</td><td></td></tr>
+<tr><td class="g">219</td><td class="n">1151</td><td>tatiane.moura@gmail.com</td><td>Tatiane Moura</td><td>free</td><td>2026-03-27 11:15:21+00</td><td class="n">54</td><td></td></tr>
+<tr><td class="g">220</td><td class="n">1158</td><td>vinicius.barros@gmail.com</td><td>Vinícius Barros</td><td>pro</td><td>2026-03-28 16:47:05+00</td><td class="n">289</td><td></td></tr>
+<tr><td class="g">221</td><td class="n">1163</td><td>yasmin.freitas@gmail.com</td><td>Yasmin Freitas</td><td>free</td><td>2026-03-29 08:22:39+00</td><td class="n">15</td><td></td></tr>
+<tr class="new"><td class="g">+</td><td class="n nul">auto</td><td>lara.moreira@gmail.com</td><td>Lara Moreira</td><td>free</td><td class="nul">DEFAULT</td><td class="n">0</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<div class="bar foot"><button class="btn">Anterior</button><span class="page">Página 3</span><button class="btn">Próxima</button><span class="stat mono">100 linhas · 18 ms</span></div>
+</main>
+</body>
+</html>

@@ -10,6 +10,10 @@ import { errorMessage } from "@/lib/errors";
 
 type KeyEditor = ReturnType<typeof useKeyEdit>;
 
+/** what the backend loads of a key (docs/decisions.md, M5) */
+const ELEMENT_LIMIT = 1000;
+const STRING_LIMIT_BYTES = 1024 * 1024;
+
 type KeyDetailViewProps = {
   connectionId: string;
   db: number;
@@ -65,11 +69,22 @@ export function KeyDetailView({
       )}
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {detail.data.truncated && (
-          <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
-            {value.kind === "string"
-              ? "Valor grande: mostrando só o primeiro 1 MiB, edição desativada."
-              : `Mostrando os primeiros 1000 de ${detail.data.length} elementos.`}
-          </p>
+          <div className="mb-3 flex items-center gap-3 text-xs text-warning">
+            {/* the budget on show: how much of the value fits the 1000-element / 1 MiB limit */}
+            <span aria-hidden className="h-1.5 w-32 shrink-0 bg-border">
+              <span
+                className="block h-full bg-warning"
+                style={{
+                  width: `${Math.min(100, ((value.kind === "string" ? STRING_LIMIT_BYTES : ELEMENT_LIMIT) / Math.max(1, detail.data.length)) * 100)}%`
+                }}
+              />
+            </span>
+            <p>
+              {value.kind === "string"
+                ? "Valor grande: mostrando só o primeiro 1 MiB, edição desativada."
+                : `Mostrando os primeiros ${ELEMENT_LIMIT} de ${detail.data.length} elementos.`}
+            </p>
+          </div>
         )}
         {value.kind === "string" && (
           <StringEditor
@@ -119,7 +134,7 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
   const unit = detail.value.kind === "string" ? "bytes" : "elementos";
 
   return (
-    <div className="grid gap-2 border-b px-3 py-2">
+    <div className="grid gap-2 border-b bg-muted px-3 py-2">
       <div className="flex items-center gap-2">
         <Badge variant="outline">{detail.value.kind}</Badge>
         <h3 className="min-w-0 truncate font-mono text-sm font-semibold" title={detail.key}>
@@ -168,6 +183,7 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
             <>
               <Input
                 aria-label="Novo nome"
+                autoFocus
                 className="h-7 w-56 font-mono text-xs"
                 value={newName}
                 onChange={event => setNewName(event.target.value)}
@@ -187,12 +203,16 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
             </>
           )}
           {confirmingDelete ? (
+            // focused so Enter confirms; leaving it or Escape disarms the delete
             <Button
               size="xs"
               variant="destructive"
               className="ml-auto"
+              autoFocus
               disabled={pending}
               onClick={() => onSubmit([{ op: "delete" }], onDeleted)}
+              onBlur={() => setConfirmingDelete(false)}
+              onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
             >
               Confirmar exclusão
             </Button>
@@ -227,7 +247,7 @@ function StringEditor({ initial, editable, pending, onSave }: StringEditorProps)
       <textarea
         aria-label="Valor"
         readOnly={!editable}
-        className="min-h-48 w-full rounded-md border bg-transparent p-2 font-mono text-xs"
+        className="min-h-48 w-full rounded-[3px] border border-input bg-transparent p-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
         value={text}
         onChange={event => setText(event.target.value)}
       />
@@ -249,14 +269,14 @@ function StreamTable({ entries }: { entries: StreamEntry[] }) {
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
-        <tr className="border-b text-left text-xs text-muted-foreground">
+        <tr className="h-7 border-b text-left label-caps text-muted-foreground">
           <th className="px-2 py-1.5 font-medium">ID</th>
           <th className="px-2 py-1.5 font-medium">Campos</th>
         </tr>
       </thead>
       <tbody className="font-mono text-xs">
         {entries.map(entry => (
-          <tr key={entry.id} className="border-b align-top">
+          <tr key={entry.id} className="h-7 border-b align-top">
             <td className="px-2 py-1 whitespace-nowrap">{entry.id}</td>
             <td className="px-2 py-1 break-all">
               {entry.fields.map(({ field, value }) => `${field.text}=${value.text}`).join("  ")}

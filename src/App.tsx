@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { History } from "lucide-react";
+import { History, TriangleAlert } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
@@ -13,7 +13,7 @@ import { CollectionView } from "@/features/mongo/CollectionView";
 import { HistoryView } from "@/features/history/HistoryView";
 import { RedisView } from "@/features/redis/RedisView";
 import { TableView } from "@/features/table/TableView";
-import { TabBar } from "@/features/tabs/TabBar";
+import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -82,129 +82,151 @@ export function App() {
     <div
       data-environment={active?.environment}
       className={cn(
-        "flex h-screen bg-background text-foreground",
-        isProd && "ring-4 ring-inset ring-red-600"
+        "relative flex h-screen flex-col bg-background text-foreground",
+        // drawn above the panels, whose own backgrounds would hide an inset ring
+        isProd &&
+          "after:pointer-events-none after:absolute after:inset-0 after:z-40 after:ring-4 after:ring-seal after:ring-inset"
       )}
     >
-      <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3">
-        <div className="flex items-center justify-between gap-2 px-3">
-          <h1 className="text-sm font-semibold">Conexões</h1>
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                showTabs();
-                openHistory();
-              }}
-            >
-              <History /> Histórico
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setNotice(null);
-                setForm({ connectionId: null });
-              }}
-            >
-              Nova
-            </Button>
+      {/* production sits under a seal: the ring is a colour cue, the tape says it in words */}
+      {isProd && active && (
+        <p className="flex h-7 shrink-0 animate-in items-center gap-3 px-4 text-xs duration-[120ms] fade-in-0 slide-in-from-top-1 seal-tape motion-reduce:animate-none">
+          <TriangleAlert className="size-3.5" aria-hidden />
+          <span className="label-caps">Lacre de produção</span>
+          <span>
+            {active.name} ·{" "}
+            {active.readOnly
+              ? "somente leitura, imposta pelo banco"
+              : "toda escrita pede confirmação com o comando exato"}
+          </span>
+        </p>
+      )}
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto bg-bench py-4 text-bench-foreground [--ring:var(--bench-select)] [color-scheme:dark] [scrollbar-color:var(--bench-border)_var(--bench)]">
+          <div className="flex items-center justify-between gap-2 px-3">
+            <h1 className="label-caps text-bench-foreground">Conexões</h1>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-bench-foreground hover:bg-bench-raised hover:text-bench-foreground"
+                onClick={() => {
+                  showTabs();
+                  openHistory();
+                }}
+              >
+                <History /> Histórico
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-bench-border bg-transparent text-bench-foreground hover:bg-bench-raised hover:text-bench-foreground dark:bg-transparent"
+                onClick={() => {
+                  setNotice(null);
+                  setForm({ connectionId: null });
+                }}
+              >
+                Nova
+              </Button>
+            </div>
           </div>
-        </div>
-        {connections.isPending && <p className="px-3 text-sm text-muted-foreground">Carregando…</p>}
-        {connections.isError && (
-          <p role="alert" className="px-3 text-sm text-destructive">
-            {errorMessage(connections.error)}
-          </p>
-        )}
-        {connections.data && (
-          <ConnectionTree
-            connections={connections.data}
-            activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
-            activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
-            onEdit={connectionId => {
-              setNotice(null);
-              setForm({ connectionId });
-            }}
-            onOpenTable={target => {
-              showTabs();
-              openTable(target);
-            }}
-            onOpenEditor={connectionId => {
-              showTabs();
-              openEditor(connectionId);
-            }}
-            onOpenRedis={target => {
-              showTabs();
-              openRedis(target);
-            }}
-            onOpenDiagram={target => {
-              showTabs();
-              openDiagram(target);
-            }}
-          />
-        )}
-      </aside>
+          {connections.isPending && <p className="px-3 text-sm text-bench-muted">Carregando…</p>}
+          {connections.isError && (
+            <p role="alert" className="mx-3 rounded-[2px] bg-tag p-2 text-sm text-destructive">
+              {errorMessage(connections.error)}
+            </p>
+          )}
+          {connections.data && (
+            <ConnectionTree
+              connections={connections.data}
+              activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
+              activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
+              onEdit={connectionId => {
+                setNotice(null);
+                setForm({ connectionId });
+              }}
+              onOpenTable={target => {
+                showTabs();
+                openTable(target);
+              }}
+              onOpenEditor={connectionId => {
+                showTabs();
+                openEditor(connectionId);
+              }}
+              onOpenRedis={target => {
+                showTabs();
+                openRedis(target);
+              }}
+              onOpenDiagram={target => {
+                showTabs();
+                openDiagram(target);
+              }}
+            />
+          )}
+        </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        {notice && (
-          <p
-            role="status"
-            className="m-4 mb-0 rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-900"
-          >
-            {notice}
-          </p>
-        )}
-        {form ? (
-          (form.connectionId === null || active) && (
-            <div className="overflow-auto p-6">
-              <ConnectionForm
-                key={form.connectionId ?? "new"}
-                connection={active}
-                onSaved={(id, keychainWarning) => {
-                  dropConnectionCache(id);
-                  setForm({ connectionId: id });
-                  setNotice(
-                    keychainWarning &&
-                      `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
-                  );
-                }}
-                onDeleted={keychainWarning => {
-                  if (form.connectionId) {
-                    dropConnectionCache(form.connectionId);
-                  }
-                  setForm(null);
-                  setNotice(
-                    keychainWarning &&
-                      `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
-                  );
-                }}
-              />
-            </div>
-          )
-        ) : (
-          <>
-            {tabs.length > 0 && <TabBar connections={list} />}
-            {tabs.length === 0 && (
-              <p className="p-6 text-sm text-muted-foreground">
-                Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
-              </p>
-            )}
-            <div className="relative min-h-0 flex-1">
-              {/* every tab stays mounted so results and staged edits survive switching */}
-              {tabs.map(tab => (
-                <div
-                  key={tab.id}
-                  className={cn("absolute inset-0", tab.id !== activeId && "hidden")}
-                >
-                  <TabContent tab={tab} connections={list} onOpenInEditor={openInEditor} />
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </main>
+        <main className="flex min-w-0 flex-1 flex-col">
+          {notice && (
+            <p
+              role="status"
+              className="m-4 mb-0 rounded-[3px] border border-warning/50 bg-opened p-3 text-sm text-foreground"
+            >
+              {notice}
+            </p>
+          )}
+          {form ? (
+            (form.connectionId === null || active) && (
+              <div className="overflow-auto p-6">
+                <ConnectionForm
+                  key={form.connectionId ?? "new"}
+                  connection={active}
+                  onSaved={(id, keychainWarning) => {
+                    dropConnectionCache(id);
+                    setForm({ connectionId: id });
+                    setNotice(
+                      keychainWarning &&
+                        `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
+                    );
+                  }}
+                  onDeleted={keychainWarning => {
+                    if (form.connectionId) {
+                      dropConnectionCache(form.connectionId);
+                    }
+                    setForm(null);
+                    setNotice(
+                      keychainWarning &&
+                        `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
+                    );
+                  }}
+                />
+              </div>
+            )
+          ) : (
+            <>
+              {tabs.length > 0 && <TabBar connections={list} />}
+              {tabs.length === 0 && (
+                <p className="p-6 text-sm text-muted-foreground">
+                  Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
+                </p>
+              )}
+              <div className="relative min-h-0 flex-1">
+                {/* every tab stays mounted so results and staged edits survive switching */}
+                {tabs.map(tab => (
+                  <div
+                    key={tab.id}
+                    role="tabpanel"
+                    id={tabPanelId(tab.id)}
+                    aria-labelledby={tabElementId(tab.id)}
+                    className={cn("absolute inset-0", tab.id !== activeId && "hidden")}
+                  >
+                    <TabContent tab={tab} connections={list} onOpenInEditor={openInEditor} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

@@ -9,18 +9,13 @@ type KeyTreeViewProps = {
   onSelect: (key: string) => void;
 };
 
-const KIND_STYLE: Record<string, string> = {
-  string: "text-emerald-700 dark:text-emerald-300",
-  hash: "text-sky-700 dark:text-sky-300",
-  list: "text-amber-700 dark:text-amber-300",
-  set: "text-violet-700 dark:text-violet-300",
-  zset: "text-rose-700 dark:text-rose-300",
-  stream: "text-teal-700 dark:text-teal-300"
-};
+/** 28px rows like every other table; the open key gets the "where you are" marker. */
+const KEY_ROW =
+  "flex h-7 w-full items-center rounded-[2px] px-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 export function KeyTreeView({ nodes, selected, onSelect }: KeyTreeViewProps) {
   return (
-    <ul role="tree" aria-label="Chaves" className="grid text-sm">
+    <ul aria-label="Chaves" className="grid grid-cols-1 text-sm">
       <TreeLevel nodes={nodes} selected={selected} onSelect={onSelect} />
     </ul>
   );
@@ -31,28 +26,20 @@ function TreeLevel({ nodes, selected, onSelect }: KeyTreeViewProps) {
     node.kind === "folder" ? (
       <FolderNode key={`folder:${node.id}`} node={node} selected={selected} onSelect={onSelect} />
     ) : (
-      <li
-        key={`key:${node.entry.name}`}
-        role="treeitem"
-        aria-selected={node.entry.name === selected}
-      >
+      <li key={`key:${node.entry.name}`}>
         <button
           type="button"
           title={node.entry.name}
+          aria-current={node.entry.name === selected || undefined}
           onClick={() => onSelect(node.entry.name)}
           className={cn(
-            "flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-muted",
-            node.entry.name === selected && "bg-muted font-medium"
+            KEY_ROW,
+            "gap-2",
+            node.entry.name === selected &&
+              "bg-select/10 font-medium shadow-[inset_3px_0_0_var(--select)] hover:bg-select/10"
           )}
         >
-          <span
-            className={cn(
-              "w-10 shrink-0 font-mono text-[10px] uppercase",
-              KIND_STYLE[node.entry.kind] ?? "text-muted-foreground"
-            )}
-          >
-            {node.entry.kind}
-          </span>
+          <span className="w-11 shrink-0 label-caps text-muted-foreground">{node.entry.kind}</span>
           <span className="truncate font-mono text-xs">{node.name || "(vazio)"}</span>
         </button>
       </li>
@@ -69,11 +56,12 @@ function FolderNode({
   const Chevron = open ? ChevronDown : ChevronRight;
 
   return (
-    <li role="treeitem" aria-expanded={open} aria-selected={false}>
+    <li>
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen(prev => !prev)}
-        className="flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-left hover:bg-muted"
+        className={cn(KEY_ROW, "gap-1")}
       >
         <Chevron className="size-3.5 shrink-0 text-muted-foreground" />
         <Folder className="size-3.5 shrink-0 text-muted-foreground" />
@@ -81,7 +69,7 @@ function FolderNode({
         <span className="ml-auto text-xs text-muted-foreground">{node.count}</span>
       </button>
       {open && (
-        <ul role="group" className="ml-3 grid border-l pl-1">
+        <ul className="ml-3 grid grid-cols-1 border-l pl-1">
           <TreeLevel nodes={node.children} selected={selected} onSelect={onSelect} />
         </ul>
       )}

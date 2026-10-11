@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DB Manager · Régua de Emissão</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=Red+Hat+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--ground:#1c1d1f;--plate:#2a2c2f;--well:#212225;--head:#26282b;--hair:#3a3c40;--hair2:#303235;--cell:#333539;--sub:#5c5a55;--bone:#e8e2d4;--mute:#a8a294;--violet:#8a6cff;--cyan:#3fb6ff;--sodium:#f2c230;--red:#ff4b3e;--green:#4fd18b}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden}
+body{position:relative;background:var(--ground);color:var(--bone);font:400 13px/1.3 "Schibsted Grotesk",sans-serif}
+.rail{position:absolute;left:24px;top:6px;bottom:0;width:1px;background:var(--bone)}
+.railh{position:absolute;left:24px;top:6px;right:0;height:1px;background:var(--bone)}
+.grad{position:absolute;left:19px;top:7px;bottom:0;width:5px;background:repeating-linear-gradient(transparent 0 31px,rgba(232,226,212,.42) 31px 32px) right/5px 100% no-repeat,repeating-linear-gradient(transparent 0 7px,rgba(232,226,212,.2) 7px 8px) right/3px 100% no-repeat}
+.cap{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--hair);border-radius:3px;color:var(--bone);font-size:12.5px;font-weight:500;white-space:nowrap}
+.btn.sm{height:24px;padding:0 8px;font-size:12px}
+.btn.ghost{border-color:transparent;color:var(--mute)}
+.btn.pri{background:var(--bone);border-color:var(--bone);color:var(--ground);font-weight:600}
+.chev{flex:none;width:6px;height:6px;border-right:1.5px solid var(--mute);border-bottom:1.5px solid var(--mute);transform:rotate(45deg);margin:-3px 2px 0 0}
+.chev.c{transform:rotate(-45deg);margin-top:0}
+aside{position:absolute;left:0;top:0;width:288px;height:900px;border-right:1px solid var(--hair2)}
+.sh{height:40px;padding:7px 8px 0 40px;display:flex;align-items:center;gap:2px;border-bottom:1px solid var(--hair2)}
+.sh .cap{flex:1;color:var(--bone)}
+.list{padding-top:8px}
+.conn{position:relative;display:grid;grid-template-columns:1fr auto;align-items:center;row-gap:2px;min-height:48px;padding:7px 14px 7px 40px}
+.conn::before{content:"";position:absolute;left:25px;top:16px;width:10px;height:1px;background:var(--bone)}
+.nm{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.sub{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding-left:12px;font-size:12px;color:var(--mute)}
+.env{font-size:11px;font-weight:600;letter-spacing:.14em;color:var(--mute)}
+.env.prod{color:var(--bone);font-weight:700}
+.ro{display:inline-flex;align-items:center;gap:5px}
+.em{position:absolute;left:23px;top:8px;bottom:8px;width:2px}
+.em.solid{background:var(--green)}
+.em.dbl{left:22px;width:5px;background:linear-gradient(90deg,var(--red) 0 1px,var(--ground) 1px 4px,var(--red) 4px 5px)}
+.em.half{top:16px;bottom:16px;background:var(--cyan)}
+.kids{position:relative;margin:0 0 4px 43px;border-left:1px solid var(--sub)}
+.kids .kids{margin:0 0 0 17px}
+.k{position:relative;height:28px;display:flex;align-items:center;gap:8px;padding:0 12px 0 14px}
+.k::before{content:"";position:absolute;left:0;top:50%;width:8px;height:1px;background:var(--sub)}
+.k .meta{margin-left:auto;font-size:11px;color:var(--mute)}
+.k.on{background:var(--plate);font-weight:600;margin-right:12px;border-radius:0 3px 3px 0}
+.k.on::after{content:"";position:absolute;left:-1px;top:0;bottom:0;width:2px;background:var(--violet)}
+.ti{flex:none;width:12px;height:10px;border:1px solid var(--mute);border-top-width:3px;border-radius:1px}
+.vi{flex:none;width:12px;height:10px;border:1px solid var(--mute);border-radius:6px/5px}
+main{position:absolute;left:288px;top:0;right:0;bottom:0;display:flex;flex-direction:column}
+.tabs{height:40px;padding-top:7px;display:flex;border-bottom:1px solid var(--hair2)}
+.tab{position:relative;display:flex;align-items:center;gap:12px;padding:0 14px 0 18px;color:var(--mute);border-right:1px solid var(--hair2)}
+.tab::before{content:"";position:absolute;left:0;top:0;width:1px;height:50%;background:var(--bone)}
+.tab.on{background:var(--plate);color:var(--bone);font-weight:600;margin-bottom:-1px}
+.tab.on::before{width:2px;height:100%;background:var(--violet)}
+.x{width:8px;height:8px;opacity:.9;background:linear-gradient(45deg,transparent 44%,currentColor 44% 56%,transparent 56%),linear-gradient(-45deg,transparent 44%,currentColor 44% 56%,transparent 56%)}
+.panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--plate)}
+.bar{display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--hair);flex:none}
+.hd{height:44px;gap:20px}
+.ttl{font-weight:700;letter-spacing:.01em}
+.ttl span{color:var(--mute);font-weight:500}
+.st{position:relative;height:44px;display:flex;align-items:center;color:var(--mute)}
+.st.on{color:var(--bone);font-weight:600}
+.st.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--bone)}
+.sp{flex:1}
+.fb{height:44px}
+.fb .cap{margin-right:8px}
+.sel,.inp{display:inline-flex;align-items:center;justify-content:space-between;height:28px;padding:0 10px;background:var(--well);border:1px solid var(--hair);border-radius:3px}
+.sel .chev{margin-left:12px}
+.inp{width:240px;font:400 12.5px "Red Hat Mono",monospace;justify-content:flex-start}
+.eb{height:40px}
+.hint{margin-left:8px;font-size:12px;color:var(--mute)}
+.pend{display:inline-flex;align-items:center;gap:8px;margin-right:8px;font-weight:500}
+.dash{width:2px;height:18px;background:repeating-linear-gradient(var(--sodium) 0 4px,transparent 4px 7px)}
+.gw{flex:1;min-height:0;overflow:hidden}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font:400 12.5px/1 "Red Hat Mono",monospace}
+th{height:32px;padding:0 10px;text-align:left;background:var(--head);border-bottom:1px solid var(--hair);border-right:1px solid var(--hair2);font:600 12.5px "Schibsted Grotesk",sans-serif;white-space:nowrap}
+th .ty{margin-left:6px;font:400 11px "Red Hat Mono",monospace;color:var(--mute)}
+.tri{display:inline-block;margin-left:6px;border:4px solid transparent;border-top:0;border-bottom:5px solid var(--bone);vertical-align:1px}
+td{height:28px;padding:0 10px;border-bottom:1px solid var(--cell);border-right:1px solid var(--cell);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+td.g{position:relative;text-align:right;font-size:11px;color:var(--mute)}
+td.p::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:repeating-linear-gradient(var(--sodium) 0 4px,transparent 4px 7px)}
+.nul{font-style:italic;color:var(--mute)}
+.ed{background:repeating-linear-gradient(90deg,var(--sodium) 0 4px,transparent 4px 7px) 10px calc(100% - 6px)/calc(100% - 20px) 1px no-repeat}
+.ft{height:40px;display:flex;align-items:center;gap:8px;padding:0 16px;border-top:1px solid var(--hair);background:var(--plate);flex:none}
+.pg{padding:0 8px;font-weight:600}
+.meta2{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--mute)}
+.live{width:2px;height:16px;background:var(--green)}
+</style>
+</head>
+<body>
+<div class="grad"></div><div class="rail"></div><div class="railh"></div>
+<aside>
+  <div class="sh"><span class="cap">Conexões</span><span class="btn sm ghost">Histórico</span><span class="btn sm">Nova</span></div>
+  <div class="list">
+    <div class="conn"><i class="em dbl"></i><span class="nm"><i class="chev c"></i>Postgres prod</span><span class="env prod">PROD</span><span class="sub">PostgreSQL<span class="ro"><svg width="10" height="12" viewBox="0 0 10 12"><path d="M5 0v12M1 9l8-6" stroke="#a8a294" fill="none"/></svg>só leitura</span></span></div>
+    <div class="conn"><i class="em solid"></i><span class="nm"><i class="chev"></i>Postgres dev</span><span class="env">DEV</span><span class="sub">PostgreSQL</span></div>
+    <div class="kids">
+      <div class="k"><i class="chev"></i>public<span class="meta">schema</span></div>
+      <div class="kids">
+        <div class="k on"><i class="ti"></i>users</div>
+        <div class="k"><i class="ti"></i>orders</div>
+        <div class="k"><i class="ti"></i>invoices</div>
+        <div class="k"><i class="vi"></i>active_users<span class="meta">view</span></div>
+      </div>
+      <div class="k"><i class="chev c"></i>audit<span class="meta">schema</span></div>
+    </div>
+    <div class="conn"><i class="em solid"></i><span class="nm"><i class="chev c"></i>Mongo dev</span><span class="env">DEV</span><span class="sub">MongoDB</span></div>
+    <div class="conn"><i class="em half"></i><span class="nm"><i class="chev c"></i>Cache</span><span class="env">LOCAL</span><span class="sub">Redis</span></div>
+  </div>
+</aside>
+<main>
+  <div class="tabs">
+    <div class="tab on">users<i class="x"></i></div>
+    <div class="tab">Postgres dev · SQL 1<i class="x"></i></div>
+    <div class="tab">orders<i class="x"></i></div>
+  </div>
+  <div class="panel">
+    <div class="bar hd"><span class="ttl"><span>public.</span>users</span><span class="st on">Dados</span><span class="st">Estrutura</span><span class="sp"></span><span class="btn">Exportar CSV</span></div>
+    <div class="bar fb"><span class="cap">Filtro</span><span class="sel" style="width:150px">email<i class="chev"></i></span><span class="sel" style="width:96px">LIKE<i class="chev"></i></span><span class="inp">%@gmail.com</span><span class="btn">Aplicar</span><span class="btn ghost">Limpar filtro</span></div>
+    <div class="bar eb"><span class="btn">+ Adicionar linha</span><span class="btn">Excluir linha</span><span class="hint">Duplo clique ou Enter numa célula para editar</span><span class="sp"></span><span class="pend"><i class="dash"></i>2 alterações pendentes</span><span class="btn ghost">Descartar</span><span class="btn pri">Salvar</span></div>
+    <div class="gw">
+      <table>
+        <colgroup><col style="width:52px"><col style="width:88px"><col><col style="width:220px"><col style="width:112px"><col style="width:232px"><col style="width:96px"></colgroup>
+        <thead><tr><th></th><th class="n">id<span class="ty">int4</span><i class="tri"></i></th><th>email<span class="ty">text</span></th><th>name<span class="ty">text</span></th><th>plan<span class="ty">text</span></th><th>created_at<span class="ty">timestamptz</span></th><th class="n">logins<span class="ty">int4</span></th></tr></thead>
+        <tbody>
+          <tr><td class="g p">novo</td><td class="n nul">DEFAULT</td><td>lara.campos@gmail.com</td><td>Lara Campos</td><td>free</td><td class="nul">DEFAULT</td><td class="n">0</td></tr>
+          <tr><td class="g">201</td><td class="n">1187</td><td>ana.ribeiro@gmail.com</td><td>Ana Ribeiro</td><td>pro</td><td>2025-03-14 09:12:44-03</td><td class="n">142</td></tr>
+          <tr><td class="g">202</td><td class="n">1192</td><td>bruno.tavares@gmail.com</td><td>Bruno Tavares</td><td>free</td><td>2025-03-15 18:03:10-03</td><td class="n">7</td></tr>
+          <tr><td class="g">203</td><td class="n">1203</td><td>camila.nogueira@gmail.com</td><td>Camila Nogueira</td><td>team</td><td>2025-03-17 11:47:22-03</td><td class="n">388</td></tr>
+          <tr><td class="g">204</td><td class="n">1211</td><td>diego.amaral@gmail.com</td><td>Diego Amaral</td><td>pro</td><td>2025-03-18 08:30:05-03</td><td class="n">61</td></tr>
+          <tr><td class="g">205</td><td class="n">1218</td><td>eduarda.lins@gmail.com</td><td>Eduarda Lins</td><td class="nul">NULL</td><td>2025-03-19 21:15:58-03</td><td class="n">0</td></tr>
+          <tr><td class="g">206</td><td class="n">1226</td><td>felipe.moraes@gmail.com</td><td>Felipe Moraes</td><td>free</td><td>2025-03-21 14:02:37-03</td><td class="n">23</td></tr>
+          <tr><td class="g p">207</td><td class="n">1231</td><td>gabriela.pacheco@gmail.com</td><td>Gabriela Pacheco</td><td class="ed">team</td><td>2025-03-22 10:41:09-03</td><td class="n">1204</td></tr>
+          <tr><td class="g">208</td><td class="n">1240</td><td>henrique.duarte@gmail.com</td><td>Henrique Duarte</td><td>free</td><td>2025-03-24 16:55:31-03</td><td class="n">3</td></tr>
+          <tr><td class="g">209</td><td class="n">1247</td><td>isabela.cardoso@gmail.com</td><td>Isabela Cardoso</td><td>pro</td><td>2025-03-25 07:18:46-03</td><td class="n">97</td></tr>
+          <tr><td class="g">210</td><td class="n">1255</td><td>joao.vitor.melo@gmail.com</td><td>João Vitor Melo</td><td>free</td><td>2025-03-27 19:26:02-03</td><td class="n">15</td></tr>
+          <tr><td class="g">211</td><td class="n">1262</td><td>karina.fonseca@gmail.com</td><td>Karina Fonseca</td><td>team</td><td>2025-03-28 13:09:57-03</td><td class="n">512</td></tr>
+          <tr><td class="g">212</td><td class="n">1270</td><td>leonardo.brito@gmail.com</td><td>Leonardo Brito</td><td>pro</td><td>2025-03-30 09:44:13-03</td><td class="n">78</td></tr>
+          <tr><td class="g">213</td><td class="n">1284</td><td>marina.queiroz@gmail.com</td><td>Marina Queiroz</td><td>free</td><td>2025-04-01 22:37:40-03</td><td class="n">2</td></tr>
+          <tr><td class="g">214</td><td class="n">1291</td><td>natalia.barros@gmail.com</td><td>Natália Barros</td><td>pro</td><td>2025-04-02 11:05:28-03</td><td class="n">134</td></tr>
+          <tr><td class="g">215</td><td class="n">1303</td><td>otavio.siqueira@gmail.com</td><td>Otávio Siqueira</td><td>free</td><td>2025-04-04 15:51:19-03</td><td class="n">9</td></tr>
+          <tr><td class="g">216</td><td class="n">1309</td><td>patricia.rezende@gmail.com</td><td>Patrícia Rezende</td><td>team</td><td>2025-04-05 08:22:03-03</td><td class="n">287</td></tr>
+          <tr><td class="g">217</td><td class="n">1316</td><td>rafael.coutinho@gmail.com</td><td>Rafael Coutinho</td><td>pro</td><td>2025-04-07 17:33:48-03</td><td class="n">56</td></tr>
+          <tr><td class="g">218</td><td class="n">1322</td><td>sabrina.teles@gmail.com</td><td>Sabrina Teles</td><td>free</td><td>2025-04-08 12:14:25-03</td><td class="n">11</td></tr>
+          <tr><td class="g">219</td><td class="n">1330</td><td>thiago.peixoto@gmail.com</td><td>Thiago Peixoto</td><td>pro</td><td>2025-04-10 20:48:36-03</td><td class="n">203</td></tr>
+          <tr><td class="g">220</td><td class="n">1338</td><td>vanessa.araujo@gmail.com</td><td>Vanessa Araújo</td><td>free</td><td>2025-04-11 09:57:14-03</td><td class="n">4</td></tr>
+          <tr><td class="g">221</td><td class="n">1345</td><td>wagner.lacerda@gmail.com</td><td>Wagner Lacerda</td><td>team</td><td>2025-04-13 14:36:51-03</td><td class="n">645</td></tr>
+          <tr><td class="g">222</td><td class="n">1351</td><td>yasmin.figueira@gmail.com</td><td>Yasmin Figueira</td><td>pro</td><td>2025-04-14 10:03:22-03</td><td class="n">88</td></tr>
+          <tr><td class="g">223</td><td class="n">1360</td><td>caio.monteiro@gmail.com</td><td>Caio Monteiro</td><td>free</td><td>2025-04-16 18:19:07-03</td><td class="n">19</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="ft"><span class="btn">Anterior</span><span class="pg">Página 3</span><span class="btn">Próxima</span><span class="sp"></span><span class="meta2"><i class="live"></i>Postgres dev</span><span class="meta2" style="margin-left:16px">100 linhas · 18 ms</span></div>
+  </div>
+</main>
+</body>
+</html>

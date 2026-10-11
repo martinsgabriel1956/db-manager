@@ -4,3 +4,4 @@ src-tauri/gen
 dist
 coverage
 pnpm-lock.yaml
+.impeccable

@@ -14,7 +14,7 @@ async function openDb0(connection: ConnectionConfig = localRedis) {
   renderWithClient(<App />);
   await user.click(await screen.findByRole("button", { name: new RegExp(`^${connection.name}`) }));
   await user.click(await screen.findByRole("button", { name: /^db0/ }));
-  await screen.findByRole("tree", { name: "Chaves" });
+  await screen.findByRole("list", { name: "Chaves" });
   return user;
 }
 
@@ -38,7 +38,7 @@ test("Redis lists databases and opens one in a tab, keys grouped by separator", 
   await user.click(db0);
 
   expect(await screen.findByRole("tab", { name: "Cache · db0" })).toBeInTheDocument();
-  const tree = await screen.findByRole("tree", { name: "Chaves" });
+  const tree = await screen.findByRole("list", { name: "Chaves" });
   expect(within(tree).getByRole("button", { name: /user/ })).toHaveTextContent("2");
   expect(within(tree).queryByText("1")).not.toBeInTheDocument();
   await user.click(within(tree).getByRole("button", { name: /user/ }));
@@ -200,7 +200,7 @@ test("on prod an edit shows the Redis command and waits for confirmation", async
   const dialog = await screen.findByRole("dialog");
   // no SQL terminator after a Redis command
   expect(within(dialog).getByText("HSET user:1 name Bia")).toBeInTheDocument();
-  await user.click(within(dialog).getByRole("button", { name: "Executar em produção" }));
+  await user.click(within(dialog).getByRole("button", { name: "Romper lacre e executar" }));
 
   await waitFor(() => expect(edits(calls).map(call => call.confirmed)).toEqual([false, true]));
   await waitFor(() => expect(screen.queryByLabelText("Campo")).not.toBeInTheDocument());
@@ -221,7 +221,7 @@ test("a new key is created with its first value and TTL", async () => {
   await user.selectOptions(within(dialog).getByLabelText("Tipo"), "zset");
   await user.type(within(dialog).getByLabelText("Membro"), "ana");
   await user.type(within(dialog).getByLabelText("Score"), "1.5");
-  await user.type(within(dialog).getByLabelText("TTL da nova chave"), "60");
+  await user.type(within(dialog).getByLabelText("TTL em segundos (opcional)"), "60");
   await user.click(within(dialog).getByRole("button", { name: "Criar" }));
 
   expect(await within(dialog).findByText("a chave taken já existe")).toBeInTheDocument();

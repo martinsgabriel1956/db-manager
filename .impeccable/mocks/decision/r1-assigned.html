@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bench:#22272b;--bench2:#2c3237;--bone:#dfe3e6;--bonemut:#a9b1b7;--label:#fbfbf9;--paper:#f2f3f1;--ink:#17191b;--muted:#585e63;--hair:#dcdedb;--rule:#c4c8c5;--lav:#6e4fa3;--gold:#c99700;--grn:#1f7a4d;--blu:#3b7bbf;--gray:#7d848a;--seal:#c62828}
+*{box-sizing:border-box}
+html,body{margin:0;width:1440px;height:900px;overflow:hidden;background:var(--paper);color:var(--ink);font:400 13px/1.35 "Archivo",sans-serif}
+.app{display:grid;grid-template-columns:296px 1fr;height:900px}
+.cap{font-stretch:70%;font-weight:700;letter-spacing:.09em;text-transform:uppercase;font-size:11px}
+aside{background:var(--bench);color:var(--bone);padding:14px 12px;display:flex;flex-direction:column;gap:10px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.btn{display:inline-flex;align-items:center;height:28px;padding:0 11px;border:1px solid var(--rule);background:var(--label);border-radius:2px;font:500 12.5px "Archivo";color:var(--ink)}
+.btn.dark{background:transparent;border-color:#4a5258;color:var(--bone)}
+.btn.ink{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.seal{background:var(--seal);border-color:var(--seal);color:#fff;font-weight:700}
+.lbl{display:grid;grid-template-columns:8px 1fr;background:var(--label);color:var(--ink);border-radius:2px;box-shadow:0 1px 0 rgb(0 0 0/.35)}
+.lbl .capc{border-radius:2px 0 0 2px}
+.lbl .in{padding:6px 9px 6px 10px;display:grid;grid-template-columns:1fr auto;row-gap:2px;column-gap:8px}
+.lbl .nm{font-weight:700;font-size:13px}
+.lbl .acc{font:500 11px "Red Hat Mono",monospace;color:var(--muted)}
+.lbl .eng{font-size:11.5px;color:var(--muted);text-align:right}
+.amb{justify-self:end;font-stretch:70%;font-weight:800;letter-spacing:.08em;font-size:11px;padding:1px 6px;border:1.5px solid var(--ink)}
+.amb.prod{background:var(--seal);border-color:var(--seal);color:#fff}
+.bar{height:14px;margin-top:3px;grid-column:1/-1;background:repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 3px,var(--ink) 3px 5px,transparent 5px 6px,var(--ink) 6px 7px,transparent 7px 10px);opacity:.85}
+.kids{list-style:none;margin:4px 0 6px 14px;padding:0 0 0 12px;border-left:1px solid #4a5258}
+.kids li{height:25px;display:flex;align-items:center;gap:8px;color:var(--bone)}
+.kids .sch{color:var(--bonemut)}
+.kids .on{background:var(--label);color:var(--ink);font-weight:700;margin-left:-13px;padding-left:12px;box-shadow:inset 3px 0 0 var(--blu)}
+.tube{width:10px;height:10px;border:1.5px solid currentColor;border-radius:2px 2px 5px 5px;opacity:.8}
+main{display:flex;flex-direction:column;min-width:0;background:var(--label)}
+.seal-band{height:30px;display:flex;align-items:center;gap:12px;padding:0 14px;color:#fff;font-stretch:70%;font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:12px;background:repeating-linear-gradient(135deg,var(--seal) 0 22px,#ad1f1f 22px 26px)}
+.seal-band .t{font-stretch:100%;font-weight:500;letter-spacing:0;text-transform:none}
+.tabs{display:flex;border-bottom:1px solid var(--rule);background:var(--paper)}
+.tab{height:34px;display:flex;align-items:center;gap:8px;padding:0 14px;border-right:1px solid var(--hair);color:var(--muted)}
+.tab i{width:8px;height:8px;border-radius:2px}
+.tab.on{background:var(--label);color:var(--ink);font-weight:600;box-shadow:inset 0 2px 0 var(--blu)}
+.head{display:grid;grid-template-columns:auto auto auto 1fr auto;align-items:end;gap:26px;padding:10px 16px 0;border-bottom:1px solid var(--rule)}
+.field small{display:block}
+.field b{font:600 15px "Red Hat Mono",monospace}
+.vt{display:flex;gap:4px;align-self:end}
+.vt span{padding:8px 10px;border-bottom:2px solid transparent;color:var(--muted)}
+.vt .on{border-color:var(--blu);color:var(--ink);font-weight:600}
+.row1{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--hair)}
+.sel,.inp{height:28px;display:inline-flex;align-items:center;padding:0 9px;border:1px solid var(--rule);border-radius:2px;background:#fff;gap:16px}
+.inp{width:220px;font:12.5px "Red Hat Mono",monospace}
+.hint{color:var(--muted);font-size:12px}
+.grid{flex:1;position:relative;overflow:hidden;font:12.5px/28px "Red Hat Mono",monospace;font-variant-numeric:tabular-nums}
+.r{display:grid;grid-template-columns:96px 270px 190px 110px 250px 96px 1fr;border-bottom:1px solid var(--hair)}
+.r>div{padding:0 10px;border-right:1px solid var(--hair);white-space:nowrap;overflow:hidden}
+.hd{background:var(--paper);font-family:"Archivo";border-bottom:1px solid var(--rule)}
+.hd b{font-weight:700}.hd span{font:11.5px "Red Hat Mono";color:var(--muted)}
+.n{text-align:right}.nul{color:var(--muted);font-style:italic}
+.ed{background:repeating-linear-gradient(135deg,#fff3c4 0 6px,#fbe8a0 6px 7px)}
+.veil{position:absolute;inset:0;background:rgb(23 25 27/.32)}
+.form{position:absolute;top:70px;left:360px;width:600px;background:var(--label);border-radius:2px;box-shadow:0 20px 44px -14px rgb(0 0 0/.5),0 0 0 1px rgb(0 0 0/.2)}
+.form .fh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px 12px;border-bottom:2px solid var(--ink)}
+.form h2{margin:0;font-stretch:66%;font-weight:800;font-size:30px;letter-spacing:.05em;text-transform:uppercase}
+.form .no{font:600 12px "Red Hat Mono"}
+.ff{display:grid;grid-template-columns:repeat(4,1fr)}
+.ff div{padding:8px 12px 9px 22px;border-bottom:1px solid var(--hair);border-right:1px solid var(--hair)}
+.ff b{font-weight:600;font-size:13px}
+pre{margin:14px 22px;padding:11px 13px;border:1px solid var(--rule);background:var(--paper);font:12.5px/1.6 "Red Hat Mono";white-space:pre-wrap}
+.k{color:var(--lav);font-weight:600}.s{color:var(--grn)}.m{color:var(--blu)}
+.tape{height:26px;background:repeating-linear-gradient(135deg,var(--seal) 0 22px,#ad1f1f 22px 26px);color:#fff;display:flex;align-items:center;justify-content:center;font-stretch:70%;font-weight:800;letter-spacing:.14em;font-size:11px}
+.fa{display:flex;justify-content:space-between;align-items:center;padding:12px 22px 16px}
+.foot{height:40px;display:flex;align-items:center;gap:10px;padding:0 16px;border-top:1px solid var(--rule);background:var(--paper)}
+.meter{width:120px;height:6px;background:var(--hair);position:relative}.meter i{position:absolute;inset:0 0 0 0;width:10%;background:var(--ink)}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <div class="top"><span class="cap">Conexões</span><span><span class="btn dark">Histórico</span> <span class="btn">Nova</span></span></div>
+  <div class="lbl"><span class="capc" style="background:var(--lav)"></span><div class="in"><span class="nm">Postgres prod</span><span class="amb prod">PROD</span><span class="acc">CX-0001 · PostgreSQL</span><span class="eng">lacrada</span><span class="bar"></span></div></div>
+  <ul class="kids">
+    <li class="sch"><span class="tube"></span>public · 4</li>
+    <li class="on"><span class="tube"></span>users</li>
+    <li><span class="tube"></span>orders</li>
+    <li><span class="tube"></span>invoices</li>
+    <li><span class="tube" style="border-style:dashed"></span>active_users</li>
+    <li class="sch"><span class="tube"></span>audit · 0</li>
+  </ul>
+  <div class="lbl"><span class="capc" style="background:var(--lav)"></span><div class="in"><span class="nm">Postgres dev</span><span class="amb">DEV</span><span class="acc">CX-0002 · PostgreSQL</span><span class="eng"></span></div></div>
+  <div class="lbl"><span class="capc" style="background:var(--grn)"></span><div class="in"><span class="nm">Mongo dev</span><span class="amb">DEV</span><span class="acc">CX-0003 · MongoDB</span><span class="eng"></span></div></div>
+  <div class="lbl"><span class="capc" style="background:var(--blu)"></span><div class="in"><span class="nm">Cache</span><span class="amb">LOCAL</span><span class="acc">CX-0004 · Redis</span><span class="eng"></span></div></div>
+</aside>
+<main>
+  <div class="seal-band">Lacre de produção<span class="t">Postgres prod · toda escrita rompe o lacre e pede assinatura com o comando exato</span></div>
+  <div class="tabs"><div class="tab on"><i style="background:var(--lav)"></i>users</div><div class="tab"><i style="background:var(--lav)"></i>Postgres dev · SQL 1</div><div class="tab"><i style="background:var(--lav)"></i>orders</div></div>
+  <div class="head">
+    <div class="field"><small class="cap" style="color:var(--muted)">Amostra</small><b>public.users</b></div>
+    <div class="field"><small class="cap" style="color:var(--muted)">Conexão</small><span>Postgres prod</span></div>
+    <div class="vt"><span class="on">Dados</span><span>Estrutura</span></div>
+    <span></span><span class="btn" style="margin-bottom:8px">Exportar CSV</span>
+  </div>
+  <div class="row1"><span class="cap" style="color:var(--muted)">Filtro</span><span class="sel">email ▾</span><span class="sel">LIKE ▾</span><span class="inp">%@gmail.com</span><span class="btn">Aplicar</span><span class="btn" style="border-color:transparent;background:transparent">Limpar filtro</span></div>
+  <div class="row1"><span class="btn">+ Adicionar linha</span><span class="btn">Excluir linha</span><span class="hint">Duplo clique ou Enter numa célula para editar</span><span style="flex:1"></span><b style="font-size:12.5px">2 alterações pendentes</b><span class="btn">Descartar</span><span class="btn ink">Salvar</span></div>
+  <div class="grid">
+    <div class="r hd"><div><b>id</b> <span>int4</span></div><div><b>email</b> <span>text</span></div><div><b>name</b> <span>text</span></div><div><b>plan</b> <span>text</span></div><div><b>created_at</b> <span>timestamptz</span></div><div><b>logins</b> <span>int4</span></div><div></div></div>
+    <div class="r"><div class="n">1042</div><div>ana.souza@gmail.com</div><div>Ana Souza</div><div>pro</div><div>2026-03-14 09:12:44+00</div><div class="n">318</div><div></div></div>
+    <div class="r"><div class="n">1043</div><div>bruno.lima@gmail.com</div><div>Bruno Lima</div><div class="ed">team</div><div>2026-03-14 11:40:02+00</div><div class="n">87</div><div></div></div>
+    <div class="r"><div class="n">1047</div><div>carla.mendes@gmail.com</div><div>Carla Mendes</div><div class="nul">NULL</div><div>2026-03-15 08:03:19+00</div><div class="n">4</div><div></div></div>
+    <div class="r"><div class="n">1051</div><div>diego.ramos@gmail.com</div><div>Diego Ramos</div><div>free</div><div>2026-03-16 17:21:50+00</div><div class="n">1209</div><div></div></div>
+    <div class="r"><div class="n">1058</div><div>elisa.prado@gmail.com</div><div>Elisa Prado</div><div class="ed">pro</div><div>2026-03-18 10:55:07+00</div><div class="n">42</div><div></div></div>
+    <div class="r"><div class="n">1063</div><div>fabio.nunes@gmail.com</div><div>Fábio Nunes</div><div>free</div><div>2026-03-19 22:14:31+00</div><div class="n">16</div><div></div></div>
+    <div class="r"><div class="n">1070</div><div>gabi.torres@gmail.com</div><div>Gabriela Torres</div><div>team</div><div>2026-03-21 06:48:00+00</div><div class="n">530</div><div></div></div>
+    <div class="r"><div class="n">1074</div><div>heitor.costa@gmail.com</div><div>Heitor Costa</div><div>pro</div><div>2026-03-22 13:30:12+00</div><div class="n">77</div><div></div></div>
+    <div class="r"><div class="n">1081</div><div>isabela.reis@gmail.com</div><div>Isabela Reis</div><div>free</div><div>2026-03-24 19:02:45+00</div><div class="n">3</div><div></div></div>
+    <div class="r"><div class="n">1088</div><div>joao.pires@gmail.com</div><div>João Pires</div><div>pro</div><div>2026-03-25 08:17:39+00</div><div class="n">264</div><div></div></div>
+    <div class="r"><div class="n">1092</div><div>karen.alves@gmail.com</div><div>Karen Alves</div><div>team</div><div>2026-03-27 15:44:20+00</div><div class="n">91</div><div></div></div>
+    <div class="r"><div class="n">1099</div><div>lucas.moura@gmail.com</div><div>Lucas Moura</div><div>free</div><div>2026-03-29 09:09:09+00</div><div class="n">12</div><div></div></div>
+    <div class="r"><div class="n">1105</div><div>marina.dias@gmail.com</div><div>Marina Dias</div><div>pro</div><div>2026-04-01 12:00:51+00</div><div class="n">402</div><div></div></div>
+    <div class="r"><div class="n">1112</div><div>nicolas.braga@gmail.com</div><div>Nicolas Braga</div><div>free</div><div>2026-04-02 20:36:14+00</div><div class="n">58</div><div></div></div>
+    <div class="r"><div class="n">1118</div><div>olivia.santos@gmail.com</div><div>Olívia Santos</div><div>team</div><div>2026-04-04 07:25:33+00</div><div class="n">176</div><div></div></div>
+    <div class="r"><div class="n">1124</div><div>pedro.farias@gmail.com</div><div>Pedro Farias</div><div>pro</div><div>2026-04-05 16:50:02+00</div><div class="n">23</div><div></div></div>
+    <div class="r"><div class="n">1131</div><div>rafaela.cruz@gmail.com</div><div>Rafaela Cruz</div><div>free</div><div>2026-04-07 10:11:48+00</div><div class="n">9</div><div></div></div>
+    <div class="veil"></div>
+    <div class="form">
+      <div class="fh"><h2>Termo de custódia</h2><span class="no">TC-2026-10-11-0042</span></div>
+      <div class="ff"><div><small class="cap" style="color:var(--muted)">Conexão</small><b>Postgres prod</b></div><div><small class="cap" style="color:var(--muted)">Ambiente</small><b>PROD</b></div><div><small class="cap" style="color:var(--muted)">Comandos</small><b>2 UPDATE</b></div><div><small class="cap" style="color:var(--muted)">Data</small><b>11/10/2026 14:02</b></div></div>
+      <pre><span class="k">UPDATE</span> public.users <span class="k">SET</span> plan = <span class="s">'team'</span> <span class="k">WHERE</span> id = <span class="m">1043</span>;
+
+<span class="k">UPDATE</span> public.users <span class="k">SET</span> plan = <span class="s">'pro'</span> <span class="k">WHERE</span> id = <span class="m">1058</span>;</pre>
+      <div class="tape">LACRE · ROMPER SÓ COM ASSINATURA · LACRE</div>
+      <div class="fa"><span class="hint">Escrita em produção: confira o comando exato antes de assinar.</span><span><span class="btn">Cancelar</span> <span class="btn seal">Romper lacre e salvar</span></span></div>
+    </div>
+  </div>
+  <div class="foot"><span class="btn">Anterior</span><span class="hint">Página 3</span><span class="btn">Próxima</span><span style="flex:1"></span><span class="meter"><i></i></span><span class="hint">100 linhas · 18 ms</span></div>
+</main>
+</div>
+</body>
+</html>

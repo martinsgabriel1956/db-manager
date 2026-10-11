@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CircleCheck, CircleX, SquareTerminal } from "lucide-react";
 import { commands, type ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { isSqlEngine } from "@/features/connections/options";
 import { errorMessage } from "@/lib/errors";
 
@@ -14,17 +15,33 @@ type HistoryViewProps = {
 
 const ALL = "";
 
+/** typing pauses this long before the history is searched */
+const SEARCH_DELAY_MS = 250;
+
+/** width of the longest run's duration bar */
+const DURATION_BAR_PX = 96;
+
 export function formatExecutedAt(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" });
 }
 
 export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
   const [text, setText] = useState("");
+  const [search, setSearch] = useState("");
   const [connectionId, setConnectionId] = useState(ALL);
   const history = useQuery({
-    queryKey: ["history", text, connectionId],
-    queryFn: () => commands.searchHistory(text, connectionId === ALL ? null : connectionId)
+    queryKey: ["history", search, connectionId],
+    queryFn: () => commands.searchHistory(search, connectionId === ALL ? null : connectionId),
+    // the previous results stay on screen while the next search runs
+    placeholderData: keepPreviousData
   });
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(text), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  // durations share one linear scale, so bar length is comparable down the list
+  const longest = Math.max(1, ...(history.data ?? []).map(entry => entry.durationMs));
   // only SQL entries can be re-run in the editor
   const sqlConnections = new Set(
     connections
@@ -34,8 +51,8 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        <h2 className="mr-2 text-sm font-semibold">Histórico</h2>
+      <div className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-2">
+        <h2 className="mr-2 label-caps">Histórico</h2>
         <Input
           aria-label="Buscar no histórico"
           placeholder="Buscar no SQL…"
@@ -43,9 +60,9 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
           value={text}
           onChange={event => setText(event.target.value)}
         />
-        <select
+        <NativeSelect
           aria-label="Filtrar por conexão"
-          className="h-7 rounded-md border border-input bg-transparent px-2 text-sm"
+          className="h-7"
           value={connectionId}
           onChange={event => setConnectionId(event.target.value)}
         >
@@ -55,7 +72,7 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
               {connection.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {history.isError && (
@@ -71,7 +88,7 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
           <li key={entry.id} className="grid gap-1 px-3 py-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {entry.success ? (
-                <CircleCheck className="size-3.5 text-emerald-600" aria-label="sucesso" />
+                <CircleCheck className="size-3.5 text-success" aria-label="sucesso" />
               ) : (
                 <CircleX className="size-3.5 text-destructive" aria-label="erro" />
               )}
@@ -79,7 +96,14 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
               <span>·</span>
               <span className="font-medium text-foreground">{entry.connectionName}</span>
               <span>·</span>
-              <span>{entry.durationMs} ms</span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="h-1.5 rounded-[1px] bg-foreground/60"
+                  style={{ width: Math.max(2, (entry.durationMs / longest) * DURATION_BAR_PX) }}
+                />
+                {entry.durationMs} ms
+              </span>
               {sqlConnections.has(entry.connectionId) && (
                 <Button
                   size="xs"

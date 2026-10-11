@@ -10,6 +10,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { COLUMN_LABELS, newKeyEdits, type NewKeyKind } from "@/features/redis/entries";
 
 type NewKeyDialogProps = {
@@ -42,9 +43,8 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
         </DialogHeader>
         <div className="grid gap-3 text-sm">
           <label className="grid gap-1">
-            Nome
+            Nome da chave
             <Input
-              aria-label="Nome da chave"
               className="font-mono"
               value={key}
               onChange={event => setKey(event.target.value)}
@@ -52,9 +52,7 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
           </label>
           <label className="grid gap-1">
             Tipo
-            <select
-              aria-label="Tipo"
-              className="h-8 rounded-md border border-input bg-transparent px-2"
+            <NativeSelect
               value={kind}
               onChange={event => setKind(event.target.value as NewKeyKind)}
             >
@@ -63,12 +61,11 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
                   {option}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="grid gap-1">
             {firstLabel}
             <Input
-              aria-label={firstLabel}
               className="font-mono"
               value={first}
               onChange={event => setFirst(event.target.value)}
@@ -78,7 +75,6 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
             <label className="grid gap-1">
               {secondLabel}
               <Input
-                aria-label={secondLabel}
                 className="font-mono"
                 value={second}
                 onChange={event => setSecond(event.target.value)}
@@ -88,7 +84,6 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
           <label className="grid gap-1">
             TTL em segundos (opcional)
             <Input
-              aria-label="TTL da nova chave"
               type="number"
               min={1}
               aria-invalid={!validTtl || undefined}

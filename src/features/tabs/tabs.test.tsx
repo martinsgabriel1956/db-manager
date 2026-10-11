@@ -61,6 +61,26 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
   expect(tabNames()).toEqual(["active_users", "Postgres prod · SQL 1", "Postgres prod · SQL 2"]);
 });
 
+test("open tabs move with the arrow keys and close with Delete", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("button", { name: "users" }));
+  await user.click(screen.getByRole("button", { name: "active_users" }));
+  await user.click(screen.getByRole("tab", { name: "users" }));
+
+  await user.keyboard("{ArrowRight}");
+  const activeUsers = screen.getByRole("tab", { name: "active_users", selected: true });
+  expect(activeUsers).toHaveFocus();
+  expect(screen.getByRole("tabpanel", { name: "active_users" })).toBeInTheDocument();
+
+  await user.keyboard("{Delete}");
+  expect(tabNames()).toEqual(["users"]);
+  await waitFor(() => expect(screen.getByRole("tab", { name: "users" })).toHaveFocus());
+});
+
 test("editing a connection hides the tabs and returns to them", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
