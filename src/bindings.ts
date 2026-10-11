@@ -24,6 +24,12 @@ export const commands = {
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
 	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
+	redisDatabases: (connectionId: string) => __TAURI_INVOKE<RedisDatabase[]>("redis_databases", { connectionId }),
+	scanKeys: (connectionId: string, db: number, pattern: string, cursor: string) => __TAURI_INVOKE<KeyPage>("scan_keys", { connectionId, db, pattern, cursor }),
+	readKey: (connectionId: string, db: number, key: string) => __TAURI_INVOKE<KeyDetail>("read_key", { connectionId, db, key }),
+	editKey: (connectionId: string, request: KeyEditRequest, confirmed: boolean) => __TAURI_INVOKE<KeyEditResponse>("edit_key", { connectionId, request, confirmed }),
+	runRedisCommand: (connectionId: string, db: number, command: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("run_redis_command", { connectionId, db, command, confirmed }),
+	serverInfo: (connectionId: string) => __TAURI_INVOKE<InfoSection[]>("server_info", { connectionId }),
 };
 
 /* Types */
@@ -102,6 +108,14 @@ export type ColumnValue = {
 	value: string | null,
 };
 
+export type CommandOutcome = {
+	/**  the reply formatted like redis-cli */
+	output: string,
+	durationMs: number,
+};
+
+export type CommandResponse = { status: "executed"; outcome: CommandOutcome } | { status: "needsConfirmation"; confirmation: Confirmation };
+
 /**  Tables and their columns, for editor autocomplete. */
 export type CompletionTable = {
 	schema: string,
@@ -176,6 +190,11 @@ export type ForeignKeyInfo = {
 	definition: string,
 };
 
+export type HashEntry = {
+	field: RedisText,
+	value: RedisText,
+};
+
 export type HistoryEntry = {
 	id: number,
 	connectionId: string,
@@ -193,6 +212,58 @@ export type IndexInfo = {
 	definition: string,
 };
 
+export type InfoSection = {
+	name: string,
+	/**  (field, value) in server order */
+	entries: ([string, string])[],
+};
+
+export type KeyDetail = {
+	key: string,
+	/**  seconds; None = no expiry */
+	ttlSecs: number | null,
+	/**  elements (collections) or bytes (strings) */
+	length: number,
+	value: RedisValue,
+	/**  only the first elements (or bytes) were loaded */
+	truncated: boolean,
+};
+
+/**
+ *  One change to a key. A request carries several only to rename an entry
+ *  (remove + add), and they run in one MULTI/EXEC.
+ */
+export type KeyEdit = { op: "setString"; value: string } | { op: "hashSet"; field: string; value: string } | { op: "hashDelete"; field: string } | { op: "listSet"; index: number; value: string } | { op: "listPush"; value: string } | 
+/**  first element equal to `value` (LREM count 1) */
+{ op: "listRemove"; value: string } | { op: "setAdd"; member: string } | { op: "setRemove"; member: string } | { op: "zsetAdd"; member: string; score: string } | { op: "zsetRemove"; member: string } | 
+/**  None removes the expiry */
+{ op: "expire"; ttlSecs: number | null } | { op: "rename"; newKey: string } | { op: "delete" };
+
+export type KeyEditRequest = {
+	db: number,
+	key: string,
+	edits: KeyEdit[],
+	/**  creating a new key: refused when the key already exists */
+	create: boolean,
+};
+
+export type KeyEditResponse = { status: "applied" } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+export type KeyEntry = {
+	name: string,
+	/**  TYPE reply: string, hash, list, set, zset, stream, or a module type */
+	kind: string,
+};
+
+/**
+ *  One SCAN step. `cursor` is "0" when the scan is complete; otherwise it goes back
+ *  into the next request. Strings because SCAN cursors are unsigned 64-bit.
+ */
+export type KeyPage = {
+	keys: KeyEntry[],
+	cursor: string,
+};
+
 /**  Original value of a primary-key column, identifying the row to change. */
 export type KeyValue = {
 	column: string,
@@ -206,6 +277,25 @@ export type KeyValue = {
 export type KeychainOutcome = {
 	keychainWarning: string | null,
 };
+
+/**  A logical database (SELECT index) and how many keys it holds. */
+export type RedisDatabase = {
+	index: number,
+	keys: number,
+};
+
+/**
+ *  A Redis value as text. Values that are not UTF-8 come as a redis-cli style
+ *  escaped preview (`\xff`) with `binary: true`, and cannot be edited.
+ */
+export type RedisText = {
+	text: string,
+	binary: boolean,
+};
+
+export type RedisValue = { kind: "string"; value: RedisText } | { kind: "hash"; entries: HashEntry[] } | { kind: "list"; items: RedisText[] } | { kind: "set"; members: RedisText[] } | { kind: "zset"; entries: ZsetEntry[] } | { kind: "stream"; entries: StreamEntry[] } | 
+/**  module types (RedisJSON, …): shown by name only */
+{ kind: "unsupported"; typeName: string };
 
 export type Relation = {
 	name: string,
@@ -262,6 +352,11 @@ export type StatementResult =
 /**  DDL/DML/utility statement. u32 because specta forbids u64; saturates at ~4 billion. */
 { kind: "command"; rowsAffected: number };
 
+export type StreamEntry = {
+	id: string,
+	fields: HashEntry[],
+};
+
 /**  Staged grid edits, applied in one transaction. */
 export type TableChanges = {
 	schema: string,
@@ -303,4 +398,10 @@ export type WriteRequest = {
 export type WriteResponse = 
 /**  `id` is the written document's _id, as Extended JSON */
 { status: "written"; id: string } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+export type ZsetEntry = {
+	member: RedisText,
+	/**  as Redis prints it ("1.5", "inf"); floats never cross IPC */
+	score: string,
+};
 

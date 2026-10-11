@@ -20,6 +20,16 @@ test("opening the same table twice focuses the existing tab", () => {
   expect(state().activeId).toBe(state().tabs[0].id);
 });
 
+test("a Redis database opens once per connection", () => {
+  state().openRedis({ connectionId: "cache", db: 0 });
+  state().openRedis({ connectionId: "cache", db: 3 });
+  state().openRedis({ connectionId: "other", db: 0 });
+  state().openRedis({ connectionId: "cache", db: 0 });
+
+  expect(state().tabs).toHaveLength(3);
+  expect(state().activeId).toBe(state().tabs[0].id);
+});
+
 test("editors are numbered per connection", () => {
   state().openEditor("pg");
   state().openEditor("pg", "SELECT 1");

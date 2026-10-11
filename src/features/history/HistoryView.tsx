@@ -4,6 +4,7 @@ import { CircleCheck, CircleX, SquareTerminal } from "lucide-react";
 import { commands, type ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { isSqlEngine } from "@/features/connections/options";
 import { errorMessage } from "@/lib/errors";
 
 type HistoryViewProps = {
@@ -24,7 +25,12 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
     queryKey: ["history", text, connectionId],
     queryFn: () => commands.searchHistory(text, connectionId === ALL ? null : connectionId)
   });
-  const knownConnections = new Set(connections.map(connection => connection.id));
+  // only SQL entries can be re-run in the editor
+  const sqlConnections = new Set(
+    connections
+      .filter(connection => isSqlEngine(connection.engine))
+      .map(connection => connection.id)
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -74,7 +80,7 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
               <span className="font-medium text-foreground">{entry.connectionName}</span>
               <span>·</span>
               <span>{entry.durationMs} ms</span>
-              {knownConnections.has(entry.connectionId) && (
+              {sqlConnections.has(entry.connectionId) && (
                 <Button
                   size="xs"
                   variant="ghost"

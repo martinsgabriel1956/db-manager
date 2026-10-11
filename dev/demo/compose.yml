@@ -4,6 +4,7 @@
 # Postgres: host localhost, port 55432, database demo, user demo, password demo.
 # MySQL:    host localhost, port 53306, database shop, user demo, password demo.
 # MongoDB:  host localhost, port 57017, database shop (no authentication).
+# Redis:    host localhost, port 56379, database 0 (no password).
 # SQLite:   python3 dev/demo/make-sqlite.py  →  dev/demo/demo.sqlite
 services:
   postgres:
@@ -50,7 +51,33 @@ services:
       - ./seed-mongo.js:/docker-entrypoint-initdb.d/seed.js:ro
       - demo-mongo-data:/data/db
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: db-manager-demo-redis
+    ports:
+      - "127.0.0.1:56379:6379"
+    volumes:
+      - demo-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  # Redis has no init scripts: load the seed once, then exit
+  redis-seed:
+    image: redis:7.4-alpine
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./seed-redis.redis:/seed.redis:ro
+    entrypoint:
+      - sh
+      - -c
+      - redis-cli -h redis EXISTS demo:seeded | grep -q 1 || redis-cli -h redis < /seed.redis
+
 volumes:
   demo-data:
   demo-mysql-data:
   demo-mongo-data:
+  demo-redis-data:

@@ -3,15 +3,18 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::adapters::SqlConnection;
 use crate::adapters::mongo::MongoAdapter;
+use crate::adapters::redis::RedisAdapter;
 use crate::adapters::stream::Cursor;
 use crate::domain::{AppError, Environment, SchemaInfo};
 
 // The locks guard plain maps and are never held across an await.
 
-/// The open database: a SQL engine or MongoDB. Redis joins in M5.
+/// The open database: a SQL engine, MongoDB or Redis.
 pub enum Live {
     Sql(SqlConnection),
     Mongo(MongoAdapter),
+    // boxed: the adapter is much bigger than the other variants
+    Redis(Box<RedisAdapter>),
 }
 
 /// An open session plus the connection settings the write rules depend on.
@@ -26,7 +29,7 @@ impl OpenConnection {
     pub fn sql(&self) -> Result<&SqlConnection, AppError> {
         match &self.live {
             Live::Sql(connection) => Ok(connection),
-            Live::Mongo(_) => Err(AppError::validation(format!(
+            _ => Err(AppError::validation(format!(
                 "{} não é um banco SQL",
                 self.name
             ))),
@@ -36,7 +39,14 @@ impl OpenConnection {
     pub fn mongo(&self) -> Result<&MongoAdapter, AppError> {
         match &self.live {
             Live::Mongo(adapter) => Ok(adapter),
-            Live::Sql(_) => Err(AppError::validation(format!("{} não é MongoDB", self.name))),
+            _ => Err(AppError::validation(format!("{} não é MongoDB", self.name))),
+        }
+    }
+
+    pub fn redis(&self) -> Result<&RedisAdapter, AppError> {
+        match &self.live {
+            Live::Redis(adapter) => Ok(adapter),
+            _ => Err(AppError::validation(format!("{} não é Redis", self.name))),
         }
     }
 
@@ -44,14 +54,20 @@ impl OpenConnection {
         match &self.live {
             Live::Sql(connection) => connection.close().await,
             Live::Mongo(adapter) => adapter.close().await,
+            Live::Redis(adapter) => adapter.close(),
         }
     }
 
-    /// SQL schemas, or MongoDB databases with their collections.
+    /// SQL schemas, or MongoDB databases with their collections. Redis databases
+    /// have no schema: see `use_cases::redis::databases`.
     pub async fn list_schemas(&self) -> Result<Vec<SchemaInfo>, AppError> {
         match &self.live {
             Live::Sql(connection) => connection.list_schemas().await,
             Live::Mongo(adapter) => adapter.list_schemas().await,
+            Live::Redis(_) => Err(AppError::validation(format!(
+                "{} é Redis: liste os databases",
+                self.name
+            ))),
         }
     }
 }

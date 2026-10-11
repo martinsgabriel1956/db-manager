@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use crate::adapters::SqlConnection;
 use crate::adapters::mongo::MongoAdapter;
+use crate::adapters::redis::RedisAdapter;
 use crate::adapters::sql_builder;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, CompletionTable, Confirmation, ConnectionConfig,
@@ -33,6 +34,7 @@ pub async fn connect(
     };
     let live = match config.engine {
         Engine::Mongo => Live::Mongo(MongoAdapter::connect(&config, secret).await?),
+        Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(&config, secret).await?)),
         _ => Live::Sql(SqlConnection::connect(&config, secret, config.read_only).await?),
     };
     registry.insert_connection(
@@ -337,6 +339,8 @@ pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppErro
             }
             // MongoDB operations are tagged with the run id
             Live::Mongo(mongo) => mongo.kill(run_id).await,
+            // Redis commands never register a run: they only have the timeout
+            Live::Redis(_) => Ok(()),
         },
         None => Ok(()),
     }
@@ -454,35 +458,6 @@ mod integration_tests {
                 .await
                 .unwrap(),
         )
-    }
-
-    #[tokio::test]
-    async fn redis_does_not_connect_yet() {
-        let config = ConnectionConfig {
-            id: "r".into(),
-            name: "r".into(),
-            engine: Engine::Redis,
-            environment: Environment::Local,
-            read_only: false,
-            timeout_secs: 30,
-            target: Target::Network {
-                host: "localhost".into(),
-                port: 6379,
-                database: "0".into(),
-                username: String::new(),
-            },
-            tls: TlsConfig {
-                mode: TlsMode::Disable,
-                ca_cert_path: None,
-            },
-            key_separator: Some(":".into()),
-        };
-
-        let err = connect(&Registry::default(), &ContainerPassword, config)
-            .await
-            .unwrap_err();
-
-        assert!(matches!(err, AppError::Validation(_)));
     }
 
     #[tokio::test]

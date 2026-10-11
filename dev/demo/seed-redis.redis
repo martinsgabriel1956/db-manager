@@ -1,0 +1,19 @@
+SELECT 0
+SET greeting "Olá, mundo"
+SET config:feature_flags "{\"darkMode\": true, \"beta\": [\"ana\", \"bia\"]}"
+SET bin:blob "\xff\xfe\x00raw bytes"
+SET session:abc123 "user:1" EX 3600
+HSET user:1 name "Ana Lima" city "São Paulo" plan pro
+HSET user:2 name "Bia Souza" city Recife plan free
+EXPIRE user:2 86400
+RPUSH queue:emails "welcome:1" "reset:2" "digest:3"
+SADD tags:popular redis postgres mongo sqlite
+ZADD leaderboard 1500 ana 1320 bia 990 caio +inf champion
+XADD events:login 1-1 user ana ip 10.0.0.1
+XADD events:login 2-1 user bia ip 10.0.0.2
+EVAL "for i = 1, 300 do redis.call('HSET', 'customer:' .. i, 'name', 'Cliente ' .. i, 'orders', i % 7) end return 300" 0
+EVAL "for i = 1, 1500 do redis.call('RPUSH', KEYS[1], 'item:' .. i) end return 1500" 1 big:list
+SELECT 1
+SET cache:home "<html>…</html>" EX 600
+SELECT 0
+SET demo:seeded 1

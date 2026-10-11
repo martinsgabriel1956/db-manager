@@ -11,6 +11,7 @@ import { ConnectionTree } from "@/features/explorer/ConnectionTree";
 import { isConnectionQuery } from "@/features/explorer/queries";
 import { CollectionView } from "@/features/mongo/CollectionView";
 import { HistoryView } from "@/features/history/HistoryView";
+import { RedisView } from "@/features/redis/RedisView";
 import { TableView } from "@/features/table/TableView";
 import { TabBar } from "@/features/tabs/TabBar";
 import { useTabs, type Tab } from "@/features/tabs/store";
@@ -29,7 +30,8 @@ type TabContentProps = {
 export function App() {
   const connections = useConnections();
   const queryClient = useQueryClient();
-  const { tabs, activeId, openTable, openEditor, openHistory, keepConnections } = useTabs();
+  const { tabs, activeId, openTable, openEditor, openRedis, openHistory, keepConnections } =
+    useTabs();
   const [form, setForm] = useState<FormState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -107,6 +109,7 @@ export function App() {
           <ConnectionTree
             connections={connections.data}
             activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
+            activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
             onEdit={connectionId => {
               setNotice(null);
               setForm({ connectionId });
@@ -118,6 +121,10 @@ export function App() {
             onOpenEditor={connectionId => {
               showTabs();
               openEditor(connectionId);
+            }}
+            onOpenRedis={target => {
+              showTabs();
+              openRedis(target);
             }}
           />
         )}
@@ -194,6 +201,9 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const connection = connections.find(c => c.id === tab.connectionId);
   if (!connection) {
     return null;
+  }
+  if (tab.kind === "redis") {
+    return <RedisView connection={connection} db={tab.db} />;
   }
   if (tab.kind === "table" && connection.engine === "mongo") {
     return (

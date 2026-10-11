@@ -12,8 +12,10 @@ export type EditorTab = {
   title: string;
   sql: string;
 };
+export type RedisTarget = { connectionId: string; db: number };
+export type RedisTab = { id: string; kind: "redis" } & RedisTarget;
 export type HistoryTab = { id: "history"; kind: "history" };
-export type Tab = TableTab | EditorTab | HistoryTab;
+export type Tab = TableTab | EditorTab | RedisTab | HistoryTab;
 
 type TabsState = {
   tabs: Tab[];
@@ -22,6 +24,8 @@ type TabsState = {
   openTable: (target: TableTarget) => void;
   /** always a new tab: several editors per connection are allowed */
   openEditor: (connectionId: string, sql?: string) => void;
+  /** focuses the database's tab if already open */
+  openRedis: (target: RedisTarget) => void;
   openHistory: () => void;
   activate: (id: string) => void;
   close: (id: string) => void;
@@ -72,6 +76,20 @@ export const useTabs = create<TabsState>()(
             title: nextEditorTitle(state.tabs, connectionId),
             sql
           };
+          return { tabs: [...state.tabs, tab], activeId: tab.id };
+        }),
+      openRedis: target =>
+        set(state => {
+          const existing = state.tabs.find(
+            tab =>
+              tab.kind === "redis" &&
+              tab.connectionId === target.connectionId &&
+              tab.db === target.db
+          );
+          if (existing) {
+            return { activeId: existing.id };
+          }
+          const tab: RedisTab = { id: crypto.randomUUID(), kind: "redis", ...target };
           return { tabs: [...state.tabs, tab], activeId: tab.id };
         }),
       openHistory: () =>

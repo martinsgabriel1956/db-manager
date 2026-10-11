@@ -3,6 +3,7 @@ import type { InvokeArgs } from "@tauri-apps/api/core";
 import type {
   CompletionTable,
   ConnectionConfig,
+  KeyDetail,
   KeychainOutcome,
   RowBatch,
   RunResponse,
@@ -60,6 +61,59 @@ export const localRedis: ConnectionConfig = {
   readOnly: false,
   target: { kind: "network", host: "localhost", port: 6379, database: "0", username: "" },
   keySeparator: ":"
+};
+
+export const redisKeys: Record<string, KeyDetail> = {
+  "user:1": {
+    key: "user:1",
+    ttlSecs: 120,
+    length: 2,
+    truncated: false,
+    value: {
+      kind: "hash",
+      entries: [
+        { field: { text: "city", binary: false }, value: { text: "São Paulo", binary: false } },
+        { field: { text: "name", binary: false }, value: { text: "Ana", binary: false } }
+      ]
+    }
+  },
+  "user:2": {
+    key: "user:2",
+    ttlSecs: null,
+    length: 5,
+    truncated: false,
+    value: { kind: "string", value: { text: "hello", binary: false } }
+  },
+  queue: {
+    key: "queue",
+    ttlSecs: null,
+    length: 1500,
+    truncated: true,
+    value: {
+      kind: "list",
+      items: [
+        { text: "a", binary: false },
+        { text: "\\xff", binary: true }
+      ]
+    }
+  },
+  events: {
+    key: "events",
+    ttlSecs: null,
+    length: 1,
+    truncated: false,
+    value: {
+      kind: "stream",
+      entries: [
+        {
+          id: "1-1",
+          fields: [
+            { field: { text: "kind", binary: false }, value: { text: "login", binary: false } }
+          ]
+        }
+      ]
+    }
+  }
 };
 
 export const schemas: SchemaInfo[] = [
@@ -156,6 +210,27 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       outcome: { documents: ['{"_id":"even","total":110}'], truncated: false, durationMs: 4 }
     }),
     write_document: () => ({ status: "written", id: '{"$oid":"65a1b2c3d4e5f60718293a4b"}' }),
+    redis_databases: () => [
+      { index: 0, keys: 4 },
+      { index: 1, keys: 0 }
+    ],
+    scan_keys: () => ({
+      keys: Object.values(redisKeys).map(detail => ({ name: detail.key, kind: detail.value.kind })),
+      cursor: "0"
+    }),
+    read_key: args => {
+      const detail = redisKeys[(args as { key: string }).key];
+      if (!detail) {
+        return Promise.reject({ kind: "notFound", message: "não encontrado: chave" });
+      }
+      return detail;
+    },
+    edit_key: () => ({ status: "applied" }),
+    run_redis_command: () => ({ status: "executed", outcome: { output: "OK", durationMs: 1 } }),
+    server_info: () => [
+      { name: "Server", entries: [["redis_version", "7.4.0"]] },
+      { name: "Memory", entries: [["used_memory_human", "1.2M"]] }
+    ],
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
     cancel_run: () => null

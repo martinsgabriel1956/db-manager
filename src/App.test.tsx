@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, ConnectionConfig } from "@/bindings";
-import { callsTo, fakeBackend, localRedis, prodPostgres } from "@/test/fakeBackend";
+import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
 function renderApp() {
@@ -181,19 +181,6 @@ test("saving a connection drops its cached session data", async () => {
 
   // the tree stays expanded and refetches: the backend closed the old session
   await waitFor(() => expect(callsTo(calls, "list_schemas")).toHaveLength(2));
-});
-
-test("non-postgres engines say navigation comes later", async () => {
-  fakeBackend([localRedis]);
-  const user = userEvent.setup();
-  renderApp();
-
-  await user.click(await screen.findByRole("button", { name: /^Cache/ }));
-
-  expect(screen.getByText(/Navegação para Redis chega em um próximo marco/)).toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "Abrir editor SQL de Cache" })
-  ).not.toBeInTheDocument();
 });
 
 test("a MongoDB connection can be saved with a connection string", async () => {

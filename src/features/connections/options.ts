@@ -55,14 +55,9 @@ export const DEFAULT_REDIS_SEPARATOR = ":";
 
 export const DEFAULT_TIMEOUT_SECS = 30;
 
-/** Engines the explorer and the SQL editor can open (document stores come later). */
+/** Engines with tables and the SQL editor. */
 export function isSqlEngine(engine: Engine): boolean {
   return engine === "postgres" || engine === "mysql" || engine === "sqlite";
-}
-
-/** Engines the explorer tree can open: SQL plus MongoDB (Redis comes later). */
-export function isBrowsable(engine: Engine): boolean {
-  return isSqlEngine(engine) || engine === "mongo";
 }
 
 /** Schema (MongoDB: database) opened by default in the tree, also used for autocomplete. */

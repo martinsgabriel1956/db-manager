@@ -12,15 +12,18 @@ import {
 type ConfirmDialogProps = {
   confirmation: Confirmation | null;
   confirmLabel: string;
+  /** appended to each statement: ";" for SQL, nothing for Redis commands */
+  statementSuffix?: string;
   pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
 
-/** Shows exactly what will run, so the user confirms the SQL and not a vague warning. */
+/** Shows exactly what will run, so the user confirms the command and not a vague warning. */
 export function ConfirmDialog({
   confirmation,
   confirmLabel,
+  statementSuffix = ";",
   pending = false,
   onConfirm,
   onCancel
@@ -33,7 +36,7 @@ export function ConfirmDialog({
           <DialogDescription>{confirmation?.reason}</DialogDescription>
         </DialogHeader>
         <pre className="max-h-80 overflow-auto rounded-md border bg-muted p-3 font-mono text-xs break-all whitespace-pre-wrap">
-          {confirmation?.statements.map(statement => `${statement};`).join("\n\n")}
+          {confirmation?.statements.map(statement => `${statement}${statementSuffix}`).join("\n\n")}
         </pre>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>

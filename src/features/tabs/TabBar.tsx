@@ -1,4 +1,4 @@
-import { History, SquareTerminal, Table2, X } from "lucide-react";
+import { Database, History, SquareTerminal, Table2, X } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { cn } from "@/lib/utils";
@@ -13,10 +13,11 @@ export function tabLabel(tab: Tab, connections: ConnectionConfig[]): string {
     return tab.table;
   }
   const connection = connections.find(c => c.id === tab.connectionId);
-  return connection ? `${connection.name} · ${tab.title}` : tab.title;
+  const title = tab.kind === "redis" ? `db${tab.db}` : tab.title;
+  return connection ? `${connection.name} · ${title}` : title;
 }
 
-const ICON = { table: Table2, editor: SquareTerminal, history: History };
+const ICON = { table: Table2, editor: SquareTerminal, redis: Database, history: History };
 
 export function TabBar({ connections }: TabBarProps) {
   const { tabs, activeId, activate, close } = useTabs();

@@ -2,6 +2,7 @@ pub mod dialect;
 pub mod mongo;
 pub mod mysql;
 pub mod postgres;
+pub mod redis;
 pub mod split;
 pub mod sql_builder;
 pub mod sqlite;
@@ -52,8 +53,10 @@ impl SqlConnection {
             Engine::Sqlite => Ok(SqlConnection::Sqlite(
                 SqliteAdapter::connect(config, read_only).await?,
             )),
-            Engine::Redis => Err(AppError::validation("Redis chega no M5")),
-            Engine::Mongo => Err(AppError::validation("MongoDB não é um banco SQL")),
+            Engine::Mongo | Engine::Redis => Err(AppError::validation(format!(
+                "{} não é um banco SQL",
+                config.name
+            ))),
         }
     }
 
