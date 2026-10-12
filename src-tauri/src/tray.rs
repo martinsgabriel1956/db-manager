@@ -15,7 +15,10 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, QUIT_ID, "Sair", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
 
-    TrayIconBuilder::with_id("main")
+    // On Linux the id names the icon file ($XDG_RUNTIME_DIR/tray-icon/tray-icon-<id>-0.png) and the
+    // AppIndicator: a generic id like "main" collides with any other Tauri app using it, and both
+    // trays end up showing (or losing) the same icon file.
+    TrayIconBuilder::with_id("ordo")
         .icon(Image::from_bytes(TRAY_ICON)?)
         .tooltip("Ordo")
         .menu(&menu)
