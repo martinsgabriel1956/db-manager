@@ -50,14 +50,14 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 
 - Nome: **Ordo** ("ordem" em latim: uma ordem só para cinco engines). Antes se chamava DB Manager; o identificador `dev.nemomartins.dbmanager` e o serviço do keychain `db-manager` mantêm o nome antigo de propósito, porque trocá-los apagaria conexões e senhas salvas.
 - Idioma da interface: **português do Brasil**, direto e técnico. Comandos e nomes do banco aparecem como são (SQL, `SCAN`, `$numberLong`), sem tradução.
-- Não existe marca visual própria: o ícone em `src-tauri/icons` é o placeholder padrão do Tauri.
+- Marca: um "O" quadrado de cantos cortados construído na grade, com o canto superior direito cortado em azul (`src-tauri/icons/icon.svg`); a bandeja do sistema usa a mesma marca ampliada no quadro (`src-tauri/icons/tray.svg`). Na interface, a marca escrita é ORDO/ fechada pela diagonal azul.
 
 ## Evidence on Hand
 
 - `README.md` (setup, comandos, onde ficam os dados) e `docs/decisions.md` (decisões de produto e notas de implementação por marco).
 - Seeds de demonstração em `dev/demo` (Postgres, MySQL, SQLite, MongoDB, Redis).
 - Fake backend dos testes em `src/test/fakeBackend.ts`, útil para mostrar a UI sem bancos reais.
-- **Não existem:** usuários externos, depoimentos, métricas de uso, benchmarks de desempenho contra TablePlus/DBeaver, site, logo ou screenshots oficiais. Trabalho futuro não deve inventar nenhum deles.
+- **Não existem:** usuários externos, depoimentos, métricas de uso, benchmarks de desempenho contra TablePlus/DBeaver, site ou screenshots oficiais. Trabalho futuro não deve inventar nenhum deles.
 
 ## Product Principles
 

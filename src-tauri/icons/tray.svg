@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Ordo tray mark: the app icon's O, larger in the frame so it holds at 22px on light and dark panels -->
+  <rect width="64" height="64" fill="#f7f8fa" />
+  <polygon points="46,0 64,0 64,18" fill="#0057ff" />
+  <rect x="2" y="2" width="60" height="60" fill="none" stroke="#0f1011" stroke-width="4" />
+  <path d="M25 17H39L47 25V39L39 47H25L17 39V25Z" fill="none" stroke="#0f1011" stroke-width="8" />
+</svg>

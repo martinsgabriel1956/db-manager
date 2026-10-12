@@ -4,6 +4,16 @@
     "ignoreFiles": [
       ".impeccable/mocks/decision/**"
     ],
-    "ignoreValues": []
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/logo/board.html"
+        ],
+        "createdAt": "2026-10-11T23:48:59.073Z",
+        "reason": "Claude: logo concept board loads the DESIGN.md faces (Saira, Hanken Grotesk) from Google Fonts by their non-Variable names"
+      }
+    ]
   }
 }

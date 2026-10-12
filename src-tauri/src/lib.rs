@@ -3,6 +3,7 @@ mod commands;
 mod domain;
 mod registry;
 mod storage;
+mod tray;
 mod use_cases;
 
 use std::sync::Mutex;
@@ -90,6 +91,7 @@ pub fn run() {
                 registry: Registry::default(),
                 history,
             });
+            tray::setup(app)?;
             Ok(())
         })
         .run(tauri::generate_context!())

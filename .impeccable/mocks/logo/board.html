@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Ordo · conceitos de logo</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Saira:wdth,wght@75,600&family=Hanken+Grotesk:wght@400;600&display=swap");
+  :root { --ink:#0f1011; --paper:#f7f8fa; --grid:#e3e9f2; --blue:#0057ff; --muted:#5c6269; }
+  * { box-sizing:border-box; margin:0 }
+  body { font:14px/1.45 "Hanken Grotesk",sans-serif; color:var(--ink); background:var(--paper); padding:40px 48px }
+  h1 { font:600 40px/1 "Saira",sans-serif; font-stretch:75%; letter-spacing:.06em; text-transform:uppercase }
+  .lede { color:var(--muted); margin:10px 0 32px; max-width:70ch }
+  .row { display:grid; grid-template-columns:260px 1fr; gap:32px; padding:28px 0; border-top:1px solid var(--ink) }
+  .name { font:600 26px/1 "Saira"; font-stretch:75%; letter-spacing:.08em; text-transform:uppercase }
+  .tag { display:inline-block; margin-top:8px; font:600 11px/1 "Saira"; font-stretch:75%; letter-spacing:.1em; text-transform:uppercase; border:1px solid currentColor; padding:3px 6px }
+  .why { margin-top:12px; color:var(--muted) }
+  .sizes { display:flex; align-items:flex-end; gap:28px; flex-wrap:wrap }
+  .cell { display:grid; gap:6px; justify-items:start }
+  .cap { font:600 11px/1 "Saira"; font-stretch:75%; letter-spacing:.1em; text-transform:uppercase; color:var(--muted) }
+  .bigbg { background:var(--paper); background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size:14px 14px; padding:14px; border:1px solid var(--grid) }
+  .panel { display:flex; align-items:center; gap:10px; height:28px; padding:0 10px; font:12px "Hanken Grotesk" }
+  .panel.dark { background:#1d1f22; color:#eee } .panel.light { background:#ececec; color:#222; border:1px solid #d5d5d5 }
+  .lockup { display:flex; align-items:center; gap:14px }
+  .word { font:600 34px/1 "Saira"; font-stretch:75%; letter-spacing:.14em; text-transform:uppercase; display:flex; align-items:center }
+  .word svg { margin-left:-2px }
+  .dark-tile { background:#101113; padding:14px }
+</style>
+</head>
+<body>
+<h1>Ordo · logo</h1>
+<p class="lede">Três marcas para o mesmo mundo: grade de construção, células, a única diagonal azul. Cada uma aparece como ícone do app, em 32px, em 22px na bandeja de um painel escuro e de um claro, e ao lado do nome.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <!-- A: O de traço contínuo, cantos cortados, canto azul -->
+    <symbol id="A" viewBox="0 0 64 64">
+      <rect width="64" height="64" fill="#f7f8fa"/>
+      <polygon points="52,0 64,0 64,12" fill="#0057ff"/>
+      <path d="M24 16H40L48 24V40L40 48H24L16 40V24Z" fill="none" stroke="#0f1011" stroke-width="8"/>
+      <rect x="1" y="1" width="62" height="62" fill="none" stroke="#0f1011" stroke-width="2"/>
+    </symbol>
+    <!-- B: O de oito células, uma azul -->
+    <symbol id="B" viewBox="0 0 64 64">
+      <rect width="64" height="64" fill="#f7f8fa"/>
+      <g fill="#0f1011">
+        <rect x="12" y="12" width="12" height="12"/><rect x="26" y="12" width="12" height="12"/>
+        <rect x="12" y="26" width="12" height="12"/><rect x="40" y="26" width="12" height="12"/>
+        <rect x="12" y="40" width="12" height="12"/><rect x="26" y="40" width="12" height="12"/><rect x="40" y="40" width="12" height="12"/>
+      </g>
+      <rect x="40" y="12" width="12" height="12" fill="#0057ff"/>
+      <rect x="1" y="1" width="62" height="62" fill="none" stroke="#0f1011" stroke-width="2"/>
+    </symbol>
+    <!-- C: O de zonas: as oito células descem a escala de zonas, a do canto é azul -->
+    <symbol id="C" viewBox="0 0 64 64">
+      <rect width="64" height="64" fill="#f7f8fa"/>
+      <rect x="12" y="12" width="12" height="12" fill="#0f1011"/>
+      <rect x="26" y="12" width="12" height="12" fill="#2c2f33"/>
+      <rect x="40" y="26" width="12" height="12" fill="#4f545a"/>
+      <rect x="40" y="40" width="12" height="12" fill="#5c6269"/>
+      <rect x="26" y="40" width="12" height="12" fill="#80868d"/>
+      <rect x="12" y="40" width="12" height="12" fill="#3e4247"/>
+      <rect x="12" y="26" width="12" height="12" fill="#1d1f22"/>
+      <rect x="40" y="12" width="12" height="12" fill="#0057ff"/>
+      <rect x="1" y="1" width="62" height="62" fill="none" stroke="#0f1011" stroke-width="2"/>
+    </symbol>
+    <symbol id="slash" viewBox="0 0 16 24"><line x1="2" y1="23" x2="14" y2="1" stroke="#0057ff" stroke-width="2.5"/></symbol>
+  </defs>
+</svg>
+
+<section class="row">
+  <div><p class="name">A · O de traço</p><span class="tag">atual, refinado</span>
+    <p class="why">Um O de cantos cortados construído na grade, com o canto superior direito cortado em azul como a aba ativa. Contínuo, calmo, lê como letra.</p></div>
+  <div class="sizes">
+    <div class="cell"><div class="bigbg"><svg width="160" height="160"><use href="#A"/></svg></div><span class="cap">Ícone</span></div>
+    <div class="cell"><svg width="32" height="32"><use href="#A"/></svg><span class="cap">32px</span></div>
+    <div class="cell"><div class="panel dark"><svg width="22" height="22"><use href="#A"/></svg>14:32</div><div class="panel light"><svg width="22" height="22"><use href="#A"/></svg>14:32</div><span class="cap">Bandeja 22px</span></div>
+    <div class="cell"><div class="lockup"><svg width="44" height="44"><use href="#A"/></svg><span class="word">Ordo<svg width="16" height="28"><use href="#slash"/></svg></span></div><span class="cap">Com o nome</span></div>
+  </div>
+</section>
+
+<section class="row">
+  <div><p class="name">B · O de células</p><span class="tag">minha escolha</span>
+    <p class="why">O O como uma grade 3×3 com o centro vazio: oito células de dado, uma azul (onde você está). É literalmente "ordem" numa grade, e em 22px cada célula vira pixel inteiro, então não borra.</p></div>
+  <div class="sizes">
+    <div class="cell"><div class="bigbg"><svg width="160" height="160"><use href="#B"/></svg></div><span class="cap">Ícone</span></div>
+    <div class="cell"><svg width="32" height="32"><use href="#B"/></svg><span class="cap">32px</span></div>
+    <div class="cell"><div class="panel dark"><svg width="22" height="22"><use href="#B"/></svg>14:32</div><div class="panel light"><svg width="22" height="22"><use href="#B"/></svg>14:32</div><span class="cap">Bandeja 22px</span></div>
+    <div class="cell"><div class="lockup"><svg width="44" height="44"><use href="#B"/></svg><span class="word">Ordo<svg width="16" height="28"><use href="#slash"/></svg></span></div><span class="cap">Com o nome</span></div>
+  </div>
+</section>
+
+<section class="row">
+  <div><p class="name">C · O de zonas</p><span class="tag">mais autoral</span>
+    <p class="why">As mesmas oito células descem a escala de 11 zonas em volta do O, como a cunha de exposição da câmara escura. Mais rica em tamanho grande; em 22px os cinzas se aproximam.</p></div>
+  <div class="sizes">
+    <div class="cell"><div class="bigbg"><svg width="160" height="160"><use href="#C"/></svg></div><span class="cap">Ícone</span></div>
+    <div class="cell"><svg width="32" height="32"><use href="#C"/></svg><span class="cap">32px</span></div>
+    <div class="cell"><div class="panel dark"><svg width="22" height="22"><use href="#C"/></svg>14:32</div><div class="panel light"><svg width="22" height="22"><use href="#C"/></svg>14:32</div><span class="cap">Bandeja 22px</span></div>
+    <div class="cell"><div class="lockup"><svg width="44" height="44"><use href="#C"/></svg><span class="word">Ordo<svg width="16" height="28"><use href="#slash"/></svg></span></div><span class="cap">Com o nome</span></div>
+  </div>
+</section>
+</body>
+</html>

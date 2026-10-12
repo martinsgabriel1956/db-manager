@@ -272,7 +272,7 @@ Texturas de estado, todas em `--hatch`:
 - **Banda de hachura** (`hatch-band` / `cross-hatch-band`, 7px na base da célula, 1px a cada 5px): na grade a hachura fica numa banda sob o valor, nunca atrás dos dígitos.
 - **Pontilhado** (`border-dotted`): retido. Etiqueta LOCAL, badge "Somente leitura", cadeado da conexão somente leitura.
 
-O ícone do app (`src-tauri/icons/icon.svg`) é o mesmo mundo: papel Z10 com grade, moldura em tinta #0f1011, um "O" quadrado de cantos cortados construído em células de 64px e o canto superior direito cortado em azul Crouwel, como a aba ativa.
+O ícone do app (`src-tauri/icons/icon.svg`) é o mesmo mundo: papel Z10 com grade, moldura em tinta #0f1011, um "O" quadrado de cantos cortados construído em células de 64px e o canto superior direito cortado em azul Crouwel, como a aba ativa. A bandeja do sistema (`src-tauri/icons/tray.svg`, rasterizado em `tray.png` 64×64) usa a mesma marca com o O maior no quadro (traço de 8 em 64) para continuar legível em 22px sobre painéis claros e escuros; o quadro em papel Z10 com moldura de tinta é o que garante contraste nos dois.
 
 ## Components
 
