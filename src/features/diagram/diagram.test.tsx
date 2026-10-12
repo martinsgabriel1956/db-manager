@@ -41,7 +41,9 @@ test("a SQL schema opens its ER diagram; double click opens a table", async () =
   // fireEvent: user-event's mousedown has no `view`, which React Flow's drag handler reads
   fireEvent.doubleClick(users);
   await waitFor(() =>
-    expect(screen.getByRole("tab", { name: "users", selected: true })).toBeInTheDocument()
+    expect(
+      screen.getByRole("tab", { name: "Postgres dev · users", selected: true })
+    ).toBeInTheDocument()
   );
 });
 

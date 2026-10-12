@@ -107,8 +107,8 @@ export function SqlWorkspace({
             </div>
           </div>
         </Panel>
-        {/* 1px line with a 9px grab area */}
-        <Separator className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring data-[separator=active]:bg-primary/40" />
+        {/* 1px line with a 9px grab area; focused it thickens to 3px without moving the panels */}
+        <Separator className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40" />
         <Panel minSize={80}>
           {/* keyed per run so a stale cell selection never points into a new result */}
           <ResultsPanel

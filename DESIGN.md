@@ -290,7 +290,7 @@ Tinta sobre papel, reto.
 ### Chips
 
 - **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto branco.
-- **Badge retido:** contorno pontilhado `currentColor`, "Somente leitura".
+- **Badge retido:** contorno pontilhado `currentColor`, "Somente leitura". O mesmo badge com "Bin" marca um valor binário do Redis antes da prévia escapada (`\xff`), para que nunca se leia como texto.
 - **Chip de filtro:** FILTRO ATIVO em `--filter` cheio com texto papel, só enquanto um filtro está aplicado.
 - **Contagem Δ:** 18px, fundo Z0, texto Z10, mono 11px ("Δ 2").
 
@@ -308,13 +308,13 @@ Tinta sobre papel, reto.
 
 ### Navigation
 
-- **Abas de trabalho:** barra Z9 com filete de tinta, abas separadas por filete; cada aba leva o código da engine em `legend`, ícone, rótulo e, se houver alterações em stage, a contagem Δ. Ativa em papel, 600, filete interno azul de 3px no topo e triângulo azul de 10px no canto superior direito.
+- **Abas de trabalho:** barra Z9 com filete de tinta, abas separadas por filete; cada aba leva o código da engine em `legend`, ícone, o nome da conexão (cede espaço primeiro) e o rótulo; em produção, a etiqueta PROD na própria aba; se houver alterações em stage, a contagem Δ. Duas abas `users` de conexões diferentes nunca se leem iguais. Ativa em papel, 600, filete interno azul de 3px no topo e triângulo azul de 10px no canto superior direito.
 - **Tabs internas:** sublinhado de 2px em `--select` no ativo, 600.
 - **Árvore de chaves do Redis:** linhas de 28px; a chave aberta é preenchida em azul como a tabela ativa.
 
 ### Grade de resultados
 
-Mono 0.75rem, linhas de 28px, colunas com filete direito, cabeçalho fixo em Z9 com filete de tinta (nome 600 + tipo em `muted-foreground`). Números à direita; `null` em itálico secundário; coluna ordenada com seta e filete inferior magenta; linha nova `success` a 10% com banda de hachura; excluída com banda cruzada, texto secundário riscado; editada com banda de hachura e filete inferior de tinta de 2px; selecionada com contorno azul de 2px e fundo azul a 10%.
+Mono 0.75rem, linhas de 28px, colunas com filete direito, cabeçalho fixo em Z9 com filete de tinta (nome 600 + tipo em `muted-foreground`). Números à direita; `null` em itálico secundário; coluna ordenada com seta e filete inferior magenta; linha nova `success` a 10% com banda de hachura e filete inferior de 2px em `success` (a hachura sozinha fica abaixo de 3:1); excluída com banda cruzada, texto secundário riscado; editada com banda de hachura e filete inferior de tinta de 2px; selecionada com contorno azul de 2px e fundo azul a 10%.
 
 ### O Δ de exposição (assinatura)
 

@@ -122,6 +122,7 @@ export function ConnectionFields({
               autoComplete="off"
               value={values.uri}
               aria-invalid={errors.uri ? true : undefined}
+              aria-describedby={errors.uri ? "uri-error" : undefined}
               placeholder={
                 isEditing
                   ? "Deixe vazio para manter a salva"
@@ -165,6 +166,8 @@ export function ConnectionFields({
               type="password"
               value={values.password}
               disabled={values.clearPassword}
+              aria-invalid={errors.password ? true : undefined}
+              aria-describedby={errors.password ? "password-error" : undefined}
               placeholder={isEditing ? "Deixe vazio para manter a senha salva" : ""}
               onChange={event => onChange({ password: event.target.value })}
             />

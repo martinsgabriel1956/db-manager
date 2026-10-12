@@ -24,9 +24,13 @@ export function CellDetail({ column, cell, onClose, onSetNull }: CellDetailProps
           <X />
         </Button>
       </div>
+      {/* focusable so a long value scrolls from the keyboard */}
       <pre
+        tabIndex={0}
+        role="region"
+        aria-label={`Valor de ${column.name}`}
         className={cn(
-          "flex-1 overflow-auto p-3 font-mono text-xs break-all whitespace-pre-wrap",
+          "flex-1 overflow-auto p-3 font-mono text-xs break-all whitespace-pre-wrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           cell.t === "null" && "text-muted-foreground italic"
         )}
       >

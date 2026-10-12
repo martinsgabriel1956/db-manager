@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CircleCheck, CircleX, SquareTerminal } from "lucide-react";
 import { commands, type ConnectionConfig } from "@/bindings";
@@ -82,10 +82,25 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
       )}
       {history.data?.length === 0 && (
         <div className="grid flex-1 content-center justify-items-start gap-2 px-10 grid-paper">
-          <p className="display-caps text-4xl">Nada no histórico</p>
-          <p className="max-w-[46ch] text-sm text-muted-foreground">
-            Cada query, edição salva e comando executado aparece aqui.
-          </p>
+          {/* a search that finds nothing is not an empty history */}
+          {search !== "" || connectionId !== ALL ? (
+            <>
+              <p className="display-caps text-4xl">Nenhum resultado</p>
+              <p className="max-w-[46ch] text-sm text-muted-foreground">
+                Nada no histórico corresponde
+                {search !== "" ? ` a “${search}”` : ""}
+                {connectionId !== ALL ? " nesta conexão" : ""}. Mude a busca ou escolha “Todas as
+                conexões”.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="display-caps text-4xl">Nada no histórico</p>
+              <p className="max-w-[46ch] text-sm text-muted-foreground">
+                Cada query, edição salva e comando executado aparece aqui.
+              </p>
+            </>
+          )}
         </div>
       )}
       <ul
@@ -122,13 +137,47 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
                 </Button>
               )}
             </div>
-            <pre className="max-h-24 overflow-hidden font-mono text-xs break-all whitespace-pre-wrap">
-              {entry.sql}
-            </pre>
+            <HistoryCommand text={entry.sql} />
             {entry.error && <p className="text-xs text-destructive">{entry.error}</p>}
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Six lines at rest; a longer command says so and opens in place, never silently cut. */
+function HistoryCommand({ text }: { text: string }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const [clipped, setClipped] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (element && !expanded) {
+      setClipped(element.scrollHeight > element.clientHeight);
+    }
+  }, [text, expanded]);
+
+  return (
+    <div className="grid justify-items-start gap-1">
+      <pre
+        ref={ref}
+        className={`w-full font-mono text-xs break-all whitespace-pre-wrap ${expanded ? "" : "max-h-24 overflow-hidden"}`}
+      >
+        {text}
+      </pre>
+      {(clipped || expanded) && (
+        <Button
+          size="xs"
+          variant="ghost"
+          className="-ml-2"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(prev => !prev)}
+        >
+          {expanded ? "Recolher comando" : "Mostrar comando inteiro"}
+        </Button>
+      )}
     </div>
   );
 }

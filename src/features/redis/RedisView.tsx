@@ -23,11 +23,13 @@ export function RedisView({ connection, db }: RedisViewProps) {
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
       <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="flex items-baseline gap-1.5 py-2.5">
-          <span className="text-xs text-muted-foreground">{connection.name} ·</span>
-          <span className="display text-[1.75rem]">db{db}</span>
+        <h2 className="flex min-w-0 items-baseline gap-1.5 py-2.5">
+          <span className="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+            {connection.name} ·
+          </span>
+          <span className="shrink-0 display text-[1.75rem]">db{db}</span>
         </h2>
-        <TabsList aria-label="Seções do Redis">
+        <TabsList aria-label="Seções do Redis" className="shrink-0">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
             <TabsTrigger key={id} value={id}>
               {SECTION_LABEL[id]}

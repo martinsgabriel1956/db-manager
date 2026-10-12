@@ -32,11 +32,14 @@ export function CollectionView({
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
       <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="flex items-baseline py-2.5">
-          <span className="font-mono text-xs text-muted-foreground">{database}.</span>
-          <span className="display text-[1.75rem]">{collection}</span>
+        {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach */}
+        <h2 className="flex min-w-0 items-baseline py-2">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{database}.</span>
+          <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
+            {collection}
+          </span>
         </h2>
-        <TabsList aria-label="Seções da coleção">
+        <TabsList aria-label="Seções da coleção" className="shrink-0">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
             <TabsTrigger key={id} value={id}>
               {SECTION_LABEL[id]}

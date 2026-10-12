@@ -76,6 +76,16 @@ test("searching uses SCAN MATCH and pages continue from the cursor", async () =>
   expect(callsTo(calls, "scan_keys")).toContainEqual(expect.objectContaining({ cursor: "42" }));
 });
 
+test("a flat namespace of thousands of keys renders only the rows in view", async () => {
+  const keys = Array.from({ length: 5000 }, (_, n) => ({ name: `k${n}`, kind: "string" }));
+  fakeBackend([localRedis], { scan_keys: () => ({ keys, cursor: "0" }) });
+  await openDb0();
+
+  await screen.findByText("5000 chaves");
+  const tree = screen.getByRole("list", { name: "Chaves" });
+  expect(within(tree).getAllByRole("button").length).toBeLessThan(100);
+});
+
 test("hash entries are edited, added and removed", async () => {
   const calls = fakeBackend([localRedis]);
   const user = await openDb0();

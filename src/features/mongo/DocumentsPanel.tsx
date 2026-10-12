@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { commands } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -60,6 +60,7 @@ export function DocumentsPanel({
   const [view, setView] = useState<DocumentView>("tree");
   const [editing, setEditing] = useState<Editing | null>(null);
   const invalid = invalidQueryFields(draft);
+  const invalidMessageId = useId();
 
   const documents = useDocuments(connectionId, {
     database,
@@ -115,6 +116,7 @@ export function DocumentsPanel({
               <Input
                 aria-label={FIELD_LABEL[field]}
                 aria-invalid={invalid.includes(field) || undefined}
+                aria-describedby={invalid.includes(field) ? invalidMessageId : undefined}
                 className="h-7 font-mono text-xs"
                 placeholder={PLACEHOLDER[field]}
                 value={draft[field]}
@@ -127,7 +129,7 @@ export function DocumentsPanel({
           </Button>
         </div>
         {invalid.length > 0 && (
-          <p className="text-xs text-destructive">
+          <p id={invalidMessageId} className="text-xs text-destructive">
             JSON inválido em: {invalid.map(field => FIELD_LABEL[field]).join(", ")}
           </p>
         )}

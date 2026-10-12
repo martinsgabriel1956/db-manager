@@ -81,7 +81,7 @@ export function ExportButton({ baseName, formats }: ExportButtonProps) {
         </span>
       )}
       {state.status === "error" && (
-        <span role="alert" className="max-w-96 truncate text-destructive" title={state.message}>
+        <span role="alert" className="max-w-96 break-words text-destructive">
           {state.message}
         </span>
       )}

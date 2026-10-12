@@ -8,7 +8,7 @@ import {
   saveEdits,
   type Entry
 } from "@/features/redis/entries";
-import { buildKeyTree, uniqueKeys, type KeyNode } from "@/features/redis/keyTree";
+import { buildKeyTree, uniqueKeys, visibleRows, type KeyNode } from "@/features/redis/keyTree";
 
 function key(name: string, kind = "string"): KeyEntry {
   return { name, kind };
@@ -121,4 +121,15 @@ test("removing and creating map to one command each", () => {
     { op: "zsetAdd", member: "m", score: "1" },
     { op: "expire", ttlSecs: 60 }
   ]);
+});
+
+test("only open folders contribute rows, with depth and sibling position", () => {
+  const tree = buildKeyTree([key("user:1"), key("user:2"), key("queue")], ":");
+  const shape = (open: string[]) =>
+    visibleRows(tree, new Set(open)).map(
+      row => `${row.depth}:${row.node.name}:${row.position}/${row.setSize}`
+    );
+
+  expect(shape([])).toEqual(["0:user:1/2", "0:queue:2/2"]);
+  expect(shape(["user:"])).toEqual(["0:user:1/2", "1:1:1/2", "1:2:2/2", "0:queue:2/2"]);
 });

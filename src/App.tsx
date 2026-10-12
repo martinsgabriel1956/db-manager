@@ -243,13 +243,8 @@ export function App() {
 /** ORDO/: the gridded name closed by the system's one diagonal. */
 function Wordmark() {
   return (
-    <p className="flex items-center" aria-label="Ordo">
-      <span
-        aria-hidden
-        className="display-caps text-[1.75rem] [font-stretch:75%] tracking-[0.14em]"
-      >
-        Ordo
-      </span>
+    <p className="flex items-center">
+      <span className="display-caps text-[1.75rem] [font-stretch:75%] tracking-[0.14em]">Ordo</span>
       <svg aria-hidden viewBox="0 0 16 24" className="-ml-0.5 h-7 w-4 text-select">
         <line x1="2" y1="23" x2="14" y2="1" stroke="currentColor" strokeWidth="2.5" />
       </svg>

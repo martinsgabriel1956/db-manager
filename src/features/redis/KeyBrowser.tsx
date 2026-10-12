@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
   const [pattern, setPattern] = useState("*");
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const keysScrollRef = useRef<HTMLDivElement>(null);
   const scan = useKeyScan(connectionId, db, pattern);
   const editor = useKeyEdit(connectionId, db);
 
@@ -79,7 +80,8 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
             </Button>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto p-1">
+        {/* relative: the virtualized tree measures its offset inside this scroller */}
+        <div ref={keysScrollRef} className="relative min-h-0 flex-1 overflow-auto p-1">
           {scan.isPending && <p className="p-2 text-xs text-muted-foreground">Buscando…</p>}
           {scan.isError && (
             <p role="alert" className="p-2 text-xs text-destructive">
@@ -89,7 +91,12 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
           {scan.isSuccess && keys.length === 0 && !scan.hasNextPage && (
             <p className="p-2 text-xs text-muted-foreground">Nenhuma chave.</p>
           )}
-          <KeyTreeView nodes={tree} selected={selected} onSelect={setSelected} />
+          <KeyTreeView
+            nodes={tree}
+            selected={selected}
+            onSelect={setSelected}
+            scrollRef={keysScrollRef}
+          />
           {scan.hasNextPage && (
             <Button
               size="xs"

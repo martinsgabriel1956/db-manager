@@ -1,22 +1,34 @@
 import type { KeyboardEvent } from "react";
 import { Database, History, Network, SquareTerminal, Table2, X } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
+import { EnvTag } from "@/features/connections/EnvTag";
 import { ENGINE_CODE, ENGINE_LABEL } from "@/features/connections/options";
 import { tableKey, useTabs, type Tab } from "@/features/tabs/store";
 import { cn } from "@/lib/utils";
 
 type TabBarProps = { connections: ConnectionConfig[] };
 
-export function tabLabel(tab: Tab, connections: ConnectionConfig[]): string {
+type TabParts = { connection: ConnectionConfig | null; title: string };
+
+/** Every tab but history names its connection: two `users` tables must never read alike. */
+function tabParts(tab: Tab, connections: ConnectionConfig[]): TabParts {
   if (tab.kind === "history") {
-    return "Histórico";
+    return { connection: null, title: "Histórico" };
   }
-  if (tab.kind === "table") {
-    return tab.table;
-  }
-  const connection = connections.find(c => c.id === tab.connectionId);
+  const connection = connections.find(c => c.id === tab.connectionId) ?? null;
   const title =
-    tab.kind === "redis" ? `db${tab.db}` : tab.kind === "diagram" ? `ER ${tab.schema}` : tab.title;
+    tab.kind === "table"
+      ? tab.table
+      : tab.kind === "redis"
+        ? `db${tab.db}`
+        : tab.kind === "diagram"
+          ? `ER ${tab.schema}`
+          : tab.title;
+  return { connection, title };
+}
+
+export function tabLabel(tab: Tab, connections: ConnectionConfig[]): string {
+  const { connection, title } = tabParts(tab, connections);
   return connection ? `${connection.name} · ${title}` : title;
 }
 
@@ -76,13 +88,20 @@ export function TabBar({ connections }: TabBarProps) {
     >
       {tabs.map((tab, index) => {
         const label = tabLabel(tab, connections);
+        const { connection, title } = tabParts(tab, connections);
         const Icon = ICON[tab.kind];
-        const engine =
-          tab.kind === "history"
-            ? null
-            : (connections.find(c => c.id === tab.connectionId)?.engine ?? null);
+        const engine = connection?.engine ?? null;
         const isActive = tab.id === activeId;
         const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
+        const isProd = connection?.environment === "prod";
+        // spelled out: the visible parts are separate spans that would read run together
+        const accessibleName = [
+          label,
+          isProd ? " · produção" : "",
+          staged > 0
+            ? ` (${staged} ${staged === 1 ? "alteração pendente" : "alterações pendentes"})`
+            : ""
+        ].join("");
         return (
           <div
             key={tab.id}
@@ -95,7 +114,7 @@ export function TabBar({ connections }: TabBarProps) {
                 : "text-muted-foreground hover:bg-background hover:text-foreground"
             )}
           >
-            {/* the engine code, so two connections' tabs never read alike */}
+            {/* the engine code, read before the connection name */}
             {engine && (
               <span
                 title={ENGINE_LABEL[engine]}
@@ -109,6 +128,7 @@ export function TabBar({ connections }: TabBarProps) {
               type="button"
               role="tab"
               id={tabElementId(tab.id)}
+              aria-label={accessibleName}
               aria-selected={isActive}
               aria-controls={tabPanelId(tab.id)}
               aria-keyshortcuts="Delete"
@@ -117,12 +137,20 @@ export function TabBar({ connections }: TabBarProps) {
               onKeyDown={event => handleKeyDown(event, index, tab.id)}
               onAuxClick={event => event.button === 1 && close(tab.id)}
               className={cn(
-                "flex max-w-56 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                "flex max-w-72 min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 engine ? "pl-1.5" : "pl-3"
               )}
             >
               <Icon className="size-3.5 shrink-0" />
-              <span className="truncate">{label}</span>
+              {/* the connection gives way first, so the table name stays readable */}
+              {connection && (
+                <span className="max-w-28 min-w-0 shrink-[2] truncate font-normal">
+                  {connection.name} ·
+                </span>
+              )}
+              <span className="min-w-0 truncate">{title}</span>
+              {/* production is printed on the tab itself, not only once the tab is active */}
+              {isProd && <EnvTag environment="prod" />}
             </button>
             {/* staged exposure on this table: the same Δ the save button carries */}
             {staged > 0 && (
@@ -139,7 +167,7 @@ export function TabBar({ connections }: TabBarProps) {
               tabIndex={-1}
               aria-label={`Fechar aba ${label}`}
               onClick={() => close(tab.id)}
-              className="mr-1 p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="mr-0.5 grid size-6 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <X className="size-3.5" />
             </button>

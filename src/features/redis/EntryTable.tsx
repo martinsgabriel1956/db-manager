@@ -1,5 +1,7 @@
 import { Fragment, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import type { RedisText } from "@/bindings";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,7 +11,6 @@ import {
   type Entry,
   type EntryDraft
 } from "@/features/redis/entries";
-import { cn } from "@/lib/utils";
 
 type EntryTableProps = {
   kind: CollectionKind;
@@ -20,6 +21,25 @@ type EntryTableProps = {
   onSave: (original: Entry | null, draft: EntryDraft, done: () => void) => void;
   onRemove: (entry: Entry) => void;
 };
+
+/**
+ * A value that is not UTF-8 shows its escaped preview behind the held mark, so
+ * `\xff` the bytes never reads like the four-character string "\xff".
+ */
+export function RedisTextView({ value }: { value: RedisText }) {
+  if (!value.binary) {
+    return value.text;
+  }
+  return (
+    <>
+      <Badge variant="held" className="mr-1.5 align-middle">
+        <span aria-hidden>Bin</span>
+        <span className="sr-only">binário, prévia escapada:</span>
+      </Badge>
+      {value.text}
+    </>
+  );
+}
 
 /** null = not editing; "new" = adding an element */
 type Editing = { id: string | "new"; draft: EntryDraft } | null;
@@ -122,19 +142,12 @@ export function EntryTable({
             ) : (
               <tr key={entry.id} className="group h-7 border-b align-top">
                 {showIndex && <td className="px-2 py-1 text-muted-foreground">{entry.index}</td>}
-                <td
-                  className={cn("px-2 py-1 break-all", entry.first.binary && "text-syntax-keyword")}
-                >
-                  {entry.first.text}
+                <td className="px-2 py-1 break-all">
+                  <RedisTextView value={entry.first} />
                 </td>
                 {secondLabel && (
-                  <td
-                    className={cn(
-                      "px-2 py-1 break-all whitespace-pre-wrap",
-                      entry.second?.binary && "text-syntax-keyword"
-                    )}
-                  >
-                    {entry.second?.text}
+                  <td className="px-2 py-1 break-all whitespace-pre-wrap">
+                    {entry.second && <RedisTextView value={entry.second} />}
                   </td>
                 )}
                 <td className="px-2 py-1 whitespace-nowrap">

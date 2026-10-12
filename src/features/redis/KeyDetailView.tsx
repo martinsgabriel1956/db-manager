@@ -3,7 +3,7 @@ import type { KeyDetail, KeyEdit, StreamEntry } from "@/bindings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EntryTable } from "@/features/redis/EntryTable";
+import { EntryTable, RedisTextView } from "@/features/redis/EntryTable";
 import { entriesOf, isCollection, removeEdit, saveEdits } from "@/features/redis/entries";
 import { useKey, type useKeyEdit } from "@/features/redis/queries";
 import { errorMessage } from "@/lib/errors";
@@ -86,6 +86,12 @@ export function KeyDetailView({
             </p>
           </div>
         )}
+        {value.kind === "string" && value.value.binary && (
+          <p className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="held">Bin</Badge>
+            Valor binário: bytes fora do UTF-8 aparecem escapados (\xff); somente leitura.
+          </p>
+        )}
         {value.kind === "string" && (
           <StringEditor
             key={value.value.text}
@@ -135,12 +141,13 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
 
   return (
     <div className="grid gap-2 border-b bg-muted px-3 py-2">
-      <div className="flex items-center gap-2">
-        <Badge variant="outline">{detail.value.kind}</Badge>
-        <h3 className="min-w-0 truncate font-mono text-sm font-semibold" title={detail.key}>
-          {detail.key}
-        </h3>
-        <span className="text-xs text-muted-foreground">
+      {/* the key is printed whole: the tree truncates, so this is where it is read in full */}
+      <div className="flex items-baseline gap-2">
+        <Badge variant="outline" className="self-center">
+          {detail.value.kind}
+        </Badge>
+        <h3 className="min-w-0 font-mono text-sm font-semibold break-all">{detail.key}</h3>
+        <span className="shrink-0 text-xs text-muted-foreground">
           {detail.length} {unit} ·{" "}
           {detail.ttlSecs === null ? "sem expiração" : `expira em ${detail.ttlSecs}s`}
         </span>
@@ -247,7 +254,7 @@ function StringEditor({ initial, editable, pending, onSave }: StringEditorProps)
       <textarea
         aria-label="Valor"
         readOnly={!editable}
-        className="min-h-48 w-full border border-input bg-transparent p-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        className="min-h-48 w-full border border-input bg-transparent p-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:shadow-[inset_0_0_0_1px_var(--ring)] dark:bg-z9"
         value={text}
         onChange={event => setText(event.target.value)}
       />
@@ -279,7 +286,12 @@ function StreamTable({ entries }: { entries: StreamEntry[] }) {
           <tr key={entry.id} className="h-7 border-b align-top">
             <td className="px-2 py-1 whitespace-nowrap">{entry.id}</td>
             <td className="px-2 py-1 break-all">
-              {entry.fields.map(({ field, value }) => `${field.text}=${value.text}`).join("  ")}
+              {/* an entry's fields are fixed and may repeat a name: position is their identity */}
+              {entry.fields.map(({ field, value }, position) => (
+                <span key={`${position}:${field.text}`} className="mr-3 inline-block">
+                  <RedisTextView value={field} />=<RedisTextView value={value} />
+                </span>
+              ))}
             </td>
           </tr>
         ))}

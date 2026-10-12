@@ -1,78 +1,126 @@
-import { useState } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Folder } from "lucide-react";
-import type { KeyNode } from "@/features/redis/keyTree";
+import { visibleRows, type KeyNode } from "@/features/redis/keyTree";
 import { cn } from "@/lib/utils";
 
 type KeyTreeViewProps = {
   nodes: KeyNode[];
   selected: string | null;
   onSelect: (key: string) => void;
+  /** the scrolling container the list sits in, shared with the messages around it */
+  scrollRef: RefObject<HTMLDivElement | null>;
 };
 
 /** 28px rows like every other table; the open key gets the "where you are" marker. */
+const ROW_HEIGHT = 28;
+/** each level steps in by this much, with a guide rule like the connection tree's */
+const INDENT = 16;
+
 const KEY_ROW =
-  "flex h-7 w-full items-center px-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+  "relative flex h-7 w-full items-center pr-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
-export function KeyTreeView({ nodes, selected, onSelect }: KeyTreeViewProps) {
+/**
+ * Flat, virtualized list of the open part of the tree: a flat namespace of
+ * thousands of SCAN keys renders only the rows in view.
+ */
+export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeViewProps) {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const listRef = useRef<HTMLUListElement>(null);
+  const rows = useMemo(() => visibleRows(nodes, open), [nodes, open]);
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 20,
+    // the list starts below the scan status lines in the same scroller
+    scrollMargin: listRef.current?.offsetTop ?? 0,
+    // jsdom (tests) has no layout; real windows measure the element
+    initialRect: { width: 320, height: 600 }
+  });
+
+  function toggle(id: string) {
+    setOpen(prev => {
+      const next = new Set(prev);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
   return (
-    <ul aria-label="Chaves" className="grid grid-cols-1 text-sm">
-      <TreeLevel nodes={nodes} selected={selected} onSelect={onSelect} />
+    <ul
+      ref={listRef}
+      aria-label="Chaves"
+      className="relative text-sm"
+      style={{ height: virtualizer.getTotalSize() }}
+    >
+      {virtualizer.getVirtualItems().map(item => {
+        const { node, depth, position, setSize } = rows[item.index];
+        const isFolder = node.kind === "folder";
+        const isSelected = !isFolder && node.entry.name === selected;
+        return (
+          <li
+            key={isFolder ? `folder:${node.id}` : `key:${node.entry.name}`}
+            // flattened for the virtualizer: level and position keep the hierarchy readable
+            aria-level={depth + 1}
+            aria-posinset={position}
+            aria-setsize={setSize}
+            className="absolute top-0 left-0 w-full"
+            style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}
+          >
+            <button
+              type="button"
+              title={isFolder ? undefined : node.entry.name}
+              aria-expanded={isFolder ? open.has(node.id) : undefined}
+              aria-current={isSelected || undefined}
+              onClick={() => (isFolder ? toggle(node.id) : onSelect(node.entry.name))}
+              className={cn(
+                KEY_ROW,
+                isFolder ? "gap-1" : "gap-2",
+                isSelected &&
+                  "bg-select font-semibold text-select-foreground hover:bg-select [&_.legend]:text-select-foreground"
+              )}
+              style={{ paddingLeft: 6 + depth * INDENT }}
+            >
+              {depth > 0 && (
+                // one guide rule per level, in the indent only, never behind the name
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-0"
+                  style={{
+                    width: depth * INDENT,
+                    backgroundImage:
+                      "linear-gradient(to right, var(--border) 1px, transparent 1px)",
+                    backgroundSize: `${INDENT}px 100%`,
+                    backgroundPosition: "11px 0"
+                  }}
+                />
+              )}
+              {isFolder ? (
+                <>
+                  {open.has(node.id) ? (
+                    <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate font-mono text-xs">{node.name || "(vazio)"}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{node.count}</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-11 shrink-0 legend text-muted-foreground">
+                    {node.entry.kind}
+                  </span>
+                  <span className="truncate font-mono text-xs">{node.name || "(vazio)"}</span>
+                </>
+              )}
+            </button>
+          </li>
+        );
+      })}
     </ul>
-  );
-}
-
-function TreeLevel({ nodes, selected, onSelect }: KeyTreeViewProps) {
-  return nodes.map(node =>
-    node.kind === "folder" ? (
-      <FolderNode key={`folder:${node.id}`} node={node} selected={selected} onSelect={onSelect} />
-    ) : (
-      <li key={`key:${node.entry.name}`}>
-        <button
-          type="button"
-          title={node.entry.name}
-          aria-current={node.entry.name === selected || undefined}
-          onClick={() => onSelect(node.entry.name)}
-          className={cn(
-            KEY_ROW,
-            "gap-2",
-            node.entry.name === selected &&
-              "bg-select font-semibold text-select-foreground hover:bg-select [&_.legend]:text-select-foreground"
-          )}
-        >
-          <span className="w-11 shrink-0 legend text-muted-foreground">{node.entry.kind}</span>
-          <span className="truncate font-mono text-xs">{node.name || "(vazio)"}</span>
-        </button>
-      </li>
-    )
-  );
-}
-
-function FolderNode({
-  node,
-  selected,
-  onSelect
-}: Omit<KeyTreeViewProps, "nodes"> & { node: Extract<KeyNode, { kind: "folder" }> }) {
-  const [open, setOpen] = useState(false);
-  const Chevron = open ? ChevronDown : ChevronRight;
-
-  return (
-    <li>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(prev => !prev)}
-        className={cn(KEY_ROW, "gap-1")}
-      >
-        <Chevron className="size-3.5 shrink-0 text-muted-foreground" />
-        <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate font-mono text-xs">{node.name || "(vazio)"}</span>
-        <span className="ml-auto text-xs text-muted-foreground">{node.count}</span>
-      </button>
-      {open && (
-        <ul className="ml-3 grid grid-cols-1 border-l pl-1">
-          <TreeLevel nodes={node.children} selected={selected} onSelect={onSelect} />
-        </ul>
-      )}
-    </li>
   );
 }

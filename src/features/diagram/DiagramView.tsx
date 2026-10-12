@@ -91,7 +91,8 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
             }
           }}
         >
-          <Background variant={BackgroundVariant.Lines} gap={16} />
+          {/* the 14px construction grid */}
+          <Background variant={BackgroundVariant.Lines} gap={14} />
           <Controls showInteractive={false} />
           <MiniMap pannable zoomable />
         </ReactFlow>
@@ -103,7 +104,6 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
 function TableNodeView({ data }: NodeProps<TableNode>) {
   return (
     <div
-      aria-label={`Tabela ${data.name}`}
       className="overflow-hidden border border-foreground bg-card text-xs"
       style={{ width: NODE_WIDTH }}
     >

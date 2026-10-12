@@ -34,7 +34,7 @@ function tabNames() {
   return screen
     .getAllByRole("tab")
     .filter(tab => tab.closest("[aria-label='Abas abertas']"))
-    .map(tab => tab.textContent);
+    .map(tab => tab.getAttribute("aria-label"));
 }
 
 test("tables and editors open as tabs; reopening a table focuses its tab", async () => {
@@ -49,16 +49,23 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
   await user.click(screen.getByRole("button", { name: "Abrir editor SQL de Postgres prod" }));
   await user.click(screen.getByRole("button", { name: "users" }));
 
+  // every tab names its connection, and a production one says so
   expect(tabNames()).toEqual([
-    "users",
-    "active_users",
-    "Postgres prod · SQL 1",
-    "Postgres prod · SQL 2"
+    "Postgres prod · users · produção",
+    "Postgres prod · active_users · produção",
+    "Postgres prod · SQL 1 · produção",
+    "Postgres prod · SQL 2 · produção"
   ]);
-  expect(screen.getByRole("tab", { name: "users", selected: true })).toBeInTheDocument();
+  expect(
+    screen.getByRole("tab", { name: "Postgres prod · users · produção", selected: true })
+  ).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Fechar aba users" }));
-  expect(tabNames()).toEqual(["active_users", "Postgres prod · SQL 1", "Postgres prod · SQL 2"]);
+  await user.click(screen.getByRole("button", { name: "Fechar aba Postgres prod · users" }));
+  expect(tabNames()).toEqual([
+    "Postgres prod · active_users · produção",
+    "Postgres prod · SQL 1 · produção",
+    "Postgres prod · SQL 2 · produção"
+  ]);
 });
 
 test("open tabs move with the arrow keys and close with Delete", async () => {
@@ -69,16 +76,16 @@ test("open tabs move with the arrow keys and close with Delete", async () => {
   await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
   await user.click(await screen.findByRole("button", { name: "users" }));
   await user.click(screen.getByRole("button", { name: "active_users" }));
-  await user.click(screen.getByRole("tab", { name: "users" }));
+  await user.click(screen.getByRole("tab", { name: /· users ·/ }));
 
   await user.keyboard("{ArrowRight}");
-  const activeUsers = screen.getByRole("tab", { name: "active_users", selected: true });
+  const activeUsers = screen.getByRole("tab", { name: /· active_users ·/, selected: true });
   expect(activeUsers).toHaveFocus();
-  expect(screen.getByRole("tabpanel", { name: "active_users" })).toBeInTheDocument();
+  expect(screen.getByRole("tabpanel", { name: /· active_users ·/ })).toBeInTheDocument();
 
   await user.keyboard("{Delete}");
-  expect(tabNames()).toEqual(["users"]);
-  await waitFor(() => expect(screen.getByRole("tab", { name: "users" })).toHaveFocus());
+  expect(tabNames()).toEqual(["Postgres prod · users · produção"]);
+  await waitFor(() => expect(screen.getByRole("tab", { name: /· users ·/ })).toHaveFocus());
 });
 
 test("editing a connection hides the tabs and returns to them", async () => {
@@ -119,7 +126,7 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
   const editor = useTabs.getState().tabs.find(tab => tab.kind === "editor");
   expect(editor).toMatchObject({ connectionId: "pg-1", sql: "SELECT count(*) FROM users" });
   expect(
-    screen.getByRole("tab", { name: "Postgres prod · SQL 1", selected: true })
+    screen.getByRole("tab", { name: "Postgres prod · SQL 1 · produção", selected: true })
   ).toBeInTheDocument();
 });
 
@@ -136,4 +143,17 @@ test("tabs of connections that no longer exist are dropped on load", async () =>
 
   await waitFor(() => expect(useTabs.getState().tabs.map(tab => tab.id)).toEqual(["b"]));
   expect(useTabs.getState().activeId).toBe("b");
+});
+
+test("a search with no match is not reported as an empty history", async () => {
+  fakeBackend([prodPostgres], { search_history: () => [] });
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "Histórico" }));
+  expect(await screen.findByText("Nada no histórico")).toBeInTheDocument();
+
+  await user.type(screen.getByLabelText("Buscar no histórico"), "orders");
+  expect(await screen.findByText("Nenhum resultado")).toBeInTheDocument();
+  expect(screen.getByText(/corresponde a “orders”/)).toBeInTheDocument();
 });

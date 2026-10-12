@@ -207,7 +207,13 @@ function ConnectionNode({
                     >
                       <Database className="size-3.5 shrink-0 opacity-70" />
                       <span className="font-mono">db{database.index}</span>
-                      <span className="ml-auto font-mono text-[11px] opacity-80">
+                      {/* full strength on the blue fill: 11px needs 4.5:1 */}
+                      <span
+                        className={cn(
+                          "ml-auto font-mono text-[11px]",
+                          !isActive && "text-muted-foreground"
+                        )}
+                      >
                         {database.keys > 0 && database.keys}
                       </span>
                     </button>

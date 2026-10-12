@@ -61,7 +61,7 @@ function TreeNode({ name, value, depth }: NodeProps) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(prev => !prev)}
-        className="flex items-center gap-1 py-0.5 text-left hover:bg-muted"
+        className="flex items-center gap-1 py-0.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         <Chevron className="size-3 shrink-0" />
         <span className="font-semibold">{name}:</span>

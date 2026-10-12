@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionFields } from "@/features/connections/ConnectionFields";
@@ -29,6 +29,7 @@ export function ConnectionForm({ connection, onSaved, onDeleted }: ConnectionFor
   );
   const [errors, setErrors] = useState<FormErrors>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const save = useSaveConnection();
   const remove = useDeleteConnection();
 
@@ -37,6 +38,10 @@ export function ConnectionForm({ connection, onSaved, onDeleted }: ConnectionFor
     const parsed = parseForm(values, id, isEditing);
     if (!parsed.success) {
       setErrors(parsed.errors);
+      // once the fields are marked, land on the first one so its error is read with it
+      requestAnimationFrame(() =>
+        formRef.current?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus()
+      );
       return;
     }
     setErrors({});
@@ -63,8 +68,8 @@ export function ConnectionForm({ connection, onSaved, onDeleted }: ConnectionFor
   const serverError = save.error ?? remove.error;
 
   return (
-    <form onSubmit={handleSubmit} className="grid max-w-xl gap-6" noValidate>
-      <h2 className="border-b-2 border-foreground pb-2 text-[1.75rem] leading-none font-extrabold tracking-[0.05em] uppercase [font-stretch:66%]">
+    <form ref={formRef} onSubmit={handleSubmit} className="grid max-w-xl gap-6" noValidate>
+      <h2 className="border-b-2 border-foreground pb-2 display-caps text-[1.75rem]">
         {isEditing ? "Editar conexão" : "Nova conexão"}
       </h2>
 

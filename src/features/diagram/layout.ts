@@ -71,6 +71,8 @@ export async function layoutDiagram(
   const nodes: TableNode[] = data.map(table => ({
     id: table.name,
     type: "table",
+    // names the focusable node wrapper, which React Flow owns
+    ariaLabel: `Tabela ${table.name}`,
     position: positions.get(table.name) ?? { x: 0, y: 0 },
     data: table
   }));

@@ -70,3 +70,16 @@ export function uniqueKeys(pages: KeyEntry[][]): KeyEntry[] {
   }
   return [...byName.values()];
 }
+
+/** One visible row of the key tree: its node, depth and place among its siblings. */
+export type KeyRow = { node: KeyNode; depth: number; position: number; setSize: number };
+
+/** The rows on screen: every node whose ancestors are all open, depth-first. */
+export function visibleRows(nodes: KeyNode[], open: ReadonlySet<string>, depth = 0): KeyRow[] {
+  return nodes.flatMap((node, index) => {
+    const row: KeyRow = { node, depth, position: index + 1, setSize: nodes.length };
+    return node.kind === "folder" && open.has(node.id)
+      ? [row, ...visibleRows(node.children, open, depth + 1)]
+      : [row];
+  });
+}

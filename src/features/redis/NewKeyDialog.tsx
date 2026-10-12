@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { KeyEdit } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { COLUMN_LABELS, newKeyEdits, type NewKeyKind } from "@/features/redis/entries";
 
@@ -30,6 +31,7 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
   const [first, setFirst] = useState("");
   const [second, setSecond] = useState("");
   const [ttl, setTtl] = useState("");
+  const id = useId();
   const [firstLabel, secondLabel] = kind === "string" ? ["Valor", null] : COLUMN_LABELS[kind];
   const ttlSecs = ttl === "" ? null : Number(ttl);
   const validTtl = ttlSecs === null || (Number.isInteger(ttlSecs) && ttlSecs > 0);
@@ -41,18 +43,20 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
           <DialogTitle>Nova chave</DialogTitle>
           <DialogDescription>Uma chave nasce com o primeiro valor.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 text-sm">
-          <label className="grid gap-1">
-            Nome da chave
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-key`}>Nome da chave</Label>
             <Input
+              id={`${id}-key`}
               className="font-mono"
               value={key}
               onChange={event => setKey(event.target.value)}
             />
-          </label>
-          <label className="grid gap-1">
-            Tipo
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-kind`}>Tipo</Label>
             <NativeSelect
+              id={`${id}-kind`}
               value={kind}
               onChange={event => setKind(event.target.value as NewKeyKind)}
             >
@@ -62,35 +66,44 @@ export function NewKeyDialog({ pending, error, onCreate, onCancel }: NewKeyDialo
                 </option>
               ))}
             </NativeSelect>
-          </label>
-          <label className="grid gap-1">
-            {firstLabel}
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-first`}>{firstLabel}</Label>
             <Input
+              id={`${id}-first`}
               className="font-mono"
               value={first}
               onChange={event => setFirst(event.target.value)}
             />
-          </label>
+          </div>
           {secondLabel && (
-            <label className="grid gap-1">
-              {secondLabel}
+            <div className="grid gap-1.5">
+              <Label htmlFor={`${id}-second`}>{secondLabel}</Label>
               <Input
+                id={`${id}-second`}
                 className="font-mono"
                 value={second}
                 onChange={event => setSecond(event.target.value)}
               />
-            </label>
+            </div>
           )}
-          <label className="grid gap-1">
-            TTL em segundos (opcional)
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-ttl`}>TTL em segundos (opcional)</Label>
             <Input
+              id={`${id}-ttl`}
               type="number"
               min={1}
               aria-invalid={!validTtl || undefined}
+              aria-describedby={validTtl ? undefined : `${id}-ttl-error`}
               value={ttl}
               onChange={event => setTtl(event.target.value)}
             />
-          </label>
+            {!validTtl && (
+              <p id={`${id}-ttl-error`} className="text-xs text-destructive">
+                Use um número inteiro de segundos, maior que zero.
+              </p>
+            )}
+          </div>
         </div>
         {error && (
           <p role="alert" className="text-sm text-destructive">

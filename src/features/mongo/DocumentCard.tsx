@@ -19,9 +19,19 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   return (
-    <article className="group relative border border-foreground bg-background p-3">
+    <article className="group flex items-start gap-2 border border-foreground bg-background p-3">
+      <div className="min-w-0 flex-1">
+        {view === "tree" ? (
+          <DocumentTree document={parseDocument(document)} />
+        ) : (
+          <pre className="overflow-x-auto font-mono text-xs whitespace-pre-wrap">
+            {prettyJson(document)}
+          </pre>
+        )}
+      </div>
+      {/* beside the document, never over its first line */}
       {(onEdit || onDelete) && (
-        <div className="absolute top-2 right-2 flex gap-1 opacity-60 group-hover:opacity-100">
+        <div className="-mt-1 -mr-1 flex shrink-0 gap-1 opacity-60 group-hover:opacity-100 focus-within:opacity-100">
           {onEdit && (
             <Button size="icon-xs" variant="ghost" aria-label="Editar documento" onClick={onEdit}>
               <Pencil />
@@ -51,13 +61,6 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
               </Button>
             ))}
         </div>
-      )}
-      {view === "tree" ? (
-        <DocumentTree document={parseDocument(document)} />
-      ) : (
-        <pre className="overflow-x-auto font-mono text-xs whitespace-pre-wrap">
-          {prettyJson(document)}
-        </pre>
       )}
     </article>
   );

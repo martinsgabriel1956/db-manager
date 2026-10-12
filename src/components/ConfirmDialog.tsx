@@ -70,7 +70,13 @@ export function ConfirmDialog({
             {confirmation?.reason}
           </DialogDescription>
         </div>
-        <pre className="mx-5 my-4 max-h-80 overflow-auto border border-foreground bg-background px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
+        {/* focusable so a long command scrolls from the keyboard: WebKitGTK never focuses scrollers */}
+        <pre
+          tabIndex={0}
+          role="region"
+          aria-label="Comando que será executado"
+          className="mx-5 my-4 max-h-80 overflow-auto border border-foreground bg-background px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)] focus-visible:border-ring"
+        >
           {confirmation?.statements.map(statement => `${statement}${statementSuffix}`).join("\n\n")}
         </pre>
         {isProd && (
@@ -88,7 +94,7 @@ export function ConfirmDialog({
               Cancelar
             </Button>
             <Button variant="destructive" disabled={pending} onClick={onConfirm}>
-              {label}
+              {pending ? "Executando…" : label}
             </Button>
           </div>
         </div>

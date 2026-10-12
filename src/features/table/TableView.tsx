@@ -43,16 +43,19 @@ export function TableView(props: TableViewProps) {
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
       <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="flex items-baseline py-2.5">
-          <span className="font-mono text-xs text-muted-foreground">{props.schema}.</span>
-          <span className="display text-[1.75rem]">{props.table}</span>
+        {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach */}
+        <h2 className="flex min-w-0 items-baseline py-2">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{props.schema}.</span>
+          <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
+            {props.table}
+          </span>
         </h2>
-        <TabsList aria-label="Seções da tabela">
+        <TabsList aria-label="Seções da tabela" className="shrink-0">
           <TabsTrigger value="data">Dados</TabsTrigger>
           <TabsTrigger value="structure">Estrutura</TabsTrigger>
         </TabsList>
         {props.readOnly && <Badge variant="held">Somente leitura</Badge>}
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <ExportButton
             baseName={props.table}
             formats={[
@@ -288,7 +291,7 @@ function TableData({
         </Button>
         {dirty && (
           <span className="text-xs text-muted-foreground">
-            Salve ou descarte para trocar de página
+            Salve ou descarte para trocar de página, filtrar ou ordenar
           </span>
         )}
         {browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>}
