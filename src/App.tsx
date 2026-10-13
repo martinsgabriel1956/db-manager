@@ -9,7 +9,7 @@ import {
   Search,
   TriangleAlert
 } from "lucide-react";
-import type { ConnectionConfig } from "@/bindings";
+import { commands, type ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
 import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
@@ -60,6 +60,7 @@ export function App() {
     openHistory,
     keepConnections,
     requestClose,
+    requestQuit,
     activate
   } = useTabs();
   const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
@@ -117,6 +118,12 @@ export function App() {
         focusTabSoon(next.id);
       } else if (event.shiftKey) {
         return;
+      } else if (key === "q") {
+        // closing the window only hides it: this is how the app ends from the keyboard
+        event.preventDefault();
+        if (requestQuit()) {
+          void commands.quitApp();
+        }
       } else if (key === "k" || key === "p") {
         event.preventDefault();
         openPalette();
@@ -135,7 +142,7 @@ export function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [form, tabs, activeId, requestClose, activate, editorConnectionId, openEditor]);
+  }, [form, tabs, activeId, requestClose, requestQuit, activate, editorConnectionId, openEditor]);
 
   function showTabs() {
     setForm(null);

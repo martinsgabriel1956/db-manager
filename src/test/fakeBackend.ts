@@ -232,6 +232,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       return ok;
     },
     connect_database: () => null,
+    quit_app: () => null,
     test_connection: () => null,
     disconnect_database: () => null,
     list_schemas: () => schemas,

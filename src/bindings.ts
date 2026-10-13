@@ -4,6 +4,11 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	/**
+	 *  Ctrl+Q: closing the window only hides it (the app stays in the tray), so the
+	 *  window needs its own way to quit when the tray is out of reach.
+	 */
+	quitApp: () => __TAURI_INVOKE<void>("quit_app"),
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
 	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),

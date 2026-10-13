@@ -1,5 +1,6 @@
 //! The Ordo mark in the system tray. On Linux the tray is an AppIndicator, which
-//! has no click events: everything goes through the menu.
+//! has no click events: everything goes through the menu. Closing the window only
+//! hides it (see lib.rs): "Abrir Ordo" brings it back, "Sair" ends the app.
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
@@ -31,7 +32,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn show_main_window(app: &AppHandle) {
+pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         // best effort: a window that cannot be raised is still open
         let _ = window.unminimize();

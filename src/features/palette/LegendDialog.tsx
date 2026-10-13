@@ -23,6 +23,7 @@ const ENVIRONMENT_MEANING = [
 const SHORTCUTS = [
   ["Ctrl+K ou Ctrl+P", "Ir para tabela, coleção ou ação"],
   ["Ctrl+W", "Fechar a aba ativa"],
+  ["Ctrl+Q", "Sair do Ordo (fechar a janela deixa o app na bandeja)"],
   ["Ctrl+Tab", "Próxima aba (com Shift, a anterior)"],
   ["Ctrl+S", "Salvar as alterações da tabela"],
   ["F6", "Pular entre lateral, abas e área de trabalho"],

@@ -280,3 +280,13 @@ test("a MongoDB connection can be saved with a connection string", async () => {
     secret: { action: "set", value: "mongodb+srv://me:pw@c.example.net/" }
   });
 });
+
+test("Ctrl+Q quits at once when nothing is staged", async () => {
+  const calls = fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Nenhuma conexão cadastrada.");
+  await user.keyboard("{Control>}q{/Control}");
+  await waitFor(() => expect(callsTo(calls, "quit_app")).toHaveLength(1));
+});
