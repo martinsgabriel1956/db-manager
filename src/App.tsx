@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { History, Plus, TriangleAlert } from "lucide-react";
+import { History, PanelLeftClose, PanelLeftOpen, Plus, TriangleAlert } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
@@ -16,6 +16,7 @@ import { TableView } from "@/features/table/TableView";
 import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
+import { SIDEBAR_SHORTCUT } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 // React Flow and elk are only loaded when a diagram is opened
@@ -47,6 +48,32 @@ export function App() {
   } = useTabs();
   const [form, setForm] = useState<FormState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("sidebar-collapsed") === "1"
+  );
+
+  const toggleSidebar = () => setCollapsed(value => !value);
+
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  // Ctrl+B (Cmd+B on macOS), from anywhere in the window
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "b"
+      ) {
+        event.preventDefault();
+        setCollapsed(value => !value);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (connections.data) {
@@ -102,73 +129,97 @@ export function App() {
         </p>
       )}
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-foreground grid-paper">
-          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-foreground bg-background px-4">
-            <Wordmark />
-          </div>
-          <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
-            <h1 className="legend text-muted-foreground">Conexões</h1>
-            <div className="flex gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  showTabs();
-                  openHistory();
-                }}
-              >
-                <History /> Histórico
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setNotice(null);
-                  setForm({ connectionId: null });
-                }}
-              >
-                <Plus /> Nova
-              </Button>
-            </div>
-          </div>
-          {connections.isPending && (
-            <p className="px-4 text-sm text-muted-foreground">Carregando…</p>
+        <aside
+          className={cn(
+            "flex shrink-0 flex-col overflow-y-auto border-r border-foreground grid-paper",
+            collapsed ? "w-12" : "w-72"
           )}
-          {connections.isError && (
-            <p
-              role="alert"
-              className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
+        >
+          <div
+            className={cn(
+              "flex h-14 shrink-0 items-center border-b border-foreground bg-background",
+              collapsed ? "justify-center" : "justify-between gap-2 pr-2 pl-4"
+            )}
+          >
+            {!collapsed && <Wordmark />}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={collapsed ? "Expandir lateral" : "Recolher lateral"}
+              aria-expanded={!collapsed}
+              aria-keyshortcuts="Control+B"
+              title={`${collapsed ? "Expandir" : "Recolher"} lateral (${SIDEBAR_SHORTCUT})`}
+              onClick={toggleSidebar}
             >
-              {errorMessage(connections.error)}
-            </p>
-          )}
-          {connections.data && (
-            <ConnectionTree
-              connections={connections.data}
-              activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
-              activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
-              onEdit={connectionId => {
-                setNotice(null);
-                setForm({ connectionId });
-              }}
-              onOpenTable={target => {
-                showTabs();
-                openTable(target);
-              }}
-              onOpenEditor={connectionId => {
-                showTabs();
-                openEditor(connectionId);
-              }}
-              onOpenRedis={target => {
-                showTabs();
-                openRedis(target);
-              }}
-              onOpenDiagram={target => {
-                showTabs();
-                openDiagram(target);
-              }}
-            />
-          )}
+              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </Button>
+          </div>
+          {/* hidden, not unmounted, so the tree keeps its expanded nodes */}
+          <div className={cn("contents", collapsed && "hidden")}>
+            <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+              <h1 className="legend text-muted-foreground">Conexões</h1>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    showTabs();
+                    openHistory();
+                  }}
+                >
+                  <History /> Histórico
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setNotice(null);
+                    setForm({ connectionId: null });
+                  }}
+                >
+                  <Plus /> Nova
+                </Button>
+              </div>
+            </div>
+            {connections.isPending && (
+              <p className="px-4 text-sm text-muted-foreground">Carregando…</p>
+            )}
+            {connections.isError && (
+              <p
+                role="alert"
+                className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
+              >
+                {errorMessage(connections.error)}
+              </p>
+            )}
+            {connections.data && (
+              <ConnectionTree
+                connections={connections.data}
+                activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
+                activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
+                onEdit={connectionId => {
+                  setNotice(null);
+                  setForm({ connectionId });
+                }}
+                onOpenTable={target => {
+                  showTabs();
+                  openTable(target);
+                }}
+                onOpenEditor={connectionId => {
+                  showTabs();
+                  openEditor(connectionId);
+                }}
+                onOpenRedis={target => {
+                  showTabs();
+                  openRedis(target);
+                }}
+                onOpenDiagram={target => {
+                  showTabs();
+                  openDiagram(target);
+                }}
+              />
+            )}
+          </div>
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
