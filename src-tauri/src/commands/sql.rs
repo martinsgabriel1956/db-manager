@@ -4,8 +4,8 @@ use tauri::State;
 
 use crate::AppState;
 use crate::domain::{
-    AppError, ApplyResponse, BrowseRequest, CompletionTable, DiagramTable, HistoryEntry, RowBatch,
-    RunResponse, SchemaInfo, TableChanges, TableStructure,
+    AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, HistoryEntry,
+    RowBatch, RunResponse, SchemaInfo, TableChanges, TableStructure,
 };
 use crate::use_cases::{connections, sql};
 
@@ -89,6 +89,26 @@ pub async fn run_script(
         confirmed,
     )
     .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn copy_as_insert(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+    columns: Vec<String>,
+    rows: Vec<Vec<Cell>>,
+) -> Result<String, AppError> {
+    sql::copy_as_insert(
+        &state.registry,
+        &connection_id,
+        &schema,
+        &table,
+        &columns,
+        &rows,
+    )
 }
 
 #[tauri::command]

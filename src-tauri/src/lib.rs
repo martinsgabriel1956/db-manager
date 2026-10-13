@@ -44,6 +44,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::close_cursor,
             commands::sql::cancel_run,
             commands::sql::apply_changes,
+            commands::sql::copy_as_insert,
             commands::sql::search_history,
             commands::sql::star_history,
             commands::sql::schema_diagram,

@@ -191,3 +191,51 @@ test("the filter chip reads the applied condition as SQL", () => {
     "deleted_at IS NULL"
   );
 });
+
+test("copies the selected row as INSERT and the loaded rows as JSON, big numbers intact", async () => {
+  const calls = fakeBackend([prodPostgres]);
+  const user = await openUsers();
+
+  await user.click(screen.getAllByRole("gridcell")[2]);
+  await user.click(screen.getByRole("button", { name: "Copiar" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Linha selecionada como INSERT" }));
+
+  expect(callsTo(calls, "copy_as_insert")).toEqual([
+    {
+      connectionId: "pg-1",
+      schema: "public",
+      table: "users",
+      columns: ["id", "profile"],
+      rows: [[{ t: "int", v: "2" }, { t: "null" }]]
+    }
+  ]);
+  expect(await navigator.clipboard.readText()).toBe(
+    'INSERT INTO "public"."users" ("id", "profile") VALUES (\'2\', NULL);\n'
+  );
+  expect(await screen.findByText("1 linha copiada como INSERT")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Copiar" }));
+  await user.click(await screen.findByRole("menuitem", { name: "2 linhas carregadas como JSON" }));
+  expect(await navigator.clipboard.readText()).toBe(
+    '[\n  {"id": 1, "profile": {"id": 9007199254740993}},\n  {"id": 2, "profile": null}\n]'
+  );
+});
+
+test("a copy the backend refuses says why", async () => {
+  fakeBackend([prodPostgres], {
+    copy_as_insert: () =>
+      Promise.reject({
+        kind: "validation",
+        message: "a coluna foto tem um valor que a grade só mostra em parte"
+      })
+  });
+  const user = await openUsers();
+
+  await user.click(screen.getByRole("button", { name: "Copiar" }));
+  await user.click(
+    await screen.findByRole("menuitem", { name: "2 linhas carregadas como INSERT" })
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Não copiado: a coluna foto tem um valor que a grade só mostra em parte"
+  );
+});

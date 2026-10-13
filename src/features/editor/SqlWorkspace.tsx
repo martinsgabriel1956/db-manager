@@ -8,6 +8,7 @@ import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
 import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunner";
 import { ExportButton } from "@/features/export/ExportButton";
+import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
@@ -196,7 +197,12 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
         <p role="status" className="text-xs text-muted-foreground">
           {text}
         </p>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          <CopyRowsMenu
+            columns={state.columns}
+            rows={state.rows}
+            selectedRow={selected?.row ?? null}
+          />
           <ExportButton
             baseName="resultado"
             formats={[

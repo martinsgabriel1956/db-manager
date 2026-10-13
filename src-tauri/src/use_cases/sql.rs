@@ -8,7 +8,7 @@ use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
 use crate::adapters::sql_builder;
 use crate::domain::{
-    AppError, ApplyResponse, BrowseRequest, CompletionTable, Confirmation, ConnectionConfig,
+    AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
     DiagramTable, Engine, Environment, FilterOp, RelationKind, RowBatch, RowChange, RunResponse,
     SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableStructure,
 };
@@ -251,6 +251,19 @@ pub async fn run_script(
 /// Applies staged grid edits in one transaction. Rows are identified by the whole
 /// primary key; tables without one are not editable. On prod the generated SQL is
 /// returned for confirmation first.
+/// Rows of a table as INSERT statements, in the connection's own SQL dialect.
+pub fn copy_as_insert(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+    columns: &[String],
+    rows: &[Vec<Cell>],
+) -> Result<String, AppError> {
+    let dialect = registry.connection(connection_id)?.sql()?.dialect();
+    sql_builder::insert_sql(dialect, schema, table, columns, rows)
+}
+
 pub async fn apply_changes(
     registry: &Registry,
     history: &HistoryStore,
