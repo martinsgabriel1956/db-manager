@@ -2,6 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { ChevronDown, Database, History, Network, SquareTerminal, Table2, X } from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from "@/components/ui/context-menu";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -56,7 +62,7 @@ export function tabPanelId(tabId: string): string {
 }
 
 export function TabBar({ connections }: TabBarProps) {
-  const { tabs, activeId, activate, requestClose, pending } = useTabs();
+  const { tabs, activeId, activate, requestClose, requestCloseTabs, pending } = useTabs();
   // one connection open: the view header names it, so the tabs drop the repeated prefix
   const connectionIds = new Set(
     tabs.flatMap(tab => (tab.kind === "history" ? [] : [tab.connectionId]))
@@ -142,75 +148,97 @@ export function TabBar({ connections }: TabBarProps) {
               : ""
           ].join("");
           return (
-            <div
-              key={tab.id}
-              role="presentation"
-              className={cn(
-                "group flex shrink-0 items-center border-r text-sm",
-                isActive
-                  ? // the system's one diagonal: the active tab's corner is cut in blue
-                    "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
-                  : "text-muted-foreground hover:bg-background hover:text-foreground"
-              )}
-            >
-              {/* the engine code names a lone connection's tabs; with several, the name does */}
-              {engine && !showConnection && (
-                <span
-                  title={ENGINE_LABEL[engine]}
-                  aria-hidden
-                  className="pl-3 legend text-muted-foreground"
+            // right click (or the menu key / Shift+F10 on the tab) closes this tab or all of them
+            <ContextMenu key={tab.id}>
+              <ContextMenuTrigger asChild>
+                <div
+                  role="presentation"
+                  className={cn(
+                    "group flex shrink-0 items-center border-r text-sm",
+                    isActive
+                      ? // the system's one diagonal: the active tab's corner is cut in blue
+                        "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
+                      : "text-muted-foreground hover:bg-background hover:text-foreground"
+                  )}
                 >
-                  {ENGINE_CODE[engine]}
-                </span>
-              )}
-              <button
-                type="button"
-                role="tab"
-                id={tabElementId(tab.id)}
-                aria-label={accessibleName}
-                aria-selected={isActive}
-                aria-controls={tabPanelId(tab.id)}
-                aria-keyshortcuts="Delete"
-                tabIndex={isActive ? 0 : -1}
-                onClick={() => activate(tab.id)}
-                onKeyDown={event => handleKeyDown(event, index, tab.id)}
-                onAuxClick={event => event.button === 1 && requestClose(tab.id)}
-                className={cn(
-                  "flex max-w-60 min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  engine && !showConnection ? "pl-1.5" : "pl-3"
-                )}
+                  {/* the engine code names a lone connection's tabs; with several, the name does */}
+                  {engine && !showConnection && (
+                    <span
+                      title={ENGINE_LABEL[engine]}
+                      aria-hidden
+                      className="pl-3 legend text-muted-foreground"
+                    >
+                      {ENGINE_CODE[engine]}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    role="tab"
+                    id={tabElementId(tab.id)}
+                    aria-label={accessibleName}
+                    aria-selected={isActive}
+                    aria-controls={tabPanelId(tab.id)}
+                    aria-keyshortcuts="Delete"
+                    tabIndex={isActive ? 0 : -1}
+                    onClick={() => activate(tab.id)}
+                    onKeyDown={event => handleKeyDown(event, index, tab.id)}
+                    onAuxClick={event => event.button === 1 && requestClose(tab.id)}
+                    className={cn(
+                      "flex max-w-60 min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                      engine && !showConnection ? "pl-1.5" : "pl-3"
+                    )}
+                  >
+                    <Icon className="size-3.5 shrink-0" />
+                    {/* the connection gives way first, so the table name stays readable */}
+                    {connection && showConnection && (
+                      <span className="max-w-20 min-w-0 shrink-[2] truncate font-normal">
+                        {connection.name} ·
+                      </span>
+                    )}
+                    <span className="min-w-0 truncate">{title}</span>
+                    {/* production is printed on the tab itself, not only once the tab is active */}
+                    {isProd && <EnvTag environment="prod" />}
+                  </button>
+                  {/* staged exposure on this table: the same Δ the save button carries */}
+                  {staged > 0 && (
+                    <span
+                      aria-hidden
+                      className="mr-0.5 h-[18px] bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background"
+                    >
+                      Δ {staged}
+                    </span>
+                  )}
+                  {/* keyboard users close with Delete on the tab, so this stays out of the tab order */}
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label={`Fechar aba ${label}`}
+                    onClick={() => requestClose(tab.id)}
+                    className="mr-0.5 grid size-6 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent
+                // the tab that opened the menu may be gone: land on whichever tab is active now
+                onCloseAutoFocus={event => {
+                  event.preventDefault();
+                  // read now, not from this render: the menu's pick may have closed tabs
+                  const { activeId: nowActive } = useTabs.getState();
+                  if (nowActive) {
+                    document.getElementById(tabElementId(nowActive))?.focus();
+                  }
+                }}
               >
-                <Icon className="size-3.5 shrink-0" />
-                {/* the connection gives way first, so the table name stays readable */}
-                {connection && showConnection && (
-                  <span className="max-w-20 min-w-0 shrink-[2] truncate font-normal">
-                    {connection.name} ·
-                  </span>
-                )}
-                <span className="min-w-0 truncate">{title}</span>
-                {/* production is printed on the tab itself, not only once the tab is active */}
-                {isProd && <EnvTag environment="prod" />}
-              </button>
-              {/* staged exposure on this table: the same Δ the save button carries */}
-              {staged > 0 && (
-                <span
-                  aria-hidden
-                  className="mr-0.5 h-[18px] bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background"
-                >
-                  Δ {staged}
-                </span>
-              )}
-              {/* keyboard users close with Delete on the tab, so this stays out of the tab order */}
-              <button
-                type="button"
-                tabIndex={-1}
-                aria-label={`Fechar aba ${label}`}
-                onClick={() => requestClose(tab.id)}
-                className="mr-0.5 grid size-6 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
+                <ContextMenuItem onSelect={() => requestClose(tab.id)}>
+                  <X /> Fechar aba
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => requestCloseTabs(tabs.map(open => open.id))}>
+                  Fechar todas as abas ({tabs.length})
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           );
         })}
       </div>

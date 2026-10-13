@@ -11,6 +11,8 @@ type DiscardDialogProps = {
   open: boolean;
   /** what holds the edits: "Postgres dev · users" */
   subject: string;
+  /** the subject is several things: "2 tabelas têm…" */
+  plural?: boolean;
   count: number;
   /** what confirming does, said before the reassurance that nothing reached the database */
   consequence: string;
@@ -24,6 +26,7 @@ type DiscardDialogProps = {
 export function DiscardDialog({
   open,
   subject,
+  plural = false,
   count,
   consequence,
   confirmLabel,
@@ -41,8 +44,8 @@ export function DiscardDialog({
       >
         <DialogTitle>Descartar alterações?</DialogTitle>
         <DialogDescription>
-          <span className="font-semibold text-foreground">{subject}</span> tem {changes}.{" "}
-          {consequence}; nada foi gravado no banco.
+          <span className="font-semibold text-foreground">{subject}</span> {plural ? "têm" : "tem"}{" "}
+          {changes}. {consequence}; nada foi gravado no banco.
         </DialogDescription>
         <DialogFooter>
           <Button variant="outline" autoFocus onClick={onCancel}>

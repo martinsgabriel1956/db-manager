@@ -38,8 +38,14 @@ test("Ctrl+B collapses and expands the sidebar", async () => {
     "false"
   );
 
+  // collapsed, the brand is the mark; expanded, the full name
+  expect(screen.getByRole("img", { name: "Ordo" })).toBeInTheDocument();
+  expect(screen.queryByText("Ordo")).not.toBeInTheDocument();
+
   await user.keyboard("{Control>}b{/Control}");
   expect(screen.getByRole("button", { name: "Recolher lateral" })).toBeInTheDocument();
+  expect(screen.queryByRole("img", { name: "Ordo" })).not.toBeInTheDocument();
+  expect(screen.getByText("Ordo")).toBeInTheDocument();
 });
 
 test("shows an empty state when there are no connections, with a way to create one", async () => {

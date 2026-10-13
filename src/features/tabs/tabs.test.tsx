@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { HistoryEntry } from "@/bindings";
-import { useTabs } from "@/features/tabs/store";
+import { CloseTabDialog } from "@/features/tabs/CloseTabDialog";
+import { tableKey, useTabs } from "@/features/tabs/store";
 import { callsTo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
 import { renderWithClient, rowAction } from "@/test/render";
 
@@ -225,4 +226,53 @@ test("favourites with nothing starred say how to star", async () => {
   await user.click(await screen.findByRole("button", { name: "Histórico" }));
   await user.click(await screen.findByRole("button", { name: "Favoritas" }));
   expect(await screen.findByText("Nenhuma favorita")).toBeInTheDocument();
+});
+
+test("right click on a tab closes it, or closes every tab", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("button", { name: "Histórico" }));
+  expect(tabNames()).toHaveLength(3);
+
+  await user.pointer({
+    keys: "[MouseRight]",
+    target: screen.getByRole("tab", { name: "Postgres prod · users · produção" })
+  });
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar aba" }));
+  expect(tabNames()).toEqual(["Postgres prod · active_users · produção", "Histórico"]);
+
+  await user.pointer({
+    keys: "[MouseRight]",
+    target: screen.getByRole("tab", { name: "Histórico" })
+  });
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar todas as abas (2)" }));
+  expect(
+    screen.queryAllByRole("tab").filter(tab => tab.closest("[aria-label='Abas abertas']"))
+  ).toEqual([]);
+  expect(await screen.findByText("Nenhuma aba aberta")).toBeInTheDocument();
+});
+
+test("discarding edits in several tables names how many hold them", async () => {
+  const users = { connectionId: "pg-1", schema: "public", table: "users" };
+  const orders = { connectionId: "pg-1", schema: "public", table: "orders" };
+  useTabs.setState({
+    tabs: [
+      { id: "a", kind: "table", ...users },
+      { id: "b", kind: "table", ...orders },
+      { id: "history", kind: "history" }
+    ],
+    activeId: "a",
+    pending: { [tableKey(users)]: 2, [tableKey(orders)]: 1 },
+    closeRequest: ["a", "b", "history"]
+  });
+  renderWithClient(<CloseTabDialog connections={[prodPostgres]} />);
+
+  expect(await screen.findByRole("dialog")).toHaveTextContent(
+    "2 tabelas têm 3 alterações pendentes. Fechar as abas descarta todas"
+  );
 });

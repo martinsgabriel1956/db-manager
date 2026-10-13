@@ -33,10 +33,13 @@ type TabsState = {
   openHistory: () => void;
   activate: (id: string) => void;
   close: (id: string) => void;
+  closeTabs: (ids: string[]) => void;
   /** closes at once, or asks first when the tab holds staged edits; true when it closed */
   requestClose: (id: string) => boolean;
-  /** the tab waiting for "discard staged edits?" (not persisted) */
-  closeRequest: string | null;
+  /** same, for several tabs: one question covers all of them */
+  requestCloseTabs: (ids: string[]) => boolean;
+  /** the tabs waiting for "discard staged edits?" (not persisted) */
+  closeRequest: string[] | null;
   cancelClose: () => void;
   /** drops tabs of connections that no longer exist (deleted, or stale persisted state) */
   keepConnections: (connectionIds: string[]) => void;
@@ -60,9 +63,11 @@ function nextEditorTitle(tabs: Tab[], connectionId: string): string {
   return `SQL ${Math.max(0, ...used) + 1}`;
 }
 
-/** After closing the active tab, focus its left neighbour (or the new first tab). */
-function neighbourOf(tabs: Tab[], closedIndex: number): string | null {
-  return (tabs[closedIndex - 1] ?? tabs[closedIndex])?.id ?? null;
+/** After closing the active tab, focus the nearest open tab to its left (or else to its right). */
+function neighbourOf(tabs: Tab[], activeIndex: number, closed: Set<string>): string | null {
+  const open = (tab: Tab | undefined) => tab !== undefined && !closed.has(tab.id);
+  const left = tabs.slice(0, activeIndex).reverse().find(open);
+  return (left ?? tabs.slice(activeIndex + 1).find(open))?.id ?? null;
 }
 
 export const useTabs = create<TabsState>()(
@@ -131,25 +136,30 @@ export const useTabs = create<TabsState>()(
           return { tabs: [...state.tabs, { id: "history", kind: "history" }], activeId: "history" };
         }),
       activate: id => set({ activeId: id }),
-      close: id =>
+      close: id => get().closeTabs([id]),
+      closeTabs: ids =>
         set(state => {
-          const index = state.tabs.findIndex(tab => tab.id === id);
-          if (index === -1) {
-            return state;
-          }
-          const tabs = state.tabs.filter(tab => tab.id !== id);
-          const activeId = state.activeId === id ? neighbourOf(tabs, index) : state.activeId;
+          const closed = new Set(ids);
+          const tabs = state.tabs.filter(tab => !closed.has(tab.id));
+          const activeIndex = state.tabs.findIndex(tab => tab.id === state.activeId);
+          const activeId =
+            state.activeId !== null && closed.has(state.activeId)
+              ? neighbourOf(state.tabs, activeIndex, closed)
+              : state.activeId;
           return { tabs, activeId, closeRequest: null };
         }),
-      requestClose: id => {
-        const { tabs, pending, close } = get();
-        const tab = tabs.find(candidate => candidate.id === id);
+      requestClose: id => get().requestCloseTabs([id]),
+      requestCloseTabs: ids => {
+        const { tabs, pending, closeTabs } = get();
         // staged edits live only in the open view: closing it would drop them silently
-        if (tab?.kind === "table" && (pending[tableKey(tab)] ?? 0) > 0) {
-          set({ closeRequest: id });
+        const holdsEdits = tabs.some(
+          tab => ids.includes(tab.id) && tab.kind === "table" && (pending[tableKey(tab)] ?? 0) > 0
+        );
+        if (holdsEdits) {
+          set({ closeRequest: ids });
           return false;
         }
-        close(id);
+        closeTabs(ids);
         return true;
       },
       closeRequest: null,
