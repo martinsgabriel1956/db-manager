@@ -10,6 +10,11 @@ on:
 jobs:
   rust:
     runs-on: ubuntu-24.04
+    env:
+      # two full debug builds (clippy + the instrumented coverage build) with full debuginfo
+      # filled the runner's disk and crashed the linker (ld: signal 7, bus error); file:line
+      # in backtraces is all the tests need, and coverage does not use debuginfo
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     defaults:
       run:
         working-directory: src-tauri
@@ -41,6 +46,11 @@ jobs:
       # the test run regenerates src/bindings.ts; a diff means Rust and TS types drifted
       - name: Bindings are up to date
         run: git diff --exit-code ../src/bindings.ts
+
+      # how close the job runs to the runner's disk limit, also when a step above failed
+      - name: Disk usage
+        if: always()
+        run: df -h . && du -sh target
 
   frontend:
     runs-on: ubuntu-24.04
