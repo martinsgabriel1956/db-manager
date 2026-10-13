@@ -15,7 +15,6 @@ function Workspace({ initialSql }: { initialSql: string }) {
   return (
     <SqlWorkspace
       connectionId="pg-1"
-      connectionName="Postgres prod"
       engine="postgres"
       defaultSchema="public"
       sql={sql}

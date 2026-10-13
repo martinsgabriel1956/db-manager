@@ -3,7 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { prettyJson } from "@/features/results/format";
 import { DocumentTree } from "@/features/mongo/DocumentTree";
-import { parseDocument } from "@/features/mongo/ejson";
+import { idOf, parseDocument } from "@/features/mongo/ejson";
 
 export type DocumentView = "tree" | "json";
 
@@ -31,7 +31,7 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
       </div>
       {/* beside the document, never over its first line */}
       {(onEdit || onDelete) && (
-        <div className="-mt-1 -mr-1 flex shrink-0 gap-1 opacity-60 group-hover:opacity-100 focus-within:opacity-100">
+        <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-1 text-muted-foreground">
           {onEdit && (
             <Button size="icon-xs" variant="ghost" aria-label="Editar documento" onClick={onEdit}>
               <Pencil />
@@ -39,17 +39,23 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
           )}
           {onDelete &&
             (confirmingDelete ? (
-              // focused so Enter confirms; leaving it or Escape disarms the delete
-              <Button
-                size="xs"
-                variant="destructive"
-                autoFocus
-                onClick={onDelete}
-                onBlur={() => setConfirmingDelete(false)}
-                onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
-              >
-                Confirmar exclusão
-              </Button>
+              <>
+                {/* the exact command before the click, as everywhere else */}
+                <code className="max-w-72 truncate border border-foreground bg-background px-1.5 font-mono text-xs leading-6 text-foreground">
+                  deleteOne({`{"_id": ${idOf(document)}}`})
+                </code>
+                {/* focused so Enter confirms; leaving it or Escape disarms the delete */}
+                <Button
+                  size="xs"
+                  variant="destructive"
+                  autoFocus
+                  onClick={onDelete}
+                  onBlur={() => setConfirmingDelete(false)}
+                  onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
+                >
+                  Confirmar exclusão
+                </Button>
+              </>
             ) : (
               <Button
                 size="icon-xs"

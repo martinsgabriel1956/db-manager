@@ -9,7 +9,7 @@ import {
 } from "@/features/connections/form";
 
 function form(patch: Partial<ConnectionFormValues>): ConnectionFormValues {
-  return { ...EMPTY_FORM, ...patch };
+  return { ...EMPTY_FORM, environment: "local", ...patch };
 }
 
 const postgresConfig: ConnectionConfig = {
@@ -23,6 +23,14 @@ const postgresConfig: ConnectionConfig = {
   tls: { mode: "verifyFull", caCertPath: "/ca.pem" },
   keySeparator: null
 };
+
+test("a new connection has no environment until one is chosen", () => {
+  expect(EMPTY_FORM.environment).toBe("");
+  expect(parseForm({ ...form({ name: "pg" }), environment: "" }, "1")).toEqual({
+    success: false,
+    errors: { environment: "Escolha o ambiente: ele define as proteções desta conexão" }
+  });
+});
 
 describe("parseForm", () => {
   test("builds a postgres config and sets the typed password", () => {
@@ -201,7 +209,7 @@ describe("mongo connection string", () => {
   test("requires the string for new connections, keeps it when editing", () => {
     expect(parseForm(uriForm, "1")).toEqual({
       success: false,
-      errors: { uri: "Informe a connection string" }
+      errors: { uri: "Informe a URI de conexão" }
     });
     const editing = parseForm(uriForm, "1", true);
     expect(editing.success && editing.secret).toEqual({ action: "keep" });

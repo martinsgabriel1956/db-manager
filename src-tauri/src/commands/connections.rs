@@ -36,6 +36,22 @@ pub async fn save_connection(
     Ok(outcome)
 }
 
+/// Connects with the form's draft (saved or not) and closes right away, so wrong
+/// credentials are found before they are stored. Never touches open sessions.
+#[tauri::command]
+#[specta::specta]
+pub async fn test_connection(
+    state: State<'_, AppState>,
+    config: ConnectionConfig,
+    secret: SecretChange,
+) -> Result<(), AppError> {
+    let (config, password) = {
+        let store = state.store.lock().unwrap_or_else(PoisonError::into_inner);
+        connections::prepare_test(&store, state.secrets.as_ref(), config, secret)?
+    };
+    sql::test_connection(&config, password).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_connection(

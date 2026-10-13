@@ -91,6 +91,7 @@ spacing:
   tab-bar: "36px"
   header: "56px"
   sidebar-width: "288px"
+  sidebar-width-narrow: "240px"
 components:
   button-primary:
     backgroundColor: "{colors.z0}"
@@ -223,7 +224,7 @@ Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais
 ### Hierarchy
 
 - **Display** (Saira 600, largura 80%, -0.01em, caixa preservada, utilitário `display`): identificadores, que são dado. Nome da tabela, coleção ou db do Redis no cabeçalho da view (1.75rem), título de diálogos genéricos (1.25rem). A marca ORDO usa `display-caps` a 1.75rem com largura 75% e 0.14em, fechada pela diagonal azul.
-- **Display Caps** (Saira 600, largura 60%, 0.05em, versal, utilitário `display-caps`): títulos que não são identificadores. "Confirmar execução" (2rem), estados vazios ("Nenhuma aba aberta" 3.75rem, "Nada no histórico" 2.25rem, "Sem resultado" 1.875rem), "Histórico" (1.25rem), "SQL" (1.125rem), MANAGER na marca.
+- **Display Caps** (Saira 600, largura 60%, 0.05em, versal, utilitário `display-caps`): títulos que não são identificadores. "Confirmar execução" (2rem), estados vazios ("Nenhuma aba aberta", "Comece por uma conexão" e "Nada no histórico" 2.25rem; "Nenhuma chave aberta", "Executando…", "Aguardando confirmação…" e "Sem resultado" 1.875rem), "SQL" no cabeçalho da view (1.75rem), "Histórico" (1.25rem), "Legenda" (1.75rem), ORDO na marca.
 - **Legend** (Saira 600, 0.6875rem, largura 75%, 0.1em, versal, utilitário `legend`): CONEXÕES, campos da ficha, `Label` de formulário, etiquetas de ambiente, badges, chip de filtro, código da engine (0.75rem), palavra "Produção" na faixa (0.75rem).
 - **Title** (Hanken 600, 13px): nome da conexão no registro; linhas da árvore em 13px regular.
 - **Body** (Hanken 400, 0.875rem; botões 500): interface geral e diálogos. Parágrafos de estado vazio limitados a 46ch.
@@ -240,7 +241,7 @@ Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais
 
 ## Layout
 
-Janela padrão 1200×800, mínimo 960×600. Lateral fixa de 288px sobre a grade de construção visível, separada da área de trabalho por filete de tinta; cabeçalho da marca de 56px (quatro células da grade) em papel. Área de trabalho em Z10 limpa: barra de abas de 36px em Z9 com filete de tinta inferior, cabeçalho da view com filete de tinta, barra de ferramentas, conteúdo. Em produção, faixa de 28px no topo da janela inteira e anel interno de 4px desenhado acima dos painéis.
+Janela padrão 1200×800, mínimo 960×600. Lateral fixa de 288px (240px abaixo de 1100px, para a grade manter espaço na janela mínima) sobre a grade de construção visível, separada da área de trabalho por filete de tinta; cabeçalho da marca de 56px (quatro células da grade) em papel. A marca, o cabeçalho CONEXÕES e o rodapé de ferramentas (Ir para tabela… Ctrl K, Histórico, Legenda; papel com filete de tinta no topo) ficam fixos; só o registro rola. Área de trabalho em Z10 limpa: barra de abas de 36px em Z9 com filete de tinta inferior, cabeçalho da view com filete de tinta (identificador à esquerda: tabela, coleção, db do Redis, "ER · schema", "SQL"; conexão e etiqueta de ambiente à direita, em toda view), barra de ferramentas, conteúdo. Um link "Ir para a área de trabalho" aparece no foco antes de tudo. Em produção, faixa de 28px no topo da janela inteira e anel interno de 4px desenhado acima dos painéis.
 
 Densidade compacta: controles de 32px (28px `sm`, 24px `xs`), etiquetas de 18px, casa da engine de 24px. Ritmo base de 4px.
 
@@ -250,7 +251,7 @@ Densidade compacta: controles de 32px (28px `sm`, 24px `xs`), etiquetas de 18px,
 
 ## Elevation & Depth
 
-Plano. Profundidade vem de zona (Z10 sobre Z9), de filetes de 1px e do filete de tinta Z0 nas divisões principais. O overlay de diálogo é `black/30` liso, sem desfoque.
+Plano. Profundidade vem de zona (Z10 sobre Z9), de filetes de 1px e do filete de tinta Z0 nas divisões principais. O overlay de diálogo é `black/30` liso (`black/60` no escuro, para a folha descolar de uma página quase preta), sem desfoque.
 
 ### Shadow Vocabulary
 
@@ -291,13 +292,17 @@ Tinta sobre papel, reto.
 
 - **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto branco.
 - **Badge retido:** contorno pontilhado `currentColor`, "Somente leitura". O mesmo badge com "Bin" marca um valor binário do Redis antes da prévia escapada (`\xff`), para que nunca se leia como texto.
-- **Chip de filtro:** FILTRO ATIVO em `--filter` cheio com texto papel, só enquanto um filtro está aplicado.
+- **Chip de filtro:** `--filter` cheio com texto papel, só enquanto algo filtra ou ordena: FILTRO em `legend` seguido da condição aplicada em mono 11px como se lê no SQL ("id = 42", "email LIKE %@x") e um × ("Limpar filtro"); ORDENADO com a coluna, a seta e um × ("Remover ordenação"). No MongoDB, FILTRO e ORDENADO levam o JSON aplicado, truncado. Os chips ficam à direita da barra de filtro, numa linha só. Campos que não batem mais com o aplicado tornam o Aplicar primário; não há texto extra.
 - **Contagem Δ:** 18px, fundo Z0, texto Z10, mono 11px ("Δ 2").
 
 ### Cards / Containers
 
-- **Registro de conexões:** um único livro-razão pautado, papel sobre a grade, contorno de tinta, conexões separadas por filete Z8 (filete de tinta quando expandida). Cada linha: casa quadrada de 24px com o código da engine (PG, MY, SL, MG, RD) em `legend`, nome 13px/600, etiqueta de ambiente à direita, segunda linha em mono 11px com o alvo e cadeado pontilhado se somente leitura. As ações de hover/foco sobrepõem só a linha do alvo, no canto inferior direito, sobre papel; nunca cobrem o nome nem a etiqueta.
+- **Registro de conexões:** um único livro-razão pautado, papel sobre a grade, contorno de tinta, conexões separadas por filete Z8 (filete de tinta quando expandida). Cada linha: casa quadrada de 24px com o código da engine (PG, MY, SL, MG, RD) em `legend`, nome 13px/600, etiqueta de ambiente à direita, segunda linha em mono 11px com o alvo e cadeado pontilhado se somente leitura. As ações da linha ficam num "⋯" discreto (60%, cheio no hover) no canto inferior direito, sobre a linha do alvo, que reserva o espaço; nunca cobre o nome nem a etiqueta. O "⋯" usa `muted-foreground` cheio (5:1), sem opacidade. O menu (Nova query SQL, Editar conexão, Desconectar; no schema, Abrir diagrama ER) é uma folha de papel com contorno de tinta, itens de 28px, item realçado em azul. Abre também com Shift+F10, tecla de menu ou clique direito na linha.
 - **Árvore:** sob a conexão expandida, recuo com filete esquerdo de tinta; linhas de 28px, 13px, hover Z9; a tabela ativa é preenchida em azul.
+
+### Formulário de conexão
+
+Tipo de banco primeiro (redesenha o resto), depois Nome. O título nomeia a conexão editada ("EDITAR CONEXÃO" em `display-caps` + o nome em `display`), e a linha dela na lateral leva o filete azul de 3px à esquerda. Proteção (filete de tinta): Ambiente sem valor padrão ("Escolha o ambiente"; salvar sem ele marca o campo), com o que ele muda e Somente leitura com como o banco o impõe, lado a lado. Avançado recolhido num `details` (TLS, certificado CA, timeout), aberto sozinho quando um campo dele tem erro. "Testar conexão" tenta o rascunho como está, sem salvar nem tocar no keychain; o resultado some quando um campo muda.
 
 ### Inputs / Fields
 
@@ -308,13 +313,20 @@ Tinta sobre papel, reto.
 
 ### Navigation
 
-- **Abas de trabalho:** barra Z9 com filete de tinta, abas separadas por filete; cada aba leva o código da engine em `legend`, ícone, o nome da conexão (cede espaço primeiro) e o rótulo; em produção, a etiqueta PROD na própria aba; se houver alterações em stage, a contagem Δ. Duas abas `users` de conexões diferentes nunca se leem iguais. Ativa em papel, 600, filete interno azul de 3px no topo e triângulo azul de 10px no canto superior direito.
+- **Abas de trabalho:** barra Z9 com filete de tinta, abas separadas por filete; cada aba leva o código da engine em `legend`, ícone, o nome da conexão (cede espaço primeiro) e o rótulo; em produção, a etiqueta PROD na própria aba; se houver alterações em stage, a contagem Δ. Duas abas `users` de conexões diferentes nunca se leem iguais; com uma conexão só entre as abas, o prefixo sai (o cabeçalho da view já a nomeia). Largura máxima de 240px; a aba ativa sempre rola para a vista. Fechar uma aba com alterações em stage (Delete, ×, clique do meio, Ctrl+W) abre "Descartar alterações?" com o foco em Voltar. Ativa em papel, 600, filete interno azul de 3px no topo e triângulo azul de 10px no canto superior direito.
 - **Tabs internas:** sublinhado de 2px em `--select` no ativo, 600.
 - **Árvore de chaves do Redis:** linhas de 28px; a chave aberta é preenchida em azul como a tabela ativa.
+- **Árvore de conexões no teclado:** `role="tree"` com `treeitem` e `aria-level`; um único ponto de Tab (a última linha focada, senão a da aba ativa). ↑↓ andam pelas linhas visíveis, → expande ou entra, ← recolhe ou sobe, Home/End nos extremos, Shift+F10 abre as ações. Conexão SQL aberta começa por uma linha visível "Nova query SQL".
+- **Regiões e atalhos:** F6/Shift+F6 alternam lateral, abas e área de trabalho; Ctrl+Tab/Ctrl+Shift+Tab trocam de aba; Ctrl+S salva as alterações da tabela com o foco nela; Ctrl+W fecha a aba. Diálogos sem gatilho (Ir para, Legenda) devolvem o foco a quem o tinha.
+- **Faixa de abas cheia:** quando as abas passam da borda, "Todas as abas (N)" fecha a faixa à direita, com filete de tinta, e lista todas num menu; a aba ativa rola para a vista de novo quando ele aparece. Com várias conexões abertas, a aba mostra o nome da conexão (até 80px) e não o código da engine.
+- **Ir para (Ctrl+K):** folha de 576px a 12vh do topo, campo com filete de tinta, opções de 32px com casa da engine, nome, tipo em palavras, conexão e etiqueta de ambiente; a opção ativa é preenchida em azul como a tabela ativa. Tabelas só das conexões já abertas, e diz quantas ("2 de 6"); nunca conecta sozinha. As conexões entram como ações explícitas: "Abrir conexão" (conecta e foca a linha na lateral), "Editar conexão", "Diagrama ER" dos schemas listados. Sem conexão aberta, o estado vazio oferece "Abrir uma conexão", que abre a folha já filtrada.
+- **Legenda:** folha em três colunas pautadas a partir de `lg` (Na grade; Ambientes e Bancos; Atalhos), duas abaixo, cada marca desenhada como na interface ao lado do significado; cabe sem rolagem numa janela de 800px.
 
 ### Grade de resultados
 
 Mono 0.75rem, linhas de 28px, colunas com filete direito, cabeçalho fixo em Z9 com filete de tinta (nome 600 + tipo em `muted-foreground`). Números à direita; `null` em itálico secundário; coluna ordenada com seta e filete inferior magenta; linha nova `success` a 10% com banda de hachura e filete inferior de 2px em `success` (a hachura sozinha fica abaixo de 3:1); excluída com banda cruzada, texto secundário riscado; editada com banda de hachura e filete inferior de tinta de 2px; selecionada com contorno azul de 2px e fundo azul a 10%.
+
+Abaixo da grade, uma única barra de status em Z9: paginação compacta (‹ "Página 2 · linhas 101–200, há mais" ›), depois as ações de edição (Adicionar e Excluir/Restaurar linha) e à direita a contagem, Descartar (pergunta antes, como fechar a aba) e "Salvar | Δ n". Com alterações em stage, a barra diz "Salve ou descarte para paginar, filtrar ou ordenar", truncando. A barra é um container: mede a própria largura (a lateral leva 240–288px), não a janela; a dica "Duplo clique ou Enter" só a partir de 72rem, a contagem em palavras a partir de 64rem, os rótulos de Adicionar/Excluir a partir de 52rem; Descartar e Salvar nunca encolhem. A janela do app nunca rola na horizontal (`overflow-clip`). Editar uma célula que não aceita edição anuncia o porquê numa região viva.
 
 ### O Δ de exposição (assinatura)
 
@@ -322,7 +334,7 @@ Cada alteração em stage hachura a célula e soma no segmento Δ do botão Salv
 
 ### Ficha de exposição: "Confirmar execução" (assinatura)
 
-O diálogo de confirmação (máx. 672px). Cabeçalho sobre a grade de construção com título `display-caps` 2rem e a diagonal azul, filete de tinta. Campos pautados em grade 2fr/1fr/1fr (Conexão, Ambiente com etiqueta, Comandos em mono), Motivo, o comando exato em mono com contorno de tinta, e em produção a faixa de luz de segurança "Produção · este comando roda no banco de produção". Rodapé em Z9 com filete de tinta, Cancelar (outline) e o botão destrutivo; em produção ele sempre diz "Executar em produção". Entra em 160ms com fade e deslize curto do topo, como uma folha, com `motion-reduce`.
+O diálogo de confirmação (máx. 672px). Cabeçalho sobre a grade de construção com título `display-caps` 2rem e a diagonal azul, filete de tinta. Campos pautados em grade 2fr/1fr (Conexão, Ambiente com etiqueta), Motivo, o comando exato em mono com contorno de tinta, e em produção a faixa de luz de segurança "Produção · este comando roda no banco de produção". Rodapé em Z9 com filete de tinta, Cancelar (outline) e o botão destrutivo; em produção ele sempre diz "Executar em produção". Entra em 160ms com fade e deslize curto do topo, como uma folha, com `motion-reduce`.
 
 ### Faixa de produção
 
@@ -330,7 +342,15 @@ O diálogo de confirmação (máx. 672px). Cabeçalho sobre a grade de construç
 
 ### Editor (CodeMirror)
 
-Fundo papel, gutter Z9 com filete, linha ativa Z9 a 60%, cursor azul de 2px, seleção em `--ring` a 40%, foco com contorno de 2px em `--ring`, painel de autocompletar com contorno de tinta e item ativo em azul. Sintaxe: palavras-chave em Z0, strings `success`, números `warning`, tipos Z5, propriedades em tinta 600.
+Fundo papel, gutter Z9 com filete, linha ativa Z9 a 60%, cursor azul de 2px, seleção em `--ring` a 40%, foco com contorno de 2px em `--ring`, painel de autocompletar com contorno de tinta e item ativo em azul. Sintaxe: palavras-chave em Z0, strings `success`, números `warning`, tipos Z5, propriedades em tinta 600. O autocompletar fica abaixo da camada de diálogos (z 40) e fecha ao executar; o tipo de cada sugestão é um código em `legend` (KW, TB, CL, TY, FN, SC), não emoji.
+
+### Exclusões inline (Redis, MongoDB)
+
+Armar a exclusão mostra o comando exato antes do botão, em mono com contorno de tinta (`DEL chave`, `deleteOne({"_id": …})`); o botão destrutivo vem focado e Esc ou sair dele desarma. "Excluir chave" é um botão outline com ícone, texto em `--destructive`.
+
+### Diagrama ER
+
+Chave primária em tinta (não âmbar), estrangeira em `muted-foreground`. Minimapa em papel com contorno de tinta, tabelas em Z6 (3:1 ou mais), recorte da vista em azul; controles numa coluna com contorno de tinta.
 
 ## Do's and Don'ts
 

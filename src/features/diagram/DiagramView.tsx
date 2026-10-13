@@ -10,6 +10,7 @@ import {
   type NodeProps
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { KeyRound, Link } from "lucide-react";
 import { commands } from "@/bindings";
 import { connected } from "@/features/explorer/queries";
@@ -62,11 +63,19 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
   }
   return (
     <div className="flex h-full flex-col">
-      <p className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-        {plural(diagram.data.nodes.length, "tabela", "tabelas")} ·{" "}
-        {plural(diagram.data.edges.length, "chave estrangeira", "chaves estrangeiras")} · duplo
-        clique ou Enter abre a tabela
-      </p>
+      {/* the same view header as tables: the schema is an identifier, so it keeps its case */}
+      <div className="flex items-center gap-4 border-b border-foreground bg-background px-4">
+        <h2 className="flex min-w-0 shrink-0 items-baseline py-2">
+          <span className="font-mono text-xs text-muted-foreground">ER ·&nbsp;</span>
+          <span className="display text-[1.75rem] leading-[1.15]">{schema}</span>
+        </h2>
+        <p className="min-w-0 truncate text-xs text-muted-foreground">
+          {plural(diagram.data.nodes.length, "tabela", "tabelas")} ·{" "}
+          {plural(diagram.data.edges.length, "chave estrangeira", "chaves estrangeiras")} · duplo
+          clique ou Enter abre a tabela
+        </p>
+        <ConnectionContext connectionId={connectionId} className="ml-auto shrink-0" />
+      </div>
       <div className="min-h-0 flex-1">
         <ReactFlow
           nodes={diagram.data.nodes}
@@ -122,7 +131,7 @@ function TableNodeView({ data }: NodeProps<TableNode>) {
             style={{ height: ROW_HEIGHT }}
           >
             {column.isPrimaryKey ? (
-              <KeyRound aria-label="chave primária" className="size-3 shrink-0 text-warning" />
+              <KeyRound aria-label="chave primária" className="size-3 shrink-0 text-foreground" />
             ) : data.foreignKeyColumns.includes(column.name) ? (
               <Link
                 aria-label="chave estrangeira"

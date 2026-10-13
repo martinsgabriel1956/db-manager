@@ -19,8 +19,8 @@ type TableExportArgs = {
 async function openUsers() {
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: /^Postgres dev/ }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
   await screen.findByRole("button", { name: /Exportar CSV/ });
   return user;
 }
@@ -86,7 +86,6 @@ function Workspace() {
   return (
     <SqlWorkspace
       connectionId="pg-dev"
-      connectionName="Postgres dev"
       engine="postgres"
       defaultSchema="public"
       sql={sql}
@@ -122,8 +121,8 @@ test("a collection exports the applied filter as NDJSON or a JSON array", async 
   });
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: /^Mongo dev/ }));
-  await user.click(await screen.findByRole("button", { name: "customers" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Mongo dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "customers" }));
 
   await user.type(screen.getByLabelText("Filtro"), '{{"name": "Ana"}');
   await user.click(screen.getByRole("button", { name: "Aplicar" }));

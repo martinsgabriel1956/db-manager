@@ -1,6 +1,14 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { History, PanelLeftClose, PanelLeftOpen, Plus, TriangleAlert } from "lucide-react";
+import {
+  BookOpen,
+  History,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+  TriangleAlert
+} from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
@@ -9,11 +17,17 @@ import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { ConnectionTree } from "@/features/explorer/ConnectionTree";
 import { isConnectionQuery } from "@/features/explorer/queries";
+import { connectionRowId, useExplorer } from "@/features/explorer/store";
 import { CollectionView } from "@/features/mongo/CollectionView";
 import { HistoryView } from "@/features/history/HistoryView";
+import { CommandPalette } from "@/features/palette/CommandPalette";
+import { LegendDialog } from "@/features/palette/LegendDialog";
+import type { PaletteTarget } from "@/features/palette/search";
 import { RedisView } from "@/features/redis/RedisView";
 import { TableView } from "@/features/table/TableView";
+import { CloseTabDialog } from "@/features/tabs/CloseTabDialog";
 import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
+import { focusActiveTab } from "@/features/tabs/focus";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { SIDEBAR_SHORTCUT } from "@/lib/platform";
@@ -44,10 +58,17 @@ export function App() {
     openRedis,
     openDiagram,
     openHistory,
-    keepConnections
+    keepConnections,
+    requestClose,
+    activate
   } = useTabs();
+  const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
+  const setExpanded = useExplorer(state => state.setExpanded);
   const [form, setForm] = useState<FormState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [legendOpen, setLegendOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar-collapsed") === "1"
   );
@@ -72,27 +93,49 @@ export function App() {
   const isProd = active?.environment === "prod";
   const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
 
-  // Ctrl+B toggles the sidebar, Ctrl+T opens an editor on the active SQL connection
-  // (Cmd on macOS), from anywhere in the window
+  // app-wide accelerators; each one is also reachable from a visible control
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) {
+    function handleKeyDown(event: KeyboardEvent) {
+      // a dialog owns the keyboard while it is open
+      if (document.querySelector("[role='dialog']")) {
+        return;
+      }
+      if (event.key === "F6") {
+        event.preventDefault();
+        cycleRegion(event.shiftKey ? -1 : 1);
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) {
         return;
       }
       const key = event.key.toLowerCase();
-      if (key === "b") {
+      if (key === "tab" && !form && tabs.length > 1) {
+        event.preventDefault();
+        const index = tabs.findIndex(tab => tab.id === activeId);
+        const next = tabs[(index + (event.shiftKey ? -1 : 1) + tabs.length) % tabs.length];
+        activate(next.id);
+        focusTabSoon(next.id);
+      } else if (event.shiftKey) {
+        return;
+      } else if (key === "k") {
+        event.preventDefault();
+        openPalette();
+      } else if (key === "b") {
         event.preventDefault();
         setCollapsed(value => !value);
       } else if (key === "t" && editorConnectionId) {
+        // an editor on the active SQL connection
         event.preventDefault();
-        setForm(null);
-        setNotice(null);
+        showTabs();
         openEditor(editorConnectionId);
+      } else if (key === "w" && !form && activeId) {
+        event.preventDefault();
+        requestClose(activeId);
       }
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editorConnectionId, openEditor]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [form, tabs, activeId, requestClose, activate, editorConnectionId, openEditor]);
 
   function showTabs() {
     setForm(null);
@@ -102,6 +145,49 @@ export function App() {
   function openInEditor(connectionId: string, sql: string) {
     showTabs();
     openEditor(connectionId, sql);
+  }
+
+  function openPalette(query = "") {
+    setPaletteQuery(query);
+    setPaletteOpen(true);
+  }
+
+  function createConnection() {
+    setNotice(null);
+    setForm({ connectionId: null });
+  }
+
+  function openFromPalette(target: PaletteTarget) {
+    if (target.kind === "newConnection") {
+      createConnection();
+    } else if (target.kind === "editConnection") {
+      setNotice(null);
+      setForm({ connectionId: target.connectionId });
+    } else if (target.kind === "legend") {
+      setLegendOpen(true);
+    } else if (target.kind === "connect") {
+      // connecting is the user's pick here; the tree lists it and takes focus
+      showTabs();
+      setExpanded(target.connectionId, true);
+      requestAnimationFrame(() =>
+        document.getElementById(connectionRowId(target.connectionId))?.focus()
+      );
+    } else {
+      showTabs();
+      if (target.kind === "table") {
+        openTable(target.target);
+      } else if (target.kind === "redis") {
+        openRedis(target.target);
+      } else if (target.kind === "editor") {
+        openEditor(target.connectionId);
+      } else if (target.kind === "diagram") {
+        openDiagram(target.target);
+      } else {
+        openHistory();
+      }
+      // focus follows the pick to the tab it opened
+      requestAnimationFrame(focusActiveTab);
+    }
   }
 
   /** The backend closed this connection's session; cached schemas/results are stale. */
@@ -115,12 +201,19 @@ export function App() {
     <div
       data-environment={active?.environment}
       className={cn(
-        "relative flex h-screen flex-col bg-background text-foreground",
+        // clip: no toolbar may scroll the whole window sideways (and cut the wordmark)
+        "relative flex h-screen flex-col overflow-clip bg-background text-foreground",
         // drawn above the panels, whose own backgrounds would hide an inset ring
         isProd &&
           "after:pointer-events-none after:absolute after:inset-0 after:z-40 after:ring-4 after:ring-safelight after:ring-inset"
       )}
     >
+      <a
+        href="#workspace"
+        className="sr-only z-50 bg-background px-3 py-2 text-sm font-semibold focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:ring-2 focus:ring-ring"
+      >
+        Ir para a área de trabalho
+      </a>
       {/* production works under the safelight: the ring is a colour cue, the band says it in words */}
       {isProd && active && (
         <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
@@ -135,10 +228,11 @@ export function App() {
         </p>
       )}
       <div className="flex min-h-0 flex-1">
+        {/* 240px at the 960px minimum, 288px from 1100px: the grid keeps room for data */}
         <aside
           className={cn(
-            "flex shrink-0 flex-col overflow-y-auto border-r border-foreground grid-paper",
-            collapsed ? "w-12" : "w-72"
+            "flex shrink-0 flex-col border-r border-foreground grid-paper",
+            collapsed ? "w-12" : "w-60 min-[1100px]:w-72"
           )}
         >
           <div
@@ -160,14 +254,75 @@ export function App() {
               {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
             </Button>
           </div>
-          {/* hidden, not unmounted, so the tree keeps its expanded nodes */}
-          <div className={cn("contents", collapsed && "hidden")}>
-            <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+          {/* hidden, not unmounted, so the tree keeps its expanded nodes; the attribute keeps F6 out */}
+          <div className={cn("contents", collapsed && "hidden")} hidden={collapsed}>
+            {/* the brand and this header stay put; only the ledger scrolls */}
+            <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-4 pb-2">
               <h1 className="legend text-muted-foreground">Conexões</h1>
-              <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={createConnection}>
+                <Plus /> Nova conexão
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {connections.isPending && (
+                <p className="px-4 text-sm text-muted-foreground">Carregando conexões…</p>
+              )}
+              {connections.isError && (
+                <p
+                  role="alert"
+                  className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
+                >
+                  {errorMessage(connections.error)}
+                </p>
+              )}
+              {connections.data && (
+                <ConnectionTree
+                  connections={connections.data}
+                  editingId={form?.connectionId ?? null}
+                  activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
+                  activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
+                  onEdit={connectionId => {
+                    setNotice(null);
+                    setForm({ connectionId });
+                  }}
+                  onOpenTable={target => {
+                    showTabs();
+                    openTable(target);
+                  }}
+                  onOpenEditor={connectionId => {
+                    showTabs();
+                    openEditor(connectionId);
+                  }}
+                  onOpenRedis={target => {
+                    showTabs();
+                    openRedis(target);
+                  }}
+                  onOpenDiagram={target => {
+                    showTabs();
+                    openDiagram(target);
+                  }}
+                />
+              )}
+            </div>
+            <nav
+              aria-label="Ferramentas"
+              className="grid shrink-0 gap-px border-t border-foreground bg-background p-2"
+            >
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start"
+                aria-keyshortcuts="Control+K"
+                onClick={() => openPalette()}
+              >
+                <Search /> Ir para tabela…
+                <kbd className="ml-auto font-mono text-[11px] text-muted-foreground">Ctrl K</kbd>
+              </Button>
+              <div className="grid grid-cols-2 gap-px">
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="justify-start"
                   onClick={() => {
                     showTabs();
                     openHistory();
@@ -177,58 +332,18 @@ export function App() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setNotice(null);
-                    setForm({ connectionId: null });
-                  }}
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={() => setLegendOpen(true)}
                 >
-                  <Plus /> Nova
+                  <BookOpen /> Legenda
                 </Button>
               </div>
-            </div>
-            {connections.isPending && (
-              <p className="px-4 text-sm text-muted-foreground">Carregando…</p>
-            )}
-            {connections.isError && (
-              <p
-                role="alert"
-                className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
-              >
-                {errorMessage(connections.error)}
-              </p>
-            )}
-            {connections.data && (
-              <ConnectionTree
-                connections={connections.data}
-                activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
-                activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
-                onEdit={connectionId => {
-                  setNotice(null);
-                  setForm({ connectionId });
-                }}
-                onOpenTable={target => {
-                  showTabs();
-                  openTable(target);
-                }}
-                onOpenEditor={connectionId => {
-                  showTabs();
-                  openEditor(connectionId);
-                }}
-                onOpenRedis={target => {
-                  showTabs();
-                  openRedis(target);
-                }}
-                onOpenDiagram={target => {
-                  showTabs();
-                  openDiagram(target);
-                }}
-              />
-            )}
+            </nav>
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main id="workspace" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
           {notice && (
             <p
               role="status"
@@ -237,64 +352,159 @@ export function App() {
               {notice}
             </p>
           )}
-          {form ? (
-            (form.connectionId === null || active) && (
-              <div className="overflow-auto p-6">
-                <ConnectionForm
-                  key={form.connectionId ?? "new"}
-                  connection={active}
-                  onSaved={(id, keychainWarning) => {
-                    dropConnectionCache(id);
-                    setForm({ connectionId: id });
-                    setNotice(
-                      keychainWarning &&
-                        `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
-                    );
-                  }}
-                  onDeleted={keychainWarning => {
-                    if (form.connectionId) {
-                      dropConnectionCache(form.connectionId);
-                    }
-                    setForm(null);
-                    setNotice(
-                      keychainWarning &&
-                        `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
-                    );
-                  }}
-                />
-              </div>
-            )
-          ) : (
-            <>
-              {tabs.length > 0 && <TabBar connections={list} />}
-              {tabs.length === 0 && (
-                <div className="grid flex-1 content-center justify-items-start gap-3 px-12 grid-paper">
-                  <h2 className="display-caps text-6xl">Nenhuma aba aberta</h2>
-                  <p className="max-w-[46ch] text-sm text-muted-foreground">
-                    Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
-                  </p>
-                </div>
-              )}
-              <div className={cn("relative min-h-0 flex-1", tabs.length === 0 && "hidden")}>
-                {/* every tab stays mounted so results and staged edits survive switching */}
-                {tabs.map(tab => (
-                  <div
-                    key={tab.id}
-                    role="tabpanel"
-                    id={tabPanelId(tab.id)}
-                    aria-labelledby={tabElementId(tab.id)}
-                    className={cn("absolute inset-0", tab.id !== activeId && "hidden")}
-                  >
-                    <TabContent tab={tab} connections={list} onOpenInEditor={openInEditor} />
-                  </div>
-                ))}
-              </div>
-            </>
+          {form && (form.connectionId === null || active) && (
+            <div className="overflow-auto p-6">
+              <ConnectionForm
+                key={form.connectionId ?? "new"}
+                connection={active}
+                onCancel={showTabs}
+                onSaved={(id, keychainWarning) => {
+                  dropConnectionCache(id);
+                  setForm({ connectionId: id });
+                  setNotice(
+                    keychainWarning &&
+                      `Conexão salva, mas a senha não foi guardada: ${keychainWarning}`
+                  );
+                }}
+                onDeleted={keychainWarning => {
+                  if (form.connectionId) {
+                    dropConnectionCache(form.connectionId);
+                  }
+                  setForm(null);
+                  setNotice(
+                    keychainWarning &&
+                      `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
+                  );
+                }}
+              />
+            </div>
           )}
+          {/* the tabs stay mounted under the form: opening it must not drop staged edits */}
+          <div hidden={form !== null} className="flex min-h-0 flex-1 flex-col">
+            {tabs.length > 0 && <TabBar connections={list} />}
+            {tabs.length === 0 && (
+              <EmptyWorkspace
+                hasConnections={list.length > 0}
+                anyConnectionOpen={anyConnectionOpen}
+                onCreate={createConnection}
+                onSearch={openPalette}
+                onLegend={() => setLegendOpen(true)}
+              />
+            )}
+            <div className={cn("relative min-h-0 flex-1", tabs.length === 0 && "hidden")}>
+              {/* every tab stays mounted so results and staged edits survive switching */}
+              {tabs.map(tab => (
+                <div
+                  key={tab.id}
+                  role="tabpanel"
+                  id={tabPanelId(tab.id)}
+                  aria-labelledby={tabElementId(tab.id)}
+                  className={cn("absolute inset-0", tab.id !== activeId && "hidden")}
+                >
+                  <TabContent tab={tab} connections={list} onOpenInEditor={openInEditor} />
+                </div>
+              ))}
+            </div>
+          </div>
         </main>
+      </div>
+      <CloseTabDialog connections={list} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        connections={list}
+        initialQuery={paletteQuery}
+        onSelect={openFromPalette}
+      />
+      <LegendDialog open={legendOpen} onOpenChange={setLegendOpen} />
+    </div>
+  );
+}
+
+type EmptyWorkspaceProps = {
+  hasConnections: boolean;
+  anyConnectionOpen: boolean;
+  onCreate: () => void;
+  onSearch: (query?: string) => void;
+  onLegend: () => void;
+};
+
+/** First run says what to do first; afterwards, how to get to a table fast. */
+function EmptyWorkspace({
+  hasConnections,
+  anyConnectionOpen,
+  onCreate,
+  onSearch,
+  onLegend
+}: EmptyWorkspaceProps) {
+  return (
+    <div className="grid flex-1 content-center justify-items-start gap-4 px-12 grid-paper">
+      <h2 className="display-caps text-4xl">
+        {hasConnections ? "Nenhuma aba aberta" : "Comece por uma conexão"}
+      </h2>
+      <p className="max-w-[52ch] text-sm text-muted-foreground">
+        {hasConnections
+          ? "Abra uma conexão na lateral e escolha uma tabela, coleção ou banco Redis. Ou vá direto pelo nome."
+          : "Ordo abre bancos que já existem: Postgres, MySQL, SQLite, MongoDB e Redis. Cada conexão leva um ambiente; em produção, toda escrita mostra o comando exato antes de rodar."}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {/* the palette lists tables only of open connections: until one is open, offer to open one */}
+        {hasConnections && anyConnectionOpen && (
+          <Button onClick={() => onSearch()}>
+            <Search /> Ir para tabela
+            <kbd className="ml-1 font-mono text-[11px] opacity-70">Ctrl K</kbd>
+          </Button>
+        )}
+        {hasConnections && !anyConnectionOpen && (
+          <Button onClick={() => onSearch("abrir conexão")}>
+            <Search /> Abrir uma conexão
+            <kbd className="ml-1 font-mono text-[11px] opacity-70">Ctrl K</kbd>
+          </Button>
+        )}
+        {!hasConnections && (
+          <Button onClick={onCreate}>
+            <Plus /> Nova conexão
+          </Button>
+        )}
+        <Button variant="outline" onClick={onLegend}>
+          <BookOpen /> O que cada marca significa
+        </Button>
       </div>
     </div>
   );
+}
+
+function focusTabSoon(tabId: string) {
+  requestAnimationFrame(() => document.getElementById(tabElementId(tabId))?.focus());
+}
+
+/** F6 / Shift+F6 regions, in reading order: the connection tree, the tab strip, the view. */
+function cycleRegion(step: 1 | -1) {
+  const tree = document.querySelector<HTMLElement>("[role='tree']");
+  const strip = document.querySelector<HTMLElement>("[role='tablist'][aria-label='Abas abertas']");
+  const workspace = document.getElementById("workspace");
+  const regions = [
+    {
+      area: document.querySelector("aside"),
+      target: tree?.querySelector<HTMLElement>("[tabindex='0']") ?? null
+    },
+    {
+      area: strip,
+      target: strip?.querySelector<HTMLElement>("[role='tab'][tabindex='0']") ?? null
+    },
+    { area: workspace, target: workspace }
+  ];
+  const current = regions.findIndex(region => region.area?.contains(document.activeElement));
+  for (let offset = 1; offset <= regions.length; offset++) {
+    const index =
+      (Math.max(current, step === 1 ? -1 : 0) + step * offset + regions.length * 2) %
+      regions.length;
+    const { target } = regions[index];
+    if (target && !target.closest("[hidden]")) {
+      target.focus();
+      return;
+    }
+  }
 }
 
 /** ORDO/: the gridded name closed by the system's one diagonal. */
@@ -353,7 +563,6 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   return (
     <SqlWorkspace
       connectionId={tab.connectionId}
-      connectionName={connection.name}
       engine={connection.engine}
       defaultSchema={defaultSchemaFor(connection)}
       sql={tab.sql}

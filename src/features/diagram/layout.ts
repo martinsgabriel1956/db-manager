@@ -74,6 +74,10 @@ export async function layoutDiagram(
     // names the focusable node wrapper, which React Flow owns
     ariaLabel: `Tabela ${table.name}`,
     position: positions.get(table.name) ?? { x: 0, y: 0 },
+    // the minimap draws only nodes with known dimensions, read from these props
+    // (the canvas measures its own): without them it shows an empty frame
+    initialWidth: NODE_WIDTH,
+    initialHeight: nodeHeight(table),
     data: table
   }));
   return { nodes, edges };

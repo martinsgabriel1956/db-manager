@@ -17,6 +17,16 @@ pub enum Live {
     Redis(Box<RedisAdapter>),
 }
 
+impl Live {
+    pub async fn close(&self) {
+        match self {
+            Live::Sql(connection) => connection.close().await,
+            Live::Mongo(adapter) => adapter.close().await,
+            Live::Redis(adapter) => adapter.close(),
+        }
+    }
+}
+
 /// An open session plus the connection settings the write rules depend on.
 pub struct OpenConnection {
     pub live: Live,
@@ -51,11 +61,7 @@ impl OpenConnection {
     }
 
     pub async fn close(&self) {
-        match &self.live {
-            Live::Sql(connection) => connection.close().await,
-            Live::Mongo(adapter) => adapter.close().await,
-            Live::Redis(adapter) => adapter.close(),
-        }
+        self.live.close().await;
     }
 
     /// SQL schemas, or MongoDB databases with their collections. Redis databases

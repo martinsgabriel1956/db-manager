@@ -263,4 +263,31 @@
   --xy-controls-button-background-color: var(--popover);
   --xy-controls-button-color: var(--popover-foreground);
   --xy-controls-button-border-color: var(--border);
+  /* the minimap is a contact print of the canvas: paper, ink rule, zone-toned nodes */
+  --xy-minimap-background-color: var(--z10);
+  --xy-minimap-mask-background-color: color-mix(in oklch, var(--z9) 70%, transparent);
+  --xy-minimap-mask-stroke-color: var(--select);
+  --xy-minimap-mask-stroke-width: 2;
+  /* Z6 on paper is past 3:1 in both themes: the tables read as shapes, not as a blank frame */
+  --xy-minimap-node-background-color: var(--z6);
+  --xy-minimap-node-stroke-color: var(--z5);
+  --xy-attribution-background-color: transparent;
+}
+
+.react-flow__minimap {
+  border: 1px solid var(--foreground);
+}
+
+/* zoom controls as the rest of the system: an ink-ruled column, square, no drop shadow */
+.react-flow__controls {
+  border: 1px solid var(--foreground);
+  box-shadow: none;
+}
+
+.react-flow__controls-button {
+  border-bottom: 1px solid var(--border);
+}
+
+.react-flow__attribution a {
+  color: var(--muted-foreground);
 }
