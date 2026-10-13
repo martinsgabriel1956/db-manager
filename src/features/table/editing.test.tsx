@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
+import { useTabs } from "@/features/tabs/store";
 import type { AppError, ConnectionConfig, TableChanges, TableStructure } from "@/bindings";
 import {
   callsTo,
@@ -352,5 +353,30 @@ test("closing every tab with staged edits asks once; Voltar keeps all of them op
     expect(screen.queryByRole("tab", { name: /· users/ })).not.toBeInTheDocument()
   );
   expect(screen.queryByRole("tab", { name: "Histórico" })).not.toBeInTheDocument();
+  expect(applied(calls)).toHaveLength(0);
+});
+
+test("Ctrl+Q with staged edits asks first; the tabs stay for the next launch", async () => {
+  const calls = fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+  await editCell(user, "2", "20");
+
+  await user.keyboard("{Control>}q{/Control}");
+  const dialog = await screen.findByRole("dialog", { name: "Descartar alterações?" });
+  expect(dialog).toHaveTextContent(
+    "Postgres dev · users tem 1 alteração pendente. Sair do Ordo descarta todas"
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Voltar" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(callsTo(calls, "quit_app")).toHaveLength(0);
+  expect(cell("20")).toHaveAttribute("data-edited", "true");
+
+  await user.keyboard("{Control>}q{/Control}");
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar e sair" })
+  );
+  await waitFor(() => expect(callsTo(calls, "quit_app")).toHaveLength(1));
+  // quitting closes no tab: they are persisted and reopen on the next launch
+  expect(useTabs.getState().tabs).toMatchObject([{ kind: "table", table: "users" }]);
   expect(applied(calls)).toHaveLength(0);
 });

@@ -29,6 +29,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
         .error_handling(ErrorHandlingMode::Throw)
         .commands(collect_commands![
+            commands::app::quit_app,
             commands::connections::list_connections,
             commands::connections::save_connection,
             commands::connections::delete_connection,
@@ -78,6 +79,11 @@ pub fn run() {
     export_bindings(&builder);
 
     tauri::Builder::default()
+        // must come first: a second launch (app menu, terminal) shows the running window
+        // instead of starting another process with its own tray and connections
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main_window(app);
+        }))
         // UI state (open tabs, editor text), see src/features/tabs
         .plugin(tauri_plugin_store::Builder::new().build())
         // "save as" for exports
@@ -96,6 +102,15 @@ pub fn run() {
             });
             tray::setup(app)?;
             Ok(())
+        })
+        // the X hides the window: the app keeps running in the tray, with its connections
+        // and staged edits; "Sair" in the tray or Ctrl+Q ends it
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                // best effort: a window that cannot hide stays open, nothing is lost
+                let _ = window.hide();
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

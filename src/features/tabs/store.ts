@@ -40,6 +40,11 @@ type TabsState = {
   requestCloseTabs: (ids: string[]) => boolean;
   /** the tabs waiting for "discard staged edits?" (not persisted) */
   closeRequest: string[] | null;
+  /** quits at once (Ctrl+Q), or asks first when a table holds staged edits; true = quit now */
+  requestQuit: () => boolean;
+  /** quitting waits for "discard staged edits?" (not persisted) */
+  quitRequest: boolean;
+  cancelQuit: () => void;
   cancelClose: () => void;
   /** drops tabs of connections that no longer exist (deleted, or stale persisted state) */
   keepConnections: (connectionIds: string[]) => void;
@@ -48,6 +53,13 @@ type TabsState = {
   pending: Record<string, number>;
   setPending: (key: string, count: number) => void;
 };
+
+/** Table tabs among `tabs` holding staged edits: what closing or quitting would drop. */
+export function heldEdits(tabs: Tab[], pending: Record<string, number>): TableTab[] {
+  return tabs.filter(
+    (tab): tab is TableTab => tab.kind === "table" && (pending[tableKey(tab)] ?? 0) > 0
+  );
+}
 
 /** Identifies a table across tabs and the editing view. */
 export function tableKey(target: TableTarget): string {
@@ -152,10 +164,12 @@ export const useTabs = create<TabsState>()(
       requestCloseTabs: ids => {
         const { tabs, pending, closeTabs } = get();
         // staged edits live only in the open view: closing it would drop them silently
-        const holdsEdits = tabs.some(
-          tab => ids.includes(tab.id) && tab.kind === "table" && (pending[tableKey(tab)] ?? 0) > 0
-        );
-        if (holdsEdits) {
+        if (
+          heldEdits(
+            tabs.filter(tab => ids.includes(tab.id)),
+            pending
+          ).length > 0
+        ) {
           set({ closeRequest: ids });
           return false;
         }
@@ -164,6 +178,17 @@ export const useTabs = create<TabsState>()(
       },
       closeRequest: null,
       cancelClose: () => set({ closeRequest: null }),
+      // the tabs stay open: they are persisted and come back on the next launch
+      requestQuit: () => {
+        const { tabs, pending } = get();
+        if (heldEdits(tabs, pending).length > 0) {
+          set({ quitRequest: true });
+          return false;
+        }
+        return true;
+      },
+      quitRequest: false,
+      cancelQuit: () => set({ quitRequest: false }),
       keepConnections: connectionIds =>
         set(state => {
           const tabs = state.tabs.filter(

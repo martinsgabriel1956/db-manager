@@ -33,6 +33,6 @@ globalThis.ResizeObserver = class {
 afterEach(() => {
   cleanup();
   clearMocks();
-  useTabs.setState({ ...INITIAL_TABS, pending: {}, closeRequest: null });
+  useTabs.setState({ ...INITIAL_TABS, pending: {}, closeRequest: null, quitRequest: false });
   useExplorer.setState({ expanded: [] });
 });
