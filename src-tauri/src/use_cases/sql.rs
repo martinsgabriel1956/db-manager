@@ -344,9 +344,10 @@ pub async fn search_history(
     history: &HistoryStore,
     text: &str,
     connection_id: Option<&str>,
+    starred_only: bool,
 ) -> Result<Vec<crate::domain::HistoryEntry>, AppError> {
     history
-        .search(text.trim(), connection_id, HISTORY_PAGE)
+        .search(text.trim(), connection_id, starred_only, HISTORY_PAGE)
         .await
 }
 
@@ -580,7 +581,7 @@ mod integration_tests {
         cancel_run(&registry, "r5").await.unwrap();
 
         // every run lands in the history, failures included
-        let entries = history.search("", Some("it"), 50).await.unwrap();
+        let entries = history.search("", Some("it"), false, 50).await.unwrap();
         assert_eq!(entries.len(), 4);
         assert_eq!(entries[0].sql, "SELECT pg_sleep(30)");
         assert_eq!(entries[0].error.as_deref(), Some("query cancelada"));
@@ -649,7 +650,7 @@ mod integration_tests {
         // not recorded: it never ran
         assert!(
             history
-                .search("DELETE FROM t", None, 10)
+                .search("DELETE FROM t", None, false, 10)
                 .await
                 .unwrap()
                 .is_empty()
@@ -801,7 +802,7 @@ mod integration_tests {
                 ],
             ]
         );
-        let recorded = history.search("UPDATE", None, 10).await.unwrap();
+        let recorded = history.search("UPDATE", None, false, 10).await.unwrap();
         assert_eq!(recorded.len(), 1);
         assert!(
             recorded[0]

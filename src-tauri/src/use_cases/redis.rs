@@ -810,7 +810,7 @@ mod integration_tests {
             Err(AppError::Validation(_))
         ));
 
-        let entries = history.search("", Some("redis"), 50).await.unwrap();
+        let entries = history.search("", Some("redis"), false, 50).await.unwrap();
         assert!(
             entries
                 .iter()

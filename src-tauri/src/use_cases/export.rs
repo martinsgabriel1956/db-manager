@@ -401,7 +401,10 @@ mod integration_tests {
             Err(AppError::Validation(_))
         ));
 
-        let entries = history.search("export CSV", Some(&id), 10).await.unwrap();
+        let entries = history
+            .search("export CSV", Some(&id), false, 10)
+            .await
+            .unwrap();
         assert!(entries.iter().any(|e| e.sql.contains("people.csv")));
     }
 
@@ -507,7 +510,7 @@ mod integration_tests {
         );
 
         let entries = history
-            .search("export NDJSON", Some(&id), 10)
+            .search("export NDJSON", Some(&id), false, 10)
             .await
             .unwrap();
         assert!(entries.iter().any(|e| {

@@ -408,7 +408,7 @@ mod integration_tests {
             AggregateResponse::Executed { .. }
         ));
 
-        let recorded = history.search("", Some("mongo"), 10).await.unwrap();
+        let recorded = history.search("", Some("mongo"), false, 10).await.unwrap();
         // insert, the confirmed $out and $merge; the invalid replace never ran
         assert_eq!(recorded.len(), 3);
         assert!(
@@ -520,7 +520,7 @@ mod integration_tests {
 
         assert!(matches!(result, Err(AppError::Cancelled(_))), "{result:?}");
         assert!(registry.running("run").is_none());
-        let recorded = history.search("$function", None, 10).await.unwrap();
+        let recorded = history.search("$function", None, false, 10).await.unwrap();
         assert_eq!(recorded[0].error.as_deref(), Some("query cancelada"));
     }
 }
