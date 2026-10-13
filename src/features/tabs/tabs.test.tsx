@@ -54,20 +54,23 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
 
   // every tab names its connection, and a production one says so
   expect(tabNames()).toEqual([
-    "Postgres prod · users · produção",
-    "Postgres prod · active_users · produção",
-    "Postgres prod · SQL 1 · produção",
-    "Postgres prod · SQL 2 · produção"
+    "Postgres prod · users · produção · somente leitura",
+    "Postgres prod · active_users · produção · somente leitura",
+    "Postgres prod · SQL 1 · produção · somente leitura",
+    "Postgres prod · SQL 2 · produção · somente leitura"
   ]);
   expect(
-    screen.getByRole("tab", { name: "Postgres prod · users · produção", selected: true })
+    screen.getByRole("tab", {
+      name: "Postgres prod · users · produção · somente leitura",
+      selected: true
+    })
   ).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Fechar aba Postgres prod · users" }));
   expect(tabNames()).toEqual([
-    "Postgres prod · active_users · produção",
-    "Postgres prod · SQL 1 · produção",
-    "Postgres prod · SQL 2 · produção"
+    "Postgres prod · active_users · produção · somente leitura",
+    "Postgres prod · SQL 1 · produção · somente leitura",
+    "Postgres prod · SQL 2 · produção · somente leitura"
   ]);
 });
 
@@ -86,11 +89,14 @@ test("Ctrl+T opens an editor on the active tab's connection", async () => {
   await user.keyboard("{Control>}t{/Control}");
 
   expect(tabNames()).toEqual([
-    "Postgres prod · users · produção",
-    "Postgres prod · SQL 1 · produção"
+    "Postgres prod · users · produção · somente leitura",
+    "Postgres prod · SQL 1 · produção · somente leitura"
   ]);
   expect(
-    screen.getByRole("tab", { name: "Postgres prod · SQL 1 · produção", selected: true })
+    screen.getByRole("tab", {
+      name: "Postgres prod · SQL 1 · produção · somente leitura",
+      selected: true
+    })
   ).toBeInTheDocument();
 });
 
@@ -110,7 +116,7 @@ test("open tabs move with the arrow keys and close with Delete", async () => {
   expect(screen.getByRole("tabpanel", { name: /· active_users ·/ })).toBeInTheDocument();
 
   await user.keyboard("{Delete}");
-  expect(tabNames()).toEqual(["Postgres prod · users · produção"]);
+  expect(tabNames()).toEqual(["Postgres prod · users · produção · somente leitura"]);
   await waitFor(() => expect(screen.getByRole("tab", { name: /· users ·/ })).toHaveFocus());
 });
 
@@ -156,7 +162,10 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
   const editor = useTabs.getState().tabs.find(tab => tab.kind === "editor");
   expect(editor).toMatchObject({ connectionId: "pg-1", sql: "SELECT count(*) FROM users" });
   expect(
-    screen.getByRole("tab", { name: "Postgres prod · SQL 1 · produção", selected: true })
+    screen.getByRole("tab", {
+      name: "Postgres prod · SQL 1 · produção · somente leitura",
+      selected: true
+    })
   ).toBeInTheDocument();
 });
 
@@ -241,17 +250,22 @@ test("right click on a tab closes it, the others or every tab, and Ctrl+Shift+T 
 
   await user.pointer({
     keys: "[MouseRight]",
-    target: screen.getByRole("tab", { name: "Postgres prod · users · produção" })
+    target: screen.getByRole("tab", { name: "Postgres prod · users · produção · somente leitura" })
   });
   // the menu names the tab it acts on
-  await user.click(await screen.findByRole("menuitem", { name: "Fechar aba users" }));
-  expect(tabNames()).toEqual(["Postgres prod · active_users · produção", "Histórico"]);
+  await user.click(
+    await screen.findByRole("menuitem", { name: "Fechar aba Postgres prod · users" })
+  );
+  expect(tabNames()).toEqual([
+    "Postgres prod · active_users · produção · somente leitura",
+    "Histórico"
+  ]);
 
   await user.keyboard("{Control>}{Shift>}t{/Shift}{/Control}");
   expect(tabNames()).toEqual([
-    "Postgres prod · active_users · produção",
+    "Postgres prod · active_users · produção · somente leitura",
     "Histórico",
-    "Postgres prod · users · produção"
+    "Postgres prod · users · produção · somente leitura"
   ]);
 
   await user.pointer({

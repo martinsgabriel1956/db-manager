@@ -183,9 +183,14 @@ test("a string is saved, its TTL set, then renamed and deleted", async () => {
   expect(await screen.findByRole("heading", { name: "events" })).toBeInTheDocument();
   expect(screen.getByText("kind=login")).toBeInTheDocument();
 
+  // a double click arms and disarms: the confirmation never opens under the cursor
+  await user.dblClick(screen.getByRole("button", { name: "Excluir chave" }));
+  expect(screen.queryByRole("button", { name: "Confirmar exclusão" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Excluir chave" }));
-  // the exact command shows before the click
-  expect(screen.getByText("DEL events")).toBeInTheDocument();
+  // the exact command shows before the click, and describes the confirmation
+  expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toHaveAccessibleDescription(
+    "DEL events"
+  );
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   await waitFor(() => expect(edits(calls)[3]?.request.edits).toEqual([{ op: "delete" }]));
   expect(await screen.findByText(/^Selecione uma chave na lista/)).toBeInTheDocument();
@@ -230,7 +235,7 @@ test("on prod an edit shows the Redis command and waits for confirmation", async
   await user.type(valueInput, "Bia");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   // no SQL terminator after a Redis command
   expect(within(dialog).getByText("HSET user:1 name Bia")).toBeInTheDocument();
   await user.click(within(dialog).getByRole("button", { name: "Executar em produção" }));
@@ -320,7 +325,7 @@ test("the console runs commands, prints errors, confirms and recalls history", a
   expect(await within(log).findByText("(error) ERR unknown command 'NOPE'")).toBeInTheDocument();
 
   await user.type(input, "FLUSHDB{Enter}");
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   expect(within(dialog).getByText(/apaga todas as chaves/)).toBeInTheDocument();
   await user.click(within(dialog).getByRole("button", { name: "Executar" }));
   expect(await within(log).findByText('1) "FLUSHDB"')).toBeInTheDocument();

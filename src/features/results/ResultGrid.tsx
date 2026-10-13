@@ -35,6 +35,8 @@ type ResultGridProps = {
   editing?: GridEditing;
   /** said when Enter, F2 or a double click meets a cell that cannot be edited */
   readOnlyHint?: string;
+  /** what the grid shows, e.g. the table name */
+  label?: string;
 };
 
 const COLUMN_WIDTH = 180;
@@ -102,7 +104,8 @@ export function ResultGrid({
   selected,
   onSelect,
   editing,
-  readOnlyHint = "Esta célula não pode ser editada"
+  readOnlyHint = "Esta célula não pode ser editada",
+  label = "Resultado"
 }: ResultGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -119,8 +122,9 @@ export function ResultGrid({
       setRefusal("");
       setEditor({ row, column, text: editing.textFor(row, column) });
     } else {
-      // an edit attempt that does nothing must still say why
-      setRefusal(readOnlyHint);
+      // an edit attempt that does nothing must still say why, every time: a repeat
+      // changes the text by a space so the live region speaks again
+      setRefusal(prev => (prev === readOnlyHint ? `${readOnlyHint}\u00a0` : readOnlyHint));
     }
   }
 
@@ -238,7 +242,7 @@ export function ResultGrid({
       <div
         ref={scrollRef}
         role="grid"
-        aria-label="Resultado"
+        aria-label={label}
         // -1: the total is unknown while more rows can still load
         aria-rowcount={hasMore ? -1 : rows.length + 1}
         aria-colcount={columns.length}
@@ -246,7 +250,7 @@ export function ResultGrid({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         className={cn(
-          "relative h-full overflow-auto font-mono text-xs outline-none",
+          "relative h-full overflow-auto font-mono text-xs outline-none select-none",
           // with a cell selected, its blue outline is where focus is: one mark, not two
           !selected && "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         )}

@@ -12,6 +12,7 @@ import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
+import { useTabs } from "@/features/tabs/store";
 import { RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
@@ -32,6 +33,8 @@ type ResultsPanelProps = {
 };
 
 type WaitingPaneProps = { title: string; children: ReactNode };
+
+type ReceiptProps = { connectionId: string; confirmed: boolean; text: string | null };
 
 export function summary(state: RunState): string | null {
   if (state.status !== "rows" && state.status !== "command") {
@@ -144,6 +147,27 @@ function WaitingPane({ title, children }: WaitingPaneProps) {
   );
 }
 
+/**
+ * The receipt of a confirmed run: where it ran, then the result, then where it was recorded.
+ * The confirmation was the ritual; this closes it.
+ */
+function Receipt({ connectionId, confirmed, text }: ReceiptProps) {
+  const openHistory = useTabs(state => state.openHistory);
+  if (!confirmed) {
+    return <span>{text}</span>;
+  }
+  return (
+    <>
+      <span className="shrink-0">Confirmado e executado em</span>{" "}
+      <ConnectionContext connectionId={connectionId} />{" "}
+      <span className="text-muted-foreground">· {text} ·</span>{" "}
+      <Button size="xs" variant="link" className="h-auto px-0 underline" onClick={openHistory}>
+        Ver no histórico
+      </Button>
+    </>
+  );
+}
+
 function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsPanelProps) {
   const [selected, setSelected] = useState<SelectedCell | null>(null);
   const text = summary(state);
@@ -175,6 +199,31 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
       </WaitingPane>
     );
   }
+  if (state.status === "cancelled") {
+    if (!state.previous) {
+      return (
+        <WaitingPane title="Execução cancelada">
+          Nada rodou no banco. Execute de novo quando quiser.
+        </WaitingPane>
+      );
+    }
+    return (
+      <div className="flex h-full flex-col">
+        <p role="status" className="border-b border-foreground px-3 py-1 text-xs font-medium">
+          Execução cancelada · nada rodou no banco. Abaixo, o resultado anterior.
+        </p>
+        <div className="min-h-0 flex-1">
+          <ResultsPanel
+            connectionId={connectionId}
+            sql={sql}
+            state={state.previous}
+            engine={engine}
+            onLoadMore={onLoadMore}
+          />
+        </div>
+      </div>
+    );
+  }
   if (state.status === "error") {
     return (
       <p role="alert" className="p-3 font-mono text-sm whitespace-pre-wrap text-destructive">
@@ -184,9 +233,9 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
   }
   if (state.status === "command") {
     return (
-      <p role="status" className="p-3 text-sm">
-        {text}
-      </p>
+      <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 p-3 text-sm">
+        <Receipt connectionId={connectionId} confirmed={state.confirmed} text={text} />
+      </div>
     );
   }
 
@@ -194,9 +243,12 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b bg-muted px-3 py-1">
-        <p role="status" className="text-xs text-muted-foreground">
-          {text}
-        </p>
+        <div
+          role="status"
+          className={`flex min-w-0 items-center gap-2 text-xs ${state.confirmed ? "" : "text-muted-foreground"}`}
+        >
+          <Receipt connectionId={connectionId} confirmed={state.confirmed} text={text} />
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <CopyRowsMenu
             columns={state.columns}
@@ -234,6 +286,7 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
             onLoadMore={onLoadMore}
             selected={selected}
             onSelect={setSelected}
+            label="Resultado da query"
             readOnlyHint="Resultado de query: somente leitura; para editar, abra a tabela"
           />
         </div>

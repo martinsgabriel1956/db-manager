@@ -90,6 +90,8 @@ export function TabBar({ connections }: TabBarProps) {
 
   const stripRef = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
+  /** tabs hidden past the left edge: the first visible one fades out instead of cutting mid-word */
+  const [clippedStart, setClippedStart] = useState(false);
 
   // the strip clips tabs past its edge: measure it whenever the tabs or the window change
   useLayoutEffect(() => {
@@ -151,7 +153,11 @@ export function TabBar({ connections }: TabBarProps) {
         ref={stripRef}
         role="tablist"
         aria-label="Abas abertas"
-        className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]"
+        onScroll={event => setClippedStart(event.currentTarget.scrollLeft > 0)}
+        className={cn(
+          "flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]",
+          clippedStart && "[mask-image:linear-gradient(to_right,transparent,black_32px)]"
+        )}
       >
         {tabs.map((tab, index) => {
           const label = tabLabel(tab, connections);
@@ -165,6 +171,7 @@ export function TabBar({ connections }: TabBarProps) {
           const accessibleName = [
             label,
             isProd ? " · produção" : "",
+            connection?.readOnly ? " · somente leitura" : "",
             staged > 0
               ? ` (${staged} ${staged === 1 ? "alteração pendente" : "alterações pendentes"})`
               : ""
@@ -261,7 +268,7 @@ export function TabBar({ connections }: TabBarProps) {
                 }}
               >
                 <ContextMenuItem onSelect={() => requestClose(tab.id)}>
-                  <X /> Fechar aba <span className="min-w-0 truncate font-semibold">{title}</span>
+                  <X /> Fechar aba <span className="min-w-0 truncate font-semibold">{label}</span>
                 </ContextMenuItem>
                 {/* pl-8: in line with the labels that follow an icon */}
                 <ContextMenuItem

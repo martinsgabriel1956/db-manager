@@ -184,7 +184,7 @@ test("delete asks first; on prod the statement is confirmed", async () => {
     screen.getByText('deleteOne({"_id": {"$oid":"65a1b2c3d4e5f60718293a4c"}})')
   ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
-  expect(await screen.findByRole("dialog")).toHaveTextContent("deleteOne");
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent("deleteOne");
   await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
   await waitFor(() => expect(callsTo(calls, "write_document")).toHaveLength(2));
@@ -247,7 +247,7 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
 
   setPipeline('[{"$out": "copy"}]');
   await user.click(within(panel).getByRole("button", { name: "Executar" }));
-  expect(await screen.findByRole("dialog")).toHaveTextContent("$out substitui a coleção");
+  expect(await screen.findByRole("alertdialog")).toHaveTextContent("$out substitui a coleção");
   await user.click(screen.getByRole("button", { name: "Executar mesmo assim" }));
   await waitFor(() =>
     expect(

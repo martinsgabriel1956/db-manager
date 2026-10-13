@@ -295,7 +295,7 @@ export function App() {
               className="grid justify-items-center gap-1 border-b border-foreground bg-background py-2"
             >
               <RailButton
-                label="Ir para tabela… (Ctrl K)"
+                label="Ir para… (Ctrl K)"
                 keys="Control+K Control+P"
                 onClick={() => openPalette()}
               >
@@ -379,7 +379,7 @@ export function App() {
                 aria-keyshortcuts="Control+K Control+P"
                 onClick={() => openPalette()}
               >
-                <Search /> Ir para tabela…
+                <Search /> Ir para…
                 <kbd className="ml-auto font-mono text-[11px] text-muted-foreground">Ctrl K</kbd>
               </Button>
               <div className="grid grid-cols-2 gap-px">
@@ -463,7 +463,9 @@ export function App() {
                   role="tabpanel"
                   id={tabPanelId(tab.id)}
                   aria-labelledby={tabElementId(tab.id)}
-                  className={cn("absolute inset-0", tab.id !== activeId && "hidden")}
+                  data-view
+                  tabIndex={-1}
+                  className={cn("absolute inset-0 outline-none", tab.id !== activeId && "hidden")}
                 >
                   <TabContent tab={tab} connections={list} onOpenInEditor={openInEditor} />
                 </div>
@@ -517,14 +519,14 @@ function EmptyWorkspace({
         {/* the palette lists tables only of open connections: until one is open, offer to open one */}
         {hasConnections && anyConnectionOpen && (
           <Button onClick={() => onSearch()}>
-            <Search /> Ir para tabela
+            <Search /> Ir para…
             <kbd className="ml-1 font-mono text-[11px] opacity-70">Ctrl K</kbd>
           </Button>
         )}
         {hasConnections && !anyConnectionOpen && (
           <Button onClick={() => onSearch("abrir conexão")}>
+            {/* not Ctrl K: this opens the same sheet already filtered to the connections */}
             <Search /> Abrir uma conexão
-            <kbd className="ml-1 font-mono text-[11px] opacity-70">Ctrl K</kbd>
           </Button>
         )}
         {!hasConnections && (
@@ -569,7 +571,9 @@ function RailButton({ label, keys, onClick, children }: RailButtonProps) {
 
 /**
  * F6 / Shift+F6 regions, in reading order: the sidebar (its tree, or the first tool
- * when collapsed), the tab strip, the view.
+ * when collapsed), the tab strip, the view. The view is entered at its primary surface
+ * (the grid, the editor), or at the panel itself so the next Tab goes into the view and
+ * not back to the strip around it.
  */
 function cycleRegion(step: 1 | -1) {
   const aside = document.querySelector<HTMLElement>("aside");
@@ -589,7 +593,7 @@ function cycleRegion(step: 1 | -1) {
       area: strip,
       target: strip?.querySelector<HTMLElement>("[role='tab'][tabindex='0']") ?? null
     },
-    { area: workspace, target: workspace }
+    { area: workspace, target: viewTarget(workspace) }
   ];
   const current = regions.findIndex(region => region.area?.contains(document.activeElement));
   for (let offset = 1; offset <= regions.length; offset++) {
@@ -602,6 +606,14 @@ function cycleRegion(step: 1 | -1) {
       return;
     }
   }
+}
+
+function viewTarget(workspace: HTMLElement | null): HTMLElement | null {
+  const panel = workspace?.querySelector<HTMLElement>("[data-view]:not(.hidden)");
+  if (!panel || panel.closest("[hidden]")) {
+    return workspace;
+  }
+  return panel.querySelector<HTMLElement>("[role='grid'], .cm-content") ?? panel;
 }
 
 /**

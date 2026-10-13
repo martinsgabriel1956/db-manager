@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import type { KeyDetail, KeyEdit, StreamEntry } from "@/bindings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
 import { Input } from "@/components/ui/input";
 import { EntryTable, RedisTextView } from "@/features/redis/EntryTable";
 import { entriesOf, isCollection, removeEdit, saveEdits } from "@/features/redis/entries";
@@ -217,37 +218,26 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
               </Button>
             </>
           )}
-          {confirmingDelete ? (
-            <span className="ml-auto flex min-w-0 items-center gap-2">
-              {/* the exact command before the click, as everywhere else */}
-              <code className="min-w-0 truncate border border-foreground bg-background px-1.5 font-mono text-xs leading-6">
-                DEL {detail.key}
-              </code>
-              {/* focused so Enter confirms; leaving it or Escape disarms the delete */}
-              <Button
-                size="xs"
-                variant="destructive"
-                className="shrink-0"
-                autoFocus
-                disabled={pending}
-                onClick={() => onSubmit([{ op: "delete" }], onDeleted)}
-                onBlur={() => setConfirmingDelete(false)}
-                onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
-              >
-                Confirmar exclusão
-              </Button>
-            </span>
-          ) : (
-            <Button
-              size="xs"
-              variant="outline"
-              className="ml-auto text-destructive"
-              onClick={() => setConfirmingDelete(true)}
-            >
-              <Trash2 /> Excluir chave
-            </Button>
-          )}
+          {/* stays put while armed: a second click disarms instead of confirming */}
+          <Button
+            size="xs"
+            variant="outline"
+            className="ml-auto text-destructive"
+            aria-expanded={confirmingDelete}
+            onMouseDown={keepArmedFocus(confirmingDelete)}
+            onClick={() => setConfirmingDelete(armed => !armed)}
+          >
+            <Trash2 /> Excluir chave
+          </Button>
         </div>
+      )}
+      {!readOnly && confirmingDelete && (
+        <DeleteStrip
+          command={`DEL ${detail.key}`}
+          pending={pending}
+          onConfirm={() => onSubmit([{ op: "delete" }], onDeleted)}
+          onDisarm={() => setConfirmingDelete(false)}
+        />
       )}
     </div>
   );

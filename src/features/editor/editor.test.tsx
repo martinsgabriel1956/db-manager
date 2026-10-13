@@ -260,7 +260,7 @@ test("destructive scripts wait for confirmation and run only after it", async ()
   renderWorkspace("DELETE FROM t");
 
   await user.click(screen.getByRole("button", { name: "Executar" }));
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   expect(dialog).toHaveTextContent("Comando destrutivo: DELETE sem WHERE");
   expect(dialog).toHaveTextContent("DELETE FROM t;");
 
@@ -268,30 +268,47 @@ test("destructive scripts wait for confirmation and run only after it", async ()
   expect(dialog).toHaveTextContent("Postgres prod");
   await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
-  expect(await screen.findByRole("status")).toHaveTextContent("7 linhas afetadas");
+  const receipt = await screen.findByRole("status");
+  expect(receipt).toHaveTextContent("7 linhas afetadas");
+  // a confirmed run closes with where it ran and where it was recorded
+  expect(receipt).toHaveTextContent(
+    /^Confirmado e executado em Postgres prod.* · Comando executado · 7 linhas afetadas · 4 ms · Ver no histórico$/
+  );
+  expect(screen.getByRole("button", { name: "Ver no histórico" })).toBeInTheDocument();
   const runs = callsTo(calls, "run_script") as { confirmed: boolean; sql: string }[];
   expect(runs.map(run => run.confirmed)).toEqual([false, true]);
   expect(runs[1].sql).toBe("DELETE FROM t");
 });
 
-test("dismissing the confirmation runs nothing", async () => {
+test("dismissing the confirmation runs nothing and keeps the previous result", async () => {
   const calls = fakeBackend([prodPostgres], {
-    run_script: () => ({
-      status: "needsConfirmation",
-      confirmation: {
-        reason: "Conexão de produção: confirme antes de escrever",
-        statements: ["UPDATE t SET a = 1 WHERE id = 1"]
-      }
-    })
+    run_script: args =>
+      (args as { sql: string }).sql.startsWith("SELECT")
+        ? executed(rowsOutcome)
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Conexão de produção: confirme antes de escrever",
+              statements: ["UPDATE t SET a = 1 WHERE id = 1"]
+            }
+          }
   });
   const user = userEvent.setup();
-  renderWorkspace("UPDATE t SET a = 1 WHERE id = 1");
-
+  renderWorkspace("SELECT 1 AS n");
   await user.click(screen.getByRole("button", { name: "Executar" }));
-  await screen.findByRole("dialog");
+  expect(await screen.findByRole("gridcell")).toHaveTextContent("1");
+
+  act(() =>
+    editorView().dispatch({
+      changes: { from: 0, to: 13, insert: "UPDATE t SET a = 1 WHERE id = 1" }
+    })
+  );
+  await user.click(screen.getByRole("button", { name: "Executar" }));
+  await screen.findByRole("alertdialog");
   await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  expect(callsTo(calls, "run_script")).toHaveLength(1);
-  expect(screen.getByText("Execute uma query para ver o resultado.")).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  expect(callsTo(calls, "run_script")).toHaveLength(2);
+  expect(screen.getByText(/^Execução cancelada · nada rodou no banco/)).toBeInTheDocument();
+  expect(screen.getByRole("gridcell")).toHaveTextContent("1");
 });

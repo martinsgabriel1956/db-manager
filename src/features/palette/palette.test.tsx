@@ -28,7 +28,10 @@ test("Ctrl+K goes to a table of an open connection and never connects on its own
 
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(
-    screen.getByRole("tab", { name: "Postgres prod · active_users · produção", selected: true })
+    screen.getByRole("tab", {
+      name: "Postgres prod · active_users · produção · somente leitura",
+      selected: true
+    })
   ).toBeInTheDocument();
   expect(callsTo(calls, "connect_database").length).toBeGreaterThanOrEqual(connectsBefore);
   expect(callsTo(calls, "list_schemas")).not.toContainEqual({ connectionId: "pg-dev" });
@@ -39,7 +42,7 @@ test("the palette moves with the arrows, opens actions and says when nothing mat
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Ir para tabela/ }));
+  await user.click(await screen.findByRole("button", { name: /^Ir para…/ }));
   const input = await screen.findByRole("combobox");
   await user.type(input, "zzz");
   expect(screen.getByText("Nada encontrado para “zzz”.")).toBeInTheDocument();
@@ -163,8 +166,11 @@ test("F6 cycles tree, tabs and view; Ctrl+Tab moves between tabs; Ctrl+S saves s
 
   await user.keyboard("{F6}");
   expect(screen.getByRole("tab", { name: /· active_users/, selected: true })).toHaveFocus();
+  // the view is entered at its grid, not at the strip around it
   await user.keyboard("{F6}");
-  expect(document.getElementById("workspace")).toHaveFocus();
+  expect(
+    within(screen.getByRole("tabpanel", { name: /· active_users/ })).getByRole("grid")
+  ).toHaveFocus();
   await user.keyboard("{Shift>}{F6}{/Shift}");
   expect(screen.getByRole("tab", { name: /· active_users/ })).toHaveFocus();
 
