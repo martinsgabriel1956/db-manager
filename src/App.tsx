@@ -237,11 +237,14 @@ export function App() {
         >
           <div
             className={cn(
-              "flex h-14 shrink-0 items-center border-b border-foreground bg-background",
-              collapsed ? "justify-center" : "justify-between gap-2 pr-2 pl-4"
+              "flex shrink-0 border-b border-foreground bg-background",
+              // collapsed: the mark on top, the expand button under it (48px fits only one)
+              collapsed
+                ? "flex-col items-center gap-1 py-2.5"
+                : "h-14 items-center justify-between gap-2 pr-2 pl-4"
             )}
           >
-            {!collapsed && <Wordmark />}
+            {collapsed ? <Mark /> : <Wordmark />}
             <Button
               size="icon-sm"
               variant="ghost"
@@ -505,6 +508,31 @@ function cycleRegion(step: 1 | -1) {
       return;
     }
   }
+}
+
+/** The app icon's mark for the collapsed sidebar: the square O and its blue corner cut. */
+function Mark() {
+  return (
+    <svg role="img" aria-label="Ordo" viewBox="0 0 1024 1024" className="size-8">
+      <polygon points="800,48 976,48 976,224" className="fill-select" />
+      <rect
+        x="48"
+        y="48"
+        width="928"
+        height="928"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="48"
+      />
+      <path
+        d="M384 288H640L736 384V640L640 736H384L288 640V384Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="112"
+        strokeLinejoin="miter"
+      />
+    </svg>
+  );
 }
 
 /** ORDO/: the gridded name closed by the system's one diagonal. */
