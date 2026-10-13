@@ -66,7 +66,9 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
       {/* the same view header as tables: the schema is an identifier, so it keeps its case */}
       <div className="flex items-center gap-4 border-b border-foreground bg-background px-4">
         <h2 className="flex min-w-0 shrink-0 items-baseline py-2">
-          <span className="font-mono text-xs text-muted-foreground">ER ·&nbsp;</span>
+          {/* "ER" is a title, not data: lettered like "SQL" in the editor's header */}
+          <span className="display-caps text-[1.75rem] leading-[1.15]">ER</span>
+          <span className="text-muted-foreground">&nbsp;·&nbsp;</span>
           <span className="display text-[1.75rem] leading-[1.15]">{schema}</span>
         </h2>
         <p className="min-w-0 truncate text-xs text-muted-foreground">
@@ -87,6 +89,8 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
           minZoom={0.05}
           fitView
           colorMode="system"
+          // the diagram is part of Ordo's own drawing; the library is credited in the README
+          proOptions={{ hideAttribution: true }}
           onNodeDoubleClick={(_, node) => onOpenTable({ connectionId, schema, table: node.id })}
           onKeyDown={event => {
             // React Flow has no node key handler; nodes are focusable wrappers with data-id

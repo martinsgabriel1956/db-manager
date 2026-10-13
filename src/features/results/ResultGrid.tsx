@@ -116,6 +116,8 @@ export function ResultGrid({
   const cellId = (cell: SelectedCell) => `${cellIdPrefix}-${cell.row}-${cell.column}`;
 
   const [refusal, setRefusal] = useState("");
+  // the refusal speaks of the cell it was asked of: moving on clears it
+  useEffect(() => setRefusal(""), [selected?.row, selected?.column]);
 
   function startEditing(row: number, column: number) {
     if (editing?.canEdit(row, column)) {
@@ -234,9 +236,17 @@ export function ResultGrid({
   const width = columns.length * COLUMN_WIDTH;
 
   return (
-    <>
-      {/* a polite live region, not a status landmark: the results bar owns that role */}
-      <p aria-live="polite" className="sr-only">
+    <div className="relative h-full">
+      {/* a polite live region, not a status landmark: the results bar owns that role. Shown
+          too, over the grid's corner in the "retido" dotted outline, until the selection moves */}
+      <p
+        aria-live="polite"
+        className={
+          refusal
+            ? "pointer-events-none absolute bottom-2 left-2 z-20 max-w-[calc(100%-1rem)] border border-dotted border-foreground bg-background px-2 py-1 text-xs"
+            : "sr-only"
+        }
+      >
         {refusal}
       </p>
       <div
@@ -414,6 +424,6 @@ export function ResultGrid({
           <p className="p-2 font-sans text-muted-foreground">Carregando mais linhas…</p>
         )}
       </div>
-    </>
+    </div>
   );
 }

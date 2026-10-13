@@ -186,6 +186,11 @@ test("a string is saved, its TTL set, then renamed and deleted", async () => {
   // a double click arms and disarms: the confirmation never opens under the cursor
   await user.dblClick(screen.getByRole("button", { name: "Excluir chave" }));
   expect(screen.queryByRole("button", { name: "Confirmar exclusão" })).not.toBeInTheDocument();
+  // Escape disarms and hands focus back to the trigger, not to the page
+  await user.click(screen.getByRole("button", { name: "Excluir chave" }));
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("button", { name: "Confirmar exclusão" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Excluir chave" })).toHaveFocus();
   await user.click(screen.getByRole("button", { name: "Excluir chave" }));
   // the exact command shows before the click, and describes the confirmation
   expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toHaveAccessibleDescription(

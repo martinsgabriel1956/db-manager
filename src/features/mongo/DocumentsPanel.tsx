@@ -45,9 +45,9 @@ const FIELD_LABEL: Record<keyof Query, string> = {
 /** examples, never mistaken for an applied value */
 const PLACEHOLDER: Record<keyof Query, string> = {
   filter: 'ex.: {"ativo": true}',
-  // short: these two fields are the narrow ones at the minimum window
-  sort: '{"_id":-1}',
-  projection: '{"nome":1}'
+  // "ex.:" keeps an example from reading as an applied value; short enough for 960px
+  sort: 'ex.: {"_id":-1}',
+  projection: 'ex.: {"nome":1}'
 };
 
 export function DocumentsPanel({
@@ -123,8 +123,9 @@ export function DocumentsPanel({
       <form onSubmit={apply} className="grid gap-2 border-b bg-muted px-3 py-2">
         <div className="grid grid-cols-[2fr_1fr_1fr_auto] items-end gap-2">
           {(Object.keys(FIELD_LABEL) as (keyof Query)[]).map(field => (
-            <label key={field} className="grid gap-1.5 legend text-muted-foreground">
-              {FIELD_LABEL[field]}
+            // the legend styles only the label's words: the field inside holds a value, in ink
+            <label key={field} className="grid gap-1.5">
+              <span className="legend text-muted-foreground">{FIELD_LABEL[field]}</span>
               <Input
                 aria-label={FIELD_LABEL[field]}
                 aria-invalid={invalid.includes(field) || undefined}
