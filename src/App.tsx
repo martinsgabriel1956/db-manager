@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -10,6 +10,7 @@ import {
   TriangleAlert
 } from "lucide-react";
 import { commands, type ConnectionConfig } from "@/bindings";
+import { CloseWindowDialog } from "@/components/CloseWindowDialog";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
 import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
@@ -61,6 +62,7 @@ export function App() {
     keepConnections,
     requestClose,
     requestQuit,
+    reopenClosed,
     activate
   } = useTabs();
   const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
@@ -116,14 +118,18 @@ export function App() {
         const next = tabs[(index + (event.shiftKey ? -1 : 1) + tabs.length) % tabs.length];
         activate(next.id);
         focusTabSoon(next.id);
+      } else if (key === "t" && event.shiftKey && !form) {
+        // the tab closed last, editor text included (also in the tab's right-click menu)
+        event.preventDefault();
+        if (reopenClosed()) {
+          requestAnimationFrame(focusActiveTab);
+        }
       } else if (event.shiftKey) {
         return;
       } else if (key === "q") {
         // closing the window only hides it: this is how the app ends from the keyboard
         event.preventDefault();
-        if (requestQuit()) {
-          void commands.quitApp();
-        }
+        quit();
       } else if (key === "k" || key === "p") {
         event.preventDefault();
         openPalette();
@@ -142,7 +148,24 @@ export function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [form, tabs, activeId, requestClose, requestQuit, activate, editorConnectionId, openEditor]);
+  }, [
+    form,
+    tabs,
+    activeId,
+    requestClose,
+    requestQuit,
+    reopenClosed,
+    activate,
+    editorConnectionId,
+    openEditor
+  ]);
+
+  /** Ctrl+Q and "Sair do Ordo": staged edits are asked about first. */
+  function quit() {
+    if (requestQuit()) {
+      void commands.quitApp();
+    }
+  }
 
   function showTabs() {
     setForm(null);
@@ -237,6 +260,7 @@ export function App() {
       <div className="flex min-h-0 flex-1">
         {/* 240px at the 960px minimum, 288px from 1100px: the grid keeps room for data */}
         <aside
+          aria-label="Conexões"
           className={cn(
             "flex shrink-0 flex-col border-r border-foreground grid-paper",
             collapsed ? "w-12" : "w-60 min-[1100px]:w-72"
@@ -264,6 +288,36 @@ export function App() {
               {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
             </Button>
           </div>
+          {/* collapsed, the tools stay one click away as icons, named aloud and on hover */}
+          {collapsed && (
+            <nav
+              aria-label="Ferramentas"
+              className="grid justify-items-center gap-1 border-b border-foreground bg-background py-2"
+            >
+              <RailButton
+                label="Ir para tabela… (Ctrl K)"
+                keys="Control+K Control+P"
+                onClick={() => openPalette()}
+              >
+                <Search />
+              </RailButton>
+              <RailButton label="Nova conexão" onClick={createConnection}>
+                <Plus />
+              </RailButton>
+              <RailButton
+                label="Histórico"
+                onClick={() => {
+                  showTabs();
+                  openHistory();
+                }}
+              >
+                <History />
+              </RailButton>
+              <RailButton label="Legenda" onClick={() => setLegendOpen(true)}>
+                <BookOpen />
+              </RailButton>
+            </nav>
+          )}
           {/* hidden, not unmounted, so the tree keeps its expanded nodes; the attribute keeps F6 out */}
           <div className={cn("contents", collapsed && "hidden")} hidden={collapsed}>
             {/* the brand and this header stay put; only the ledger scrolls */}
@@ -423,10 +477,12 @@ export function App() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         connections={list}
+        activeConnectionId={tabConnectionId}
         initialQuery={paletteQuery}
         onSelect={openFromPalette}
       />
       <LegendDialog open={legendOpen} onOpenChange={setLegendOpen} />
+      <CloseWindowDialog onQuit={quit} />
     </div>
   );
 }
@@ -488,15 +544,46 @@ function focusTabSoon(tabId: string) {
   requestAnimationFrame(() => document.getElementById(tabElementId(tabId))?.focus());
 }
 
-/** F6 / Shift+F6 regions, in reading order: the connection tree, the tab strip, the view. */
+type RailButtonProps = {
+  label: string;
+  keys?: string;
+  onClick: () => void;
+  children: ReactNode;
+};
+
+/** An icon-only tool of the collapsed sidebar: the name is spoken and shown on hover. */
+function RailButton({ label, keys, onClick, children }: RailButtonProps) {
+  return (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      aria-label={label}
+      aria-keyshortcuts={keys}
+      title={label}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+}
+
+/**
+ * F6 / Shift+F6 regions, in reading order: the sidebar (its tree, or the first tool
+ * when collapsed), the tab strip, the view.
+ */
 function cycleRegion(step: 1 | -1) {
+  const aside = document.querySelector<HTMLElement>("aside");
   const tree = document.querySelector<HTMLElement>("[role='tree']");
   const strip = document.querySelector<HTMLElement>("[role='tablist'][aria-label='Abas abertas']");
   const workspace = document.getElementById("workspace");
+  const treeRow = tree?.querySelector<HTMLElement>("[tabindex='0']") ?? null;
   const regions = [
     {
-      area: document.querySelector("aside"),
-      target: tree?.querySelector<HTMLElement>("[tabindex='0']") ?? null
+      area: aside,
+      target:
+        treeRow && !treeRow.closest("[hidden]")
+          ? treeRow
+          : (aside?.querySelector<HTMLElement>("nav button") ?? null)
     },
     {
       area: strip,
@@ -517,25 +604,21 @@ function cycleRegion(step: 1 | -1) {
   }
 }
 
-/** The app icon's mark for the collapsed sidebar: the square O and its blue corner cut. */
+/**
+ * The mark for the collapsed sidebar, drawn like the tray's (src-tauri/icons/tray.svg):
+ * at 32px the app icon's corner cut is 5px and gets lost, the tray's larger O and
+ * corner were made for this size.
+ */
 function Mark() {
   return (
-    <svg role="img" aria-label="Ordo" viewBox="0 0 1024 1024" className="size-8">
-      <polygon points="800,48 976,48 976,224" className="fill-select" />
-      <rect
-        x="48"
-        y="48"
-        width="928"
-        height="928"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="48"
-      />
+    <svg role="img" aria-label="Ordo" viewBox="0 0 64 64" className="size-8">
+      <polygon points="46,0 64,0 64,18" className="fill-select" />
+      <rect x="2" y="2" width="60" height="60" fill="none" stroke="currentColor" strokeWidth="4" />
       <path
-        d="M384 288H640L736 384V640L640 736H384L288 640V384Z"
+        d="M25 17H39L47 25V39L39 47H25L17 39V25Z"
         fill="none"
         stroke="currentColor"
-        strokeWidth="112"
+        strokeWidth="8"
         strokeLinejoin="miter"
       />
     </svg>

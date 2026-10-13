@@ -62,7 +62,7 @@ pub struct Cursor {
 
 impl Cursor {
     pub async fn next(&self) -> Result<BatchRead, AppError> {
-        let expired = || AppError::not_found("resultado (já foi fechado)");
+        let expired = || AppError::result_closed();
         let (reply, response) = oneshot::channel();
         self.requests.send(reply).await.map_err(|_| expired())?;
         response.await.map_err(|_| expired())?

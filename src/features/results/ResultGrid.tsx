@@ -245,7 +245,11 @@ export function ResultGrid({
         aria-activedescendant={selected && !editor ? cellId(selected) : undefined}
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className="relative h-full overflow-auto font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className={cn(
+          "relative h-full overflow-auto font-mono text-xs outline-none",
+          // with a cell selected, its blue outline is where focus is: one mark, not two
+          !selected && "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        )}
       >
         <div
           ref={headerRef}

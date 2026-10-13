@@ -12,7 +12,8 @@ function DropdownMenuTrigger({
   return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
 }
 
-/** A sheet of paper with an ink rule, like every popover in the system: no radius, no blur. */
+/** A sheet of paper with an ink rule, like every popover in the system: no radius, no blur,
+ * no shadow (the dialog's sheet is the only one). */
 function DropdownMenuContent({
   className,
   sideOffset = 2,
@@ -24,7 +25,7 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-44 border border-foreground bg-popover py-1 text-[13px] text-popover-foreground shadow-[0_18px_40px_-16px_rgb(0_0_0/0.45)]",
+          "z-50 min-w-44 border border-foreground bg-popover py-1 text-[13px] text-popover-foreground",
           className
         )}
         {...props}

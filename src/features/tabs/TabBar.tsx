@@ -1,10 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronDown, Database, History, Network, SquareTerminal, Table2, X } from "lucide-react";
+import {
+  ChevronDown,
+  Database,
+  History,
+  Network,
+  RotateCcw,
+  SquareTerminal,
+  Table2,
+  X
+} from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu";
 import {
@@ -62,7 +72,16 @@ export function tabPanelId(tabId: string): string {
 }
 
 export function TabBar({ connections }: TabBarProps) {
-  const { tabs, activeId, activate, requestClose, requestCloseTabs, pending } = useTabs();
+  const {
+    tabs,
+    activeId,
+    activate,
+    requestClose,
+    requestCloseTabs,
+    reopenClosed,
+    closed,
+    pending
+  } = useTabs();
   // one connection open: the view header names it, so the tabs drop the repeated prefix
   const connectionIds = new Set(
     tabs.flatMap(tab => (tab.kind === "history" ? [] : [tab.connectionId]))
@@ -85,14 +104,17 @@ export function TabBar({ connections }: TabBarProps) {
   }, [tabs.length]);
 
   // a new or reactivated tab may sit past the strip's edge; "Todas as abas" appearing
-  // narrows the strip, so scroll again once it does
+  // narrows the strip, and a Δ appearing widens the tab, so scroll again after either.
+  // The whole tab comes into view, its Δ and × included, not only the button that names it.
+  const activeTab = tabs.find(tab => tab.id === activeId);
+  const activeStaged = activeTab?.kind === "table" ? (pending[tableKey(activeTab)] ?? 0) : 0;
   useEffect(() => {
     if (activeId) {
       document
         .getElementById(tabElementId(activeId))
-        ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+        ?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
-  }, [activeId, overflowing]);
+  }, [activeId, overflowing, activeStaged]);
 
   function focusTab(index: number) {
     const tab = tabs[(index + tabs.length) % tabs.length];
@@ -155,6 +177,9 @@ export function TabBar({ connections }: TabBarProps) {
                   role="presentation"
                   className={cn(
                     "group flex shrink-0 items-center border-r text-sm",
+                    // the tab a right click acts on stays marked while its menu is open
+                    !isActive &&
+                      "data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-[inset_0_0_0_1px_var(--foreground)]",
                     isActive
                       ? // the system's one diagonal: the active tab's corner is cut in blue
                         "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
@@ -176,6 +201,8 @@ export function TabBar({ connections }: TabBarProps) {
                     role="tab"
                     id={tabElementId(tab.id)}
                     aria-label={accessibleName}
+                    // the whole name on hover, when the strip truncates it
+                    title={accessibleName}
                     aria-selected={isActive}
                     aria-controls={tabPanelId(tab.id)}
                     aria-keyshortcuts="Delete"
@@ -191,7 +218,8 @@ export function TabBar({ connections }: TabBarProps) {
                     <Icon className="size-3.5 shrink-0" />
                     {/* the connection gives way first, so the table name stays readable */}
                     {connection && showConnection && (
-                      <span className="max-w-20 min-w-0 shrink-[2] truncate font-normal">
+                      // room for "Postgres prod": two names that share a prefix still part
+                      <span className="max-w-28 min-w-0 shrink-[2] truncate font-normal">
                         {connection.name} ·
                       </span>
                     )}
@@ -221,6 +249,7 @@ export function TabBar({ connections }: TabBarProps) {
                 </div>
               </ContextMenuTrigger>
               <ContextMenuContent
+                className="max-w-80"
                 // the tab that opened the menu may be gone: land on whichever tab is active now
                 onCloseAutoFocus={event => {
                   event.preventDefault();
@@ -232,10 +261,28 @@ export function TabBar({ connections }: TabBarProps) {
                 }}
               >
                 <ContextMenuItem onSelect={() => requestClose(tab.id)}>
-                  <X /> Fechar aba
+                  <X /> Fechar aba <span className="min-w-0 truncate font-semibold">{title}</span>
                 </ContextMenuItem>
-                <ContextMenuItem onSelect={() => requestCloseTabs(tabs.map(open => open.id))}>
+                {/* pl-8: in line with the labels that follow an icon */}
+                <ContextMenuItem
+                  className="pl-8"
+                  disabled={tabs.length === 1}
+                  onSelect={() =>
+                    requestCloseTabs(tabs.filter(open => open.id !== tab.id).map(open => open.id))
+                  }
+                >
+                  Fechar outras abas
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="pl-8"
+                  onSelect={() => requestCloseTabs(tabs.map(open => open.id))}
+                >
                   Fechar todas as abas ({tabs.length})
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem disabled={closed.length === 0} onSelect={reopenClosed}>
+                  <RotateCcw /> Reabrir aba fechada
+                  <kbd className="ml-auto pl-4 font-mono text-[11px] opacity-70">Ctrl Shift T</kbd>
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
@@ -254,16 +301,39 @@ export function TabBar({ connections }: TabBarProps) {
               <ChevronDown className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
-            {tabs.map(tab => (
-              <DropdownMenuItem
-                key={tab.id}
-                onSelect={() => activate(tab.id)}
-                className={cn(tab.id === activeId && "font-semibold")}
-              >
-                {tabLabel(tab, connections)}
-              </DropdownMenuItem>
-            ))}
+          <DropdownMenuContent align="end" className="max-h-80 max-w-96 overflow-y-auto">
+            {tabs.map(tab => {
+              const { connection, title } = tabParts(tab, connections);
+              const Icon = ICON[tab.kind];
+              const isActive = tab.id === activeId;
+              const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
+              return (
+                // the same marks as the strip: blue rule where you are, PROD, Δ
+                <DropdownMenuItem
+                  key={tab.id}
+                  onSelect={() => activate(tab.id)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(isActive && "font-semibold shadow-[inset_3px_0_0_var(--select)]")}
+                >
+                  <Icon />
+                  {connection && (
+                    <span className="max-w-32 min-w-0 shrink-[2] truncate font-normal">
+                      {connection.name} ·
+                    </span>
+                  )}
+                  <span className="min-w-0 truncate">{title}</span>
+                  {connection?.environment === "prod" && <EnvTag environment="prod" />}
+                  {staged > 0 && (
+                    <span className="ml-auto h-[18px] shrink-0 bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background">
+                      <span className="sr-only">
+                        {staged === 1 ? "1 alteração pendente" : `${staged} alterações pendentes`}
+                      </span>
+                      <span aria-hidden>Δ {staged}</span>
+                    </span>
+                  )}
+                </DropdownMenuItem>
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

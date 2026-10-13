@@ -56,6 +56,8 @@ type ConnectionNodeProps = TreeActions & { connection: ConnectionConfig };
 type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   connectionId: string;
   schema: SchemaInfo;
+  /** what the count names: MongoDB lists collections */
+  isMongo: boolean;
   openByDefault: boolean;
   /** SQL only: MongoDB has no foreign keys */
   onOpenDiagram?: (target: DiagramTarget) => void;
@@ -201,8 +203,11 @@ function RowMenu({ label, actions, open, onOpenChange, rowRef, className }: RowM
         <Button
           size="icon-xs"
           variant="ghost"
-          // the row is the keyboard's way in (Shift+F10): one tab stop per tree, not per row
+          // the row is the keyboard's way in (Shift+F10): one tab stop per tree, not per row.
+          // Hidden from the accessibility tree too: a tree may only hold treeitems, and the
+          // row already offers this menu
           tabIndex={-1}
+          aria-hidden
           aria-label={label}
           className={cn(
             "text-muted-foreground hover:text-foreground aria-expanded:text-foreground",
@@ -301,6 +306,8 @@ function ConnectionNode({
           aria-level={1}
           aria-expanded={expanded}
           aria-current={editingId === connection.id || undefined}
+          // the row's actions; the "⋯" next to it is the mouse's copy of the same menu
+          aria-keyshortcuts="Shift+F10"
           tabIndex={-1}
           onClick={() => setExpanded(connection.id, !expanded)}
           onKeyDown={event => {
@@ -414,14 +421,20 @@ function ConnectionNode({
                   <Database className="size-3.5 shrink-0 opacity-70" />
                   <span className="font-mono">db{database.index}</span>
                   {/* full strength on the blue fill: 11px needs 4.5:1 */}
-                  <span
-                    className={cn(
-                      "ml-auto font-mono text-[11px]",
-                      !isActive && "text-muted-foreground"
-                    )}
-                  >
-                    {database.keys > 0 && database.keys}
-                  </span>
+                  {/* "db0 · 4 chaves" aloud and on hover; the bare number on screen */}
+                  {database.keys > 0 && (
+                    <span
+                      title={database.keys === 1 ? "1 chave" : `${database.keys} chaves`}
+                      className={cn(
+                        "ml-auto font-mono text-[11px]",
+                        !isActive && "text-muted-foreground"
+                      )}
+                    >
+                      <span className="sr-only"> · </span>
+                      {database.keys}
+                      <span className="sr-only">{database.keys === 1 ? " chave" : " chaves"}</span>
+                    </span>
+                  )}
                 </button>
               </li>
             );
@@ -431,6 +444,7 @@ function ConnectionNode({
               key={schema.name}
               connectionId={connection.id}
               schema={schema}
+              isMongo={connection.engine === "mongo"}
               openByDefault={schema.name === defaultSchemaFor(connection)}
               activeTable={activeTable}
               onOpenTable={onOpenTable}
@@ -446,6 +460,7 @@ function ConnectionNode({
 function SchemaNode({
   connectionId,
   schema,
+  isMongo,
   openByDefault,
   activeTable,
   onOpenTable,
@@ -455,6 +470,9 @@ function SchemaNode({
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLButtonElement>(null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
+  const one = schema.relations.length === 1;
+  const relationNoun = isMongo ? (one ? "coleção" : "coleções") : one ? "tabela" : "tabelas";
+  const relationCount = `${schema.relations.length} ${relationNoun}`;
   const actions: RowAction[] = onOpenDiagram
     ? [
         {
@@ -482,6 +500,7 @@ function SchemaNode({
           role="treeitem"
           aria-level={2}
           aria-expanded={expanded}
+          aria-keyshortcuts={actions.length > 0 ? "Shift+F10" : undefined}
           tabIndex={-1}
           onClick={() => setExpanded(prev => !prev)}
           onKeyDown={event => {
@@ -494,10 +513,12 @@ function SchemaNode({
         >
           <Chevron className="size-3.5 shrink-0" />
           <span className="truncate">{schema.name}</span>
-          {/* read as "public · 2 tabelas", never "public2" */}
+          {/* read as "public · 2 tabelas", never "public2"; the word shows on hover */}
           <span className="sr-only"> · </span>
-          <span className="font-mono text-[11px]">{schema.relations.length}</span>
-          <span className="sr-only">{schema.relations.length === 1 ? " tabela" : " tabelas"}</span>
+          <span className="font-mono text-[11px]" title={relationCount}>
+            {schema.relations.length}
+          </span>
+          <span className="sr-only"> {relationNoun}</span>
         </button>
         {actions.length > 0 && (
           <RowMenu

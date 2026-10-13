@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Folder } from "lucide-react";
 import { visibleRows, type KeyNode } from "@/features/redis/keyTree";
@@ -22,7 +22,8 @@ const KEY_ROW =
 
 /**
  * Flat, virtualized list of the open part of the tree: a flat namespace of
- * thousands of SCAN keys renders only the rows in view.
+ * thousands of SCAN keys renders only the rows in view. One tab stop for the whole
+ * list (the open key, else the first row); ↑↓ Home End move, → opens a folder, ← closes it.
  */
 export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeViewProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -39,6 +40,55 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
     initialRect: { width: 320, height: 600 }
   });
 
+  const [cursor, setCursor] = useState<number | null>(null);
+  /** the row to focus once the virtualizer has rendered it */
+  const pendingFocus = useRef<number | null>(null);
+  const selectedIndex = rows.findIndex(
+    ({ node }) => node.kind === "key" && node.entry.name === selected
+  );
+  const current = Math.min(cursor ?? Math.max(selectedIndex, 0), rows.length - 1);
+
+  useEffect(() => {
+    if (pendingFocus.current === null) {
+      return;
+    }
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-row='${pendingFocus.current}']`);
+    if (row) {
+      row.focus();
+      pendingFocus.current = null;
+    }
+  });
+
+  function moveTo(index: number) {
+    const next = Math.max(0, Math.min(index, rows.length - 1));
+    setCursor(next);
+    pendingFocus.current = next;
+    virtualizer.scrollToIndex(next);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLUListElement>) {
+    if (rows.length === 0) {
+      return;
+    }
+    const { node } = rows[current];
+    if (event.key === "ArrowDown") {
+      moveTo(current + 1);
+    } else if (event.key === "ArrowUp") {
+      moveTo(current - 1);
+    } else if (event.key === "Home") {
+      moveTo(0);
+    } else if (event.key === "End") {
+      moveTo(rows.length - 1);
+    } else if (event.key === "ArrowRight" && node?.kind === "folder" && !open.has(node.id)) {
+      toggle(node.id);
+    } else if (event.key === "ArrowLeft" && node?.kind === "folder" && open.has(node.id)) {
+      toggle(node.id);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }
+
   function toggle(id: string) {
     setOpen(prev => {
       const next = new Set(prev);
@@ -53,6 +103,7 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
     <ul
       ref={listRef}
       aria-label="Chaves"
+      onKeyDown={handleKeyDown}
       className="relative text-sm"
       style={{ height: virtualizer.getTotalSize() }}
     >
@@ -72,6 +123,9 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
           >
             <button
               type="button"
+              data-row={item.index}
+              tabIndex={item.index === current ? 0 : -1}
+              onFocus={() => setCursor(item.index)}
               title={isFolder ? undefined : node.entry.name}
               aria-expanded={isFolder ? open.has(node.id) : undefined}
               aria-current={isSelected || undefined}

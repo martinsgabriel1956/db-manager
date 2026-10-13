@@ -89,7 +89,7 @@ test("documents show typed values, switch to JSON, filter and page", async () =>
     expect(lastBrowse(calls)).toMatchObject({ filter: '{"name": "Ana"}', sort: '{"_id": -1}' })
   );
 
-  await user.click(screen.getByRole("button", { name: "Próxima" }));
+  await user.click(screen.getByRole("button", { name: "Próxima página" }));
   await waitFor(() => expect(lastBrowse(calls).page).toBe(1));
 });
 

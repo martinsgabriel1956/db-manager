@@ -14,6 +14,7 @@ export async function rowAction(
   row: string,
   action: string
 ) {
-  await user.click(await screen.findByRole("button", { name: `Ações de ${row}` }));
+  // the "⋯" is the mouse's copy of the row's Shift+F10 menu: hidden from the accessibility tree
+  await user.click(await screen.findByLabelText(`Ações de ${row}`, { selector: "button" }));
   await user.click(await screen.findByRole("menuitem", { name: action }));
 }

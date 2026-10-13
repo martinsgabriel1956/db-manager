@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from "react";
-import { Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { commands } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -235,23 +235,29 @@ export function DocumentsPanel({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 border-t bg-muted px-3 py-1.5 text-sm">
+      {/* the same pager as the table grid */}
+      <div className="flex items-center gap-1 border-t bg-muted px-3 py-1.5 text-sm">
         <Button
-          size="sm"
+          size="icon-sm"
           variant="outline"
+          aria-label="Página anterior"
           disabled={page === 0 || documents.isFetching}
           onClick={() => setPage(prev => prev - 1)}
         >
-          Anterior
+          <ChevronLeft />
         </Button>
-        <span className="text-muted-foreground">Página {page + 1}</span>
+        <span className="px-1.5 text-xs text-muted-foreground">
+          Página {page + 1}
+          {documents.data?.hasMore ? ", há mais" : ""}
+        </span>
         <Button
-          size="sm"
+          size="icon-sm"
           variant="outline"
+          aria-label="Próxima página"
           disabled={!documents.data?.hasMore || documents.isFetching}
           onClick={() => setPage(prev => prev + 1)}
         >
-          Próxima
+          <ChevronRight />
         </Button>
       </div>
 

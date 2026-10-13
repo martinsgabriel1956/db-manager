@@ -30,8 +30,10 @@ globalThis.ResizeObserver = class {
   disconnect() {}
 };
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // unmounting stops event listeners asynchronously; let that finish before the mocks go
+  await new Promise(resolve => setTimeout(resolve));
   clearMocks();
   useTabs.setState({ ...INITIAL_TABS, pending: {}, closeRequest: null, quitRequest: false });
   useExplorer.setState({ expanded: [] });

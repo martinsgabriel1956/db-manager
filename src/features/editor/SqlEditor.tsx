@@ -1,7 +1,18 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { closeCompletion } from "@codemirror/autocomplete";
+import {
+  closeCompletion,
+  type CompletionResult,
+  type CompletionSource
+} from "@codemirror/autocomplete";
 import { basicSetup } from "codemirror";
-import { MySQL, PostgreSQL, sql, SQLite, type SQLNamespace } from "@codemirror/lang-sql";
+import {
+  MySQL,
+  PostgreSQL,
+  schemaCompletionSource,
+  sql,
+  SQLite,
+  type SQLNamespace
+} from "@codemirror/lang-sql";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
@@ -40,13 +51,42 @@ const DIALECT = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
 
 type LanguageOptions = Pick<SqlEditorProps, "completion" | "engine" | "defaultSchema">;
 
+/**
+ * lang-sql tags schema and table names "type", the same as data types: a table read as
+ * TY. Its schema source only offers names, columns and aliases, so there "type" is a
+ * schema (SC) or a table (TB); real data types keep TY from the keyword source.
+ */
+export function tagNames(source: CompletionSource, schemas: Set<string>): CompletionSource {
+  const tag = (result: CompletionResult | null) =>
+    result && {
+      ...result,
+      options: result.options.map(option =>
+        option.type === "type"
+          ? { ...option, type: schemas.has(option.label) ? "namespace" : "class" }
+          : option
+      )
+    };
+  return context => {
+    const result = source(context);
+    return result instanceof Promise ? result.then(tag) : tag(result);
+  };
+}
+
 function sqlLanguage({ completion, engine, defaultSchema }: LanguageOptions) {
-  return sql({
-    dialect: engine === "mysql" || engine === "sqlite" ? DIALECT[engine] : DIALECT.postgres,
-    schema: toNamespace(completion ?? []),
-    defaultSchema,
-    upperCaseKeywords: true
+  const dialect = engine === "mysql" || engine === "sqlite" ? DIALECT[engine] : DIALECT.postgres;
+  const tables = completion ?? [];
+  const schemaSource = schemaCompletionSource({
+    dialect,
+    schema: toNamespace(tables),
+    defaultSchema
   });
+  // keywords and types from sql(); schema names through tagNames
+  return [
+    sql({ dialect, upperCaseKeywords: true }),
+    dialect.language.data.of({
+      autocomplete: tagNames(schemaSource, new Set(tables.map(table => table.schema)))
+    })
+  ];
 }
 
 export function SqlEditor({

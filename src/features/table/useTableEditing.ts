@@ -156,6 +156,8 @@ export function useTableEditing({
     saving: save.isPending,
     saveError: save.error ? errorMessage(save.error) : null,
     notice,
+    /** the notice speaks of the rows on screen: gone once another page, filter or order shows */
+    clearNotice: () => setNotice(null),
     confirmation,
     confirm: () => save.mutate(true),
     dismiss: () => setConfirmation(null)

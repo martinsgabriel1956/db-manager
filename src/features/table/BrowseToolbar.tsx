@@ -12,6 +12,8 @@ type BrowseToolbarProps = {
   sort: Sort | null;
   /** locked while edits are pending */
   disabled?: boolean;
+  /** id of the text saying why it is locked */
+  lockedBy?: string;
   onApply: (filter: Filter) => void;
   onClear: () => void;
   onClearSort: () => void;
@@ -39,6 +41,7 @@ export function BrowseToolbar({
   active,
   sort,
   disabled = false,
+  lockedBy,
   onApply,
   onClear,
   onClearSort
@@ -106,6 +109,7 @@ export function BrowseToolbar({
         size="sm"
         variant={unapplied ? "default" : "outline"}
         disabled={!selectedColumn || disabled}
+        aria-describedby={disabled ? lockedBy : undefined}
       >
         Aplicar
       </Button>

@@ -37,9 +37,13 @@ export function ConnectionForm({ connection, onSaved, onDeleted, onCancel }: Con
   const isEditing = connection !== null;
   // lazy init: the id must stay stable across re-renders of a new, unsaved connection
   const [id] = useState(() => connection?.id ?? crypto.randomUUID());
-  const [values, setValues] = useState<ConnectionFormValues>(
+  const [initial] = useState<ConnectionFormValues>(() =>
     connection ? fromConfig(connection) : EMPTY_FORM
   );
+  const [values, setValues] = useState(initial);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  // typed but not saved: cancelling asks once instead of dropping it
+  const edited = JSON.stringify(values) !== JSON.stringify(initial);
   const [errors, setErrors] = useState<FormErrors>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -99,6 +103,14 @@ export function ConnectionForm({ connection, onSaved, onDeleted, onCancel }: Con
     );
   }
 
+  function handleCancel() {
+    if (edited && !confirmingCancel) {
+      setConfirmingCancel(true);
+      return;
+    }
+    onCancel();
+  }
+
   function handleDelete() {
     if (!confirmingDelete) {
       setConfirmingDelete(true);
@@ -154,15 +166,24 @@ export function ConnectionForm({ connection, onSaved, onDeleted, onCancel }: Con
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={save.isPending}>
-          Salvar
-        </Button>
-        {/* tests what is typed, without saving: wrong credentials never reach the keychain */}
+        {/* in the order of the work: try what is typed, then keep it. Testing never saves:
+            wrong credentials never reach the keychain */}
         <Button type="button" variant="outline" disabled={test.isPending} onClick={handleTest}>
           {test.isPending ? "Testando…" : "Testar conexão"}
         </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancelar
+        <Button type="submit" disabled={save.isPending}>
+          Salvar
+        </Button>
+        {/* like Excluir: a second press drops what was typed; leaving the button or Esc keeps it */}
+        <Button
+          type="button"
+          variant={confirmingCancel ? "outline" : "ghost"}
+          className={confirmingCancel ? "text-destructive" : undefined}
+          onClick={handleCancel}
+          onBlur={() => setConfirmingCancel(false)}
+          onKeyDown={event => event.key === "Escape" && setConfirmingCancel(false)}
+        >
+          {confirmingCancel ? "Descartar o que foi digitado" : "Cancelar"}
         </Button>
         {isEditing && (
           <Button

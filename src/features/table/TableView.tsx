@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Plus, Trash2, Undo2 } from "lucide-react";
 import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -150,20 +150,35 @@ function TableData({
   const selectedCell = selected && edit.rows[selected.row]?.[selected.column];
   const selectedEditable = selected !== null && edit.editing.canEdit(selected.row, selected.column);
   const pending = edit.count === 1 ? "1 alteração pendente" : `${edit.count} alterações pendentes`;
+  const lockedId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wasDirty = useRef(dirty);
+
+  // Salvar and Descartar unmount once nothing is staged: focus that was on them goes back
+  // to the grid it came from, not to <body>
+  useEffect(() => {
+    if (wasDirty.current && !dirty && document.activeElement === document.body) {
+      rootRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
+    }
+    wasDirty.current = dirty;
+  }, [dirty]);
 
   function restart(update: () => void) {
     update();
     setPage(0);
     setSelected(null);
+    edit.clearNotice();
   }
 
   function goToPage(next: number) {
     setPage(next);
     setSelected(null);
+    edit.clearNotice();
   }
 
   return (
     <div
+      ref={rootRef}
       className="flex min-h-0 flex-1 flex-col"
       // Ctrl+S develops the staged edits from anywhere in this view (the grid, the detail)
       onKeyDown={event => {
@@ -180,6 +195,7 @@ function TableData({
         active={filter}
         sort={sort}
         disabled={dirty}
+        lockedBy={lockedId}
         onApply={next => restart(() => onFilterChange(next))}
         onClear={() => restart(() => onFilterChange(null))}
         onClearSort={() => restart(() => onSortChange(() => null))}
@@ -247,18 +263,23 @@ function TableData({
               size="icon-sm"
               variant="outline"
               aria-label="Página anterior"
+              aria-describedby={dirty ? lockedId : undefined}
               disabled={page === 0 || browse.isFetching || dirty}
               onClick={() => goToPage(page - 1)}
             >
               <ChevronLeft />
             </Button>
+            {/* locked on this page, the rows range gives its room to the reason why */}
             <span className="px-1.5 text-xs text-muted-foreground">
-              {pageLabel(page, batch?.rows.length ?? 0, batch?.hasMore ?? false)}
+              {dirty
+                ? `Página ${page + 1}`
+                : pageLabel(page, batch?.rows.length ?? 0, batch?.hasMore ?? false)}
             </span>
             <Button
               size="icon-sm"
               variant="outline"
               aria-label="Próxima página"
+              aria-describedby={dirty ? lockedId : undefined}
               disabled={!batch?.hasMore || browse.isFetching || dirty}
               onClick={() => goToPage(page + 1)}
             >
@@ -266,8 +287,22 @@ function TableData({
             </Button>
           </div>
           {dirty ? (
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              Salve ou descarte para paginar, filtrar ou ordenar
+            // the disabled pager, Aplicar and the sort headers point here for their reason
+            <span
+              id={lockedId}
+              title="Salve ou descarte as alterações para paginar, filtrar ou ordenar"
+              className="min-w-0 flex-1 truncate text-xs text-foreground"
+            >
+              <span aria-hidden className="@min-[60rem]:hidden">
+                Salve ou descarte para paginar
+              </span>
+              <span aria-hidden className="hidden @min-[60rem]:inline">
+                Salve ou descarte para paginar, filtrar ou ordenar
+              </span>
+              {/* read whole whatever the width */}
+              <span className="sr-only">
+                Salve ou descarte as alterações para paginar, filtrar ou ordenar
+              </span>
             </span>
           ) : (
             browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>
@@ -295,9 +330,12 @@ function TableData({
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {edit.canEdit ? (
                 <>
-                  <span className="hidden text-xs text-muted-foreground @min-[72rem]:inline">
-                    Duplo clique ou Enter numa célula para editar
-                  </span>
+                  {/* with edits staged, the room goes to why paging is locked */}
+                  {!dirty && (
+                    <span className="hidden text-xs text-muted-foreground @min-[72rem]:inline">
+                      Duplo clique ou Enter numa célula para editar
+                    </span>
+                  )}
                   {/* words from 1100px; below, the icon and its name (read aloud and on hover) */}
                   <Button
                     size="sm"

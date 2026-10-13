@@ -58,6 +58,10 @@ test("editing a cell stages it and save sends an update keyed by the primary key
   // navigation is locked while edits are pending
   expect(screen.getByRole("button", { name: "Próxima página" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
+  // and they say why
+  expect(screen.getByRole("button", { name: "Aplicar" })).toHaveAccessibleDescription(
+    "Salve ou descarte as alterações para paginar, filtrar ou ordenar"
+  );
 
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -78,6 +82,8 @@ test("editing a cell stages it and save sends an update keyed by the primary key
     }
   });
   expect(await screen.findByText("1 alteração salva")).toBeInTheDocument();
+  // Salvar is gone with the staged edits: focus is back on the grid, not on <body>
+  expect(screen.getByRole("grid")).toHaveFocus();
   await waitFor(() => expect(callsTo(calls, "browse_table").length).toBeGreaterThan(1));
 });
 

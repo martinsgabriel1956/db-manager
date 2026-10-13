@@ -12,7 +12,7 @@ function ContextMenuTrigger({
   return <ContextMenuPrimitive.Trigger data-slot="context-menu-trigger" {...props} />;
 }
 
-/** The same sheet of paper as the dropdown menu: no radius, no blur, an ink rule. */
+/** The same sheet of paper as the dropdown menu: no radius, no blur, no shadow, an ink rule. */
 function ContextMenuContent({
   className,
   ...props
@@ -22,7 +22,7 @@ function ContextMenuContent({
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         className={cn(
-          "z-50 min-w-44 border border-foreground bg-popover py-1 text-[13px] text-popover-foreground shadow-[0_18px_40px_-16px_rgb(0_0_0/0.45)]",
+          "z-50 min-w-44 border border-foreground bg-popover py-1 text-[13px] text-popover-foreground",
           className
         )}
         {...props}
@@ -47,4 +47,23 @@ function ContextMenuItem({
   );
 }
 
-export { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger };
+function ContextMenuSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof ContextMenuPrimitive.Separator>) {
+  return (
+    <ContextMenuPrimitive.Separator
+      data-slot="context-menu-separator"
+      className={cn("my-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+};

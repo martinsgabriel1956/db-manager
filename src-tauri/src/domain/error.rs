@@ -46,8 +46,15 @@ impl AppError {
         AppError::Keychain(format!("keychain indisponível: {err}"))
     }
 
-    pub fn not_connected(connection_id: &str) -> Self {
-        AppError::NotConnected(format!("conexão {connection_id} não está aberta"))
+    /// The id is for logs, never for the reader: it is a UUID.
+    pub fn not_connected(_connection_id: &str) -> Self {
+        AppError::NotConnected("a conexão não está aberta: abra-a de novo na lateral".to_string())
+    }
+
+    /// A result cursor closed under the view (the connection was closed, or the
+    /// window hid and production was disconnected): the rows must be fetched again.
+    pub fn result_closed() -> Self {
+        AppError::NotFound("o resultado já foi fechado: execute a query de novo".to_string())
     }
 
     pub fn cancelled() -> Self {

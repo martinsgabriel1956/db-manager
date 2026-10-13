@@ -228,7 +228,7 @@ test("favourites with nothing starred say how to star", async () => {
   expect(await screen.findByText("Nenhuma favorita")).toBeInTheDocument();
 });
 
-test("right click on a tab closes it, or closes every tab", async () => {
+test("right click on a tab closes it, the others or every tab, and Ctrl+Shift+T reopens", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
   renderWithClient(<App />);
@@ -243,18 +243,37 @@ test("right click on a tab closes it, or closes every tab", async () => {
     keys: "[MouseRight]",
     target: screen.getByRole("tab", { name: "Postgres prod · users · produção" })
   });
-  await user.click(await screen.findByRole("menuitem", { name: "Fechar aba" }));
+  // the menu names the tab it acts on
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar aba users" }));
   expect(tabNames()).toEqual(["Postgres prod · active_users · produção", "Histórico"]);
+
+  await user.keyboard("{Control>}{Shift>}t{/Shift}{/Control}");
+  expect(tabNames()).toEqual([
+    "Postgres prod · active_users · produção",
+    "Histórico",
+    "Postgres prod · users · produção"
+  ]);
 
   await user.pointer({
     keys: "[MouseRight]",
     target: screen.getByRole("tab", { name: "Histórico" })
   });
-  await user.click(await screen.findByRole("menuitem", { name: "Fechar todas as abas (2)" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar outras abas" }));
+  expect(tabNames()).toEqual(["Histórico"]);
+
+  await user.pointer({
+    keys: "[MouseRight]",
+    target: screen.getByRole("tab", { name: "Histórico" })
+  });
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar todas as abas (1)" }));
   expect(
     screen.queryAllByRole("tab").filter(tab => tab.closest("[aria-label='Abas abertas']"))
   ).toEqual([]);
   expect(await screen.findByText("Nenhuma aba aberta")).toBeInTheDocument();
+
+  // nothing is lost for good: the menu's way back is there too
+  await user.keyboard("{Control>}{Shift>}t{/Shift}{/Control}");
+  expect(tabNames()).toEqual(["Histórico"]);
 });
 
 test("discarding edits in several tables names how many hold them", async () => {

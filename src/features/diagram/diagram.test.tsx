@@ -58,5 +58,7 @@ test("an empty schema says so, and MongoDB has no diagram", async () => {
   await user.click(screen.getByRole("treeitem", { name: /^Mongo dev/ }));
   await screen.findAllByRole("treeitem", { name: /^public/ });
   // the SQL schemas have the diagram in their menu; MongoDB databases have no menu
-  expect(screen.getAllByRole("button", { name: /^Ações de (public|audit)$/ })).toHaveLength(2);
+  expect(
+    screen.getAllByLabelText(/^Ações de (public|audit)$/, { selector: "button" })
+  ).toHaveLength(2);
 });

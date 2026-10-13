@@ -123,3 +123,36 @@ test("closing several tabs focuses the nearest open tab, left first", () => {
   state().closeTabs([first.id]);
   expect(state().activeId).toBeNull();
 });
+
+test("closed tabs reopen most recent first, editor text included", () => {
+  state().openEditor("pg", "UPDATE users SET name = 'x'");
+  state().openTable(users);
+  state().closeTabs(state().tabs.map(tab => tab.id));
+  expect(state().tabs).toHaveLength(0);
+
+  expect(state().reopenClosed()).toBe(true);
+  expect(state().tabs.map(tab => tab.kind)).toEqual(["table"]);
+  expect(state().reopenClosed()).toBe(true);
+  expect((state().tabs[1] as EditorTab).sql).toBe("UPDATE users SET name = 'x'");
+  expect(state().activeId).toBe(state().tabs[1].id);
+  expect(state().reopenClosed()).toBe(false);
+});
+
+test("reopening a table that is open again goes to it instead of doubling it", () => {
+  state().openTable(users);
+  state().close(state().tabs[0].id);
+  state().openTable(users);
+
+  state().reopenClosed();
+  expect(state().tabs).toHaveLength(1);
+  expect(state().closed).toHaveLength(0);
+});
+
+test("closed tabs of a deleted connection cannot come back", () => {
+  state().openTable(users);
+  state().openEditor("other");
+  state().closeTabs(state().tabs.map(tab => tab.id));
+  state().keepConnections(["other"]);
+
+  expect(state().closed.map(tab => tab.kind)).toEqual(["editor"]);
+});

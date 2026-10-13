@@ -1,34 +1,44 @@
 use std::sync::PoisonError;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::AppState;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, HistoryEntry,
     RowBatch, RunResponse, SchemaInfo, TableChanges, TableStructure,
 };
+use crate::tray;
 use crate::use_cases::{connections, sql};
 
 #[tauri::command]
 #[specta::specta]
 pub async fn connect_database(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
 ) -> Result<(), AppError> {
+    // every query connects first: only a session that was not open changes the tray
+    if state.registry.is_connected(&connection_id) {
+        return Ok(());
+    }
     let config = {
         let store = state.store.lock().unwrap_or_else(PoisonError::into_inner);
         connections::find(&store, &connection_id)?
     };
-    sql::connect(&state.registry, state.secrets.as_ref(), config).await
+    sql::connect(&state.registry, state.secrets.as_ref(), config).await?;
+    tray::refresh(&app);
+    Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn disconnect_database(
+    app: AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
 ) -> Result<(), AppError> {
     sql::disconnect(&state.registry, &connection_id).await;
+    tray::refresh(&app);
     Ok(())
 }
 

@@ -17,6 +17,8 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   connections: ConnectionConfig[];
+  /** the active tab's connection: its matches rank first, production's last */
+  activeConnectionId: string | null;
   /** typed in when it opens, e.g. "abrir" from "Abrir uma conexão" */
   initialQuery?: string;
   /** the caller moves focus to what the pick opened */
@@ -30,6 +32,7 @@ export function CommandPalette({
   open,
   onOpenChange,
   connections,
+  activeConnectionId,
   initialQuery = "",
   onSelect
 }: CommandPaletteProps) {
@@ -54,6 +57,7 @@ export function CommandPalette({
         {open && (
           <PaletteBody
             connections={connections}
+            activeConnectionId={activeConnectionId}
             initialQuery={initialQuery}
             onSelect={target => {
               picked.current = true;
@@ -67,7 +71,12 @@ export function CommandPalette({
   );
 }
 
-function PaletteBody({ connections, initialQuery = "", onSelect }: PaletteBodyProps) {
+function PaletteBody({
+  connections,
+  activeConnectionId,
+  initialQuery = "",
+  onSelect
+}: PaletteBodyProps) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
@@ -86,7 +95,7 @@ function PaletteBody({ connections, initialQuery = "", onSelect }: PaletteBodyPr
     };
   }, [queryClient, connections]);
 
-  const results = searchEntries(all.entries, query);
+  const results = searchEntries(all.entries, query, activeConnectionId);
   const current = Math.min(active, results.length - 1);
   const optionId = (index: number) => `${listId}-${index}`;
 
