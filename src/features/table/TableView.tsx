@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { ExportButton } from "@/features/export/ExportButton";
+import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
@@ -270,6 +271,25 @@ function TableData({
             </span>
           ) : (
             browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>
+          )}
+          {batch && (
+            <CopyRowsMenu
+              columns={batch.columns}
+              rows={batch.rows}
+              // a row added in the grid is not stored yet: nothing to copy
+              selectedRow={selected && selected.row < batch.rows.length ? selected.row : null}
+              insert={rows =>
+                connected(connectionId, () =>
+                  commands.copyAsInsert(
+                    connectionId,
+                    schema,
+                    table,
+                    batch.columns.map(column => column.name),
+                    rows
+                  )
+                )
+              }
+            />
           )}
           {batch && !readOnly && (
             <div className="ml-auto flex shrink-0 items-center gap-2">

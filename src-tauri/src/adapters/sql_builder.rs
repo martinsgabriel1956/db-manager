@@ -156,23 +156,76 @@ fn key_condition(dialect: Dialect, key: &[KeyValue]) -> Result<String, AppError>
     Ok(conditions.join(" AND "))
 }
 
-/// The exact text the engine rendered for a key value.
 fn key_text(cell: &Cell) -> Result<String, AppError> {
     match cell {
-        Cell::Bool(value) => Ok(value.to_string()),
+        Cell::Null => Err(AppError::validation("chave primária nula")),
+        cell => exact_text(cell).ok_or_else(|| {
+            AppError::validation("chave primária de um tipo que não pode ser editado")
+        }),
+    }
+}
+
+/// The exact text the engine rendered for a value. None for NULL and for what the grid
+/// only carries in part: binary (a preview), arrays and unmodelled types.
+fn exact_text(cell: &Cell) -> Option<String> {
+    match cell {
+        Cell::Bool(value) => Some(value.to_string()),
         // Rust prints the shortest text that round-trips, as the engines do
-        Cell::Float(value) => Ok(value.to_string()),
+        Cell::Float(value) => Some(value.to_string()),
         Cell::Int(text)
         | Cell::Decimal(text)
         | Cell::Text(text)
         | Cell::Date(text)
-        | Cell::Json(text) => Ok(text.clone()),
-        Cell::Timestamp { value, .. } => Ok(value.clone()),
-        Cell::Null => Err(AppError::validation("chave primária nula")),
-        Cell::Bytes { .. } | Cell::Array(_) | Cell::Unknown { .. } => Err(AppError::validation(
-            "chave primária de um tipo que não pode ser editado",
-        )),
+        | Cell::Json(text) => Some(text.clone()),
+        Cell::Timestamp { value, .. } => Some(value.clone()),
+        Cell::Null | Cell::Bytes { .. } | Cell::Array(_) | Cell::Unknown { .. } => None,
     }
+}
+
+/// Rows as INSERT statements, one per row, with the same literals the grid edits use.
+/// A value the grid only shows in part is refused rather than copied with loss.
+pub fn insert_sql(
+    dialect: Dialect,
+    schema: &str,
+    table: &str,
+    columns: &[String],
+    rows: &[Vec<Cell>],
+) -> Result<String, AppError> {
+    let statements = rows
+        .iter()
+        .map(|row| {
+            if row.len() != columns.len() {
+                return Err(AppError::validation(
+                    "linha com número de colunas diferente",
+                ));
+            }
+            let values = columns
+                .iter()
+                .zip(row)
+                .map(|(column, cell)| {
+                    let value = match cell {
+                        Cell::Null => None,
+                        cell => Some(exact_text(cell).ok_or_else(|| {
+                            AppError::validation(format!(
+                                "a coluna {column} tem um valor que a grade só mostra em parte \
+                                 (binário, array ou tipo não modelado): copiar como INSERT \
+                                 perderia dados"
+                            ))
+                        })?),
+                    };
+                    Ok(ColumnValue {
+                        column: column.clone(),
+                        value,
+                    })
+                })
+                .collect::<Result<Vec<_>, AppError>>()?;
+            change_sql(dialect, schema, table, &RowChange::Insert { values })
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(statements
+        .iter()
+        .map(|statement| format!("{statement};\n"))
+        .collect())
 }
 
 #[cfg(test)]
@@ -271,6 +324,43 @@ mod tests {
                 .unwrap()
                 .contains("WHERE CAST(`email` AS CHAR) LIKE '%@x.com'")
         );
+    }
+
+    #[test]
+    fn copies_rows_as_inserts_with_exact_text() {
+        let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+        let rows = vec![
+            vec![
+                Cell::Int("9007199254740993".into()),
+                Cell::Text(r"O'Brien c:\temp".into()),
+                Cell::Float(0.1),
+            ],
+            vec![Cell::Int("2".into()), Cell::Null, Cell::Bool(true)],
+        ];
+
+        assert_eq!(
+            insert_sql(Dialect::Postgres, "app", "users", &columns, &rows).unwrap(),
+            "INSERT INTO \"app\".\"users\" (\"id\", \"name\", \"score\") \
+             VALUES ('9007199254740993', E'O''Brien c:\\\\temp', '0.1');\n\
+             INSERT INTO \"app\".\"users\" (\"id\", \"name\", \"score\") \
+             VALUES ('2', NULL, 'true');\n"
+        );
+        assert_eq!(
+            insert_sql(MYSQL, "app", "users", &columns, &rows[1..]).unwrap(),
+            "INSERT INTO `app`.`users` (`id`, `name`, `score`) VALUES ('2', NULL, 'true');\n"
+        );
+
+        let partial = vec![vec![
+            Cell::Int("1".into()),
+            Cell::Bytes {
+                len: 64,
+                preview_hex: "00".into(),
+            },
+            Cell::Null,
+        ]];
+        let error = insert_sql(Dialect::Sqlite, "main", "t", &columns, &partial).unwrap_err();
+        assert!(error.to_string().contains("a coluna name"), "{error}");
+        assert!(insert_sql(Dialect::Sqlite, "main", "t", &columns, &[vec![Cell::Null]]).is_err());
     }
 
     #[test]

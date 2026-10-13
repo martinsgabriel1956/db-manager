@@ -24,6 +24,7 @@ export const commands = {
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
+	copyAsInsert: (connectionId: string, schema: string, table: string, columns: string[], rows: Cell[][]) => __TAURI_INVOKE<string>("copy_as_insert", { connectionId, schema, table, columns, rows }),
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
 	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),

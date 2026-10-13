@@ -240,6 +240,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     browse_table: () => usersPage,
     run_script: () => executed(rowsOutcome),
     apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
+    copy_as_insert: () => 'INSERT INTO "public"."users" ("id", "profile") VALUES (\'2\', NULL);\n',
     search_history: () => [],
     browse_collection: () => ({ documents: mongoDocuments, hasMore: true }),
     collection_indexes: () => [{ name: "_id_", definition: '{"_id":1}' }],
