@@ -68,8 +68,7 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
     "Postgres prod · SQL 1 · produção",
     "Postgres prod · SQL 2 · produção"
   ]);
-  // two CodeMirror mounts: ~1.3s plain, past the 5s default under coverage instrumentation
-}, 10_000);
+});
 
 test("Ctrl+T opens an editor on the active tab's connection", async () => {
   fakeBackend([prodPostgres]);

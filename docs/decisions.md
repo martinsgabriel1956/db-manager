@@ -182,3 +182,9 @@ Decisões tomadas durante a implementação, que refinam ou adiam itens acima.
 - **Mongo**: NDJSON ou array JSON, com filtro/ordenação/projeção aplicados, em Extended JSON (mesmo formato da tela: Int64 em `$numberLong`). Sem `maxTimeMS`: um export grande pode demorar.
 - **Diagrama ER** (somente leitura, só SQL): botão no schema da árvore abre uma aba. Tabelas viram nós com colunas (PK/FK marcadas) e cada FK vira uma aresta tabela→tabela; FKs para outro schema aparecem listadas no nó em vez de desenhadas. Layout `layered` do elkjs, React Flow para pan/zoom/minimapa; duplo clique abre a tabela. As FKs passaram a vir estruturadas do catálogo (colunas, schema/tabela/colunas referenciadas) nos três engines.
 - **Custo**: o diagrama consulta a estrutura de cada tabela (até 8 em paralelo). Uma consulta ao catálogo do schema inteiro por engine fica para quando schemas grandes ficarem lentos. React Flow + elk (~1,6 MB) carregam sob demanda, num chunk separado.
+
+### Depois da v1
+
+- **Queries favoritas**: uma coluna `starred` no próprio `history.sqlite`, não uma tabela ou tela de "snippets". A entrada favorita continua sendo uma execução do histórico (com conexão, duração e erro), e a busca no SQL já serve para achá-la; por isso não tem nome. Arquivos de antes da coluna recebem `ALTER TABLE … ADD COLUMN` ao abrir (checado pelo `pragma_table_info`, sem engolir erro), com teste contra um arquivo no formato antigo. Marcar um id inexistente é `NotFound`.
+- **Ctrl+P = Ctrl+K**: os dois abrem a mesma paleta. Uma busca rápida própria do Ctrl+P chegou a existir e saiu ao juntar com a paleta, que já fazia o mesmo (só lista o que a lateral carregou, nunca conecta sozinha).
+- **Timeout dos testes do front em 20 s** (`vite.config.ts`): é detector de travamento, não medida de desempenho. Com cobertura e arquivos em paralelo numa máquina ocupada, testes de UI levam de 1 a 6 s e o padrão de 5 s derrubava testes saudáveis ao acaso.
