@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Undo2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2, Undo2 } from "lucide-react";
 import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { DiscardDialog } from "@/components/DiscardDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { ExportButton } from "@/features/export/ExportButton";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail } from "@/features/results/CellDetail";
@@ -55,7 +57,8 @@ export function TableView(props: TableViewProps) {
           <TabsTrigger value="structure">Estrutura</TabsTrigger>
         </TabsList>
         {props.readOnly && <Badge variant="held">Somente leitura</Badge>}
-        <div className="ml-auto shrink-0">
+        <div className="ml-auto flex min-w-0 items-center gap-4">
+          <ConnectionContext connectionId={props.connectionId} />
           <ExportButton
             baseName={props.table}
             formats={[
@@ -117,6 +120,7 @@ function TableData({
 }: TableDataProps) {
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const structure = useStructure(connectionId, schema, table);
 
   const request: BrowseRequest = {
@@ -144,6 +148,7 @@ function TableData({
 
   const selectedCell = selected && edit.rows[selected.row]?.[selected.column];
   const selectedEditable = selected !== null && edit.editing.canEdit(selected.row, selected.column);
+  const pending = edit.count === 1 ? "1 alteração pendente" : `${edit.count} alterações pendentes`;
 
   function restart(update: () => void) {
     update();
@@ -151,76 +156,33 @@ function TableData({
     setSelected(null);
   }
 
+  function goToPage(next: number) {
+    setPage(next);
+    setSelected(null);
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      // Ctrl+S develops the staged edits from anywhere in this view (the grid, the detail)
+      onKeyDown={event => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          if (dirty && !edit.saving) {
+            edit.save();
+          }
+        }
+      }}
+    >
       <BrowseToolbar
         columns={structure.data?.columns.map(column => column.name) ?? []}
         active={filter}
+        sort={sort}
         disabled={dirty}
         onApply={next => restart(() => onFilterChange(next))}
         onClear={() => restart(() => onFilterChange(null))}
+        onClearSort={() => restart(() => onSortChange(() => null))}
       />
-      {batch && !readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-1.5 text-sm">
-          {edit.canEdit ? (
-            <>
-              <Button size="sm" variant="outline" onClick={edit.addRow}>
-                <Plus /> Adicionar linha
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={selected === null}
-                onClick={() => selected && edit.toggleRow(selected.row)}
-              >
-                {selected && edit.isDeleted(selected.row) ? (
-                  <>
-                    <Undo2 /> Restaurar linha
-                  </>
-                ) : (
-                  <>
-                    <Trash2 /> Excluir linha
-                  </>
-                )}
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                Duplo clique ou Enter numa célula para editar
-              </span>
-            </>
-          ) : (
-            structure.isSuccess && (
-              <span className="text-xs text-muted-foreground">
-                Sem chave primária editável: tabela somente leitura
-              </span>
-            )
-          )}
-          {dirty && (
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs font-medium">
-                {edit.count} {edit.count === 1 ? "alteração pendente" : "alterações pendentes"}
-              </span>
-              <Button size="sm" variant="outline" disabled={edit.saving} onClick={edit.discard}>
-                Descartar
-              </Button>
-              {/* the save carries the exposure: how many staged changes it will develop */}
-              <Button size="sm" disabled={edit.saving} onClick={edit.save} className="pr-0">
-                Salvar
-                <span
-                  aria-hidden
-                  className="ml-1.5 flex h-full items-center border-l border-primary-foreground/40 px-2 font-mono text-xs"
-                >
-                  Δ {edit.count}
-                </span>
-              </Button>
-            </div>
-          )}
-          {edit.notice && !dirty && (
-            <span role="status" className="ml-auto text-xs text-success developed">
-              {edit.notice}
-            </span>
-          )}
-        </div>
-      )}
       {edit.saveError && (
         <p role="alert" className="px-3 py-2 text-sm text-destructive">
           {edit.saveError}
@@ -248,9 +210,18 @@ function TableData({
               selected={selected}
               onSelect={setSelected}
               editing={edit.editing}
+              readOnlyHint={
+                readOnly
+                  ? "Conexão somente leitura: a célula não pode ser editada"
+                  : edit.canEdit
+                    ? "Esta célula não pode ser editada: coluna sem edição (tipo não modelado) ou linha marcada para exclusão"
+                    : "Tabela sem chave primária editável: somente leitura"
+              }
             />
           )}
-          {browse.isPending && <p className="p-3 text-sm text-muted-foreground">Carregando…</p>}
+          {browse.isPending && (
+            <p className="p-3 text-sm text-muted-foreground">Carregando linhas…</p>
+          )}
         </div>
         {selected && selectedCell && batch && (
           <CellDetail
@@ -265,36 +236,135 @@ function TableData({
           />
         )}
       </div>
-      <div className="flex items-center gap-2 border-t bg-muted px-3 py-1.5 text-sm">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={page === 0 || browse.isFetching || dirty}
-          onClick={() => {
-            setPage(prev => prev - 1);
-            setSelected(null);
-          }}
-        >
-          Anterior
-        </Button>
-        <span className="text-muted-foreground">Página {page + 1}</span>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!batch?.hasMore || browse.isFetching || dirty}
-          onClick={() => {
-            setPage(prev => prev + 1);
-            setSelected(null);
-          }}
-        >
-          Próxima
-        </Button>
-        {dirty && (
-          <span className="text-xs text-muted-foreground">
-            Salve ou descarte para trocar de página, filtrar ou ordenar
-          </span>
-        )}
-        {browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>}
+      {/* one status bar under the data: where you are in the pages, then what is staged.
+          It sizes by its own width (the sidebar takes 240–288px): the hint goes first, then the
+          labels; Descartar and Salvar never shrink */}
+      <div className="@container border-t bg-muted">
+        <div className="flex items-center gap-3 px-3 py-1.5 text-sm">
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="Página anterior"
+              disabled={page === 0 || browse.isFetching || dirty}
+              onClick={() => goToPage(page - 1)}
+            >
+              <ChevronLeft />
+            </Button>
+            <span className="px-1.5 text-xs text-muted-foreground">
+              {pageLabel(page, batch?.rows.length ?? 0, batch?.hasMore ?? false)}
+            </span>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="Próxima página"
+              disabled={!batch?.hasMore || browse.isFetching || dirty}
+              onClick={() => goToPage(page + 1)}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+          {dirty ? (
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              Salve ou descarte para paginar, filtrar ou ordenar
+            </span>
+          ) : (
+            browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>
+          )}
+          {batch && !readOnly && (
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {edit.canEdit ? (
+                <>
+                  <span className="hidden text-xs text-muted-foreground @min-[72rem]:inline">
+                    Duplo clique ou Enter numa célula para editar
+                  </span>
+                  {/* words from 1100px; below, the icon and its name (read aloud and on hover) */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label="Adicionar linha"
+                    title="Adicionar linha"
+                    onClick={edit.addRow}
+                  >
+                    <Plus />
+                    <span className="hidden @min-[52rem]:inline">Adicionar linha</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={
+                      selected && edit.isDeleted(selected.row) ? "Restaurar linha" : "Excluir linha"
+                    }
+                    title={
+                      selected && edit.isDeleted(selected.row) ? "Restaurar linha" : "Excluir linha"
+                    }
+                    disabled={selected === null}
+                    onClick={() => selected && edit.toggleRow(selected.row)}
+                  >
+                    {selected && edit.isDeleted(selected.row) ? (
+                      <>
+                        <Undo2 />
+                        <span className="hidden @min-[52rem]:inline">Restaurar linha</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 />
+                        <span className="hidden @min-[52rem]:inline">Excluir linha</span>
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                structure.isSuccess && (
+                  <span className="text-xs text-muted-foreground">
+                    Sem chave primária editável: tabela somente leitura
+                  </span>
+                )
+              )}
+              {dirty && (
+                <>
+                  <span className="sr-only text-xs font-medium @min-[64rem]:not-sr-only">
+                    {pending}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={edit.saving}
+                    onClick={() => setConfirmingDiscard(true)}
+                  >
+                    Descartar
+                  </Button>
+                  {/* the save carries the exposure: how many staged changes it will develop */}
+                  <Button
+                    size="sm"
+                    disabled={edit.saving}
+                    aria-keyshortcuts="Control+S"
+                    onClick={edit.save}
+                    className="pr-0"
+                  >
+                    Salvar
+                    <span
+                      aria-hidden
+                      className="ml-1.5 flex h-full items-center border-l border-primary-foreground/40 px-2 font-mono text-xs"
+                    >
+                      Δ {edit.count}
+                    </span>
+                  </Button>
+                </>
+              )}
+              {/* the save develops: the hatch clears in the grid and the notice comes up the same way */}
+              {edit.notice && !dirty && (
+                <span
+                  role="status"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-success developed"
+                >
+                  <Check aria-hidden className="size-4" />
+                  {edit.notice}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <ConfirmDialog
         connectionId={connectionId}
@@ -304,6 +374,28 @@ function TableData({
         onConfirm={edit.confirm}
         onCancel={edit.dismiss}
       />
+      <DiscardDialog
+        open={confirmingDiscard}
+        subject={table}
+        count={edit.count}
+        consequence="Descartar desfaz todas"
+        confirmLabel="Descartar alterações"
+        onConfirm={() => {
+          edit.discard();
+          setConfirmingDiscard(false);
+        }}
+        onCancel={() => setConfirmingDiscard(false)}
+      />
     </div>
   );
+}
+
+/** "Página 2 · linhas 101–200": the total is unknown, so only "há mais" when there is a next page. */
+export function pageLabel(page: number, rows: number, hasMore: boolean): string {
+  if (rows === 0) {
+    return `Página ${page + 1} · nenhuma linha`;
+  }
+  const first = page * PAGE_SIZE + 1;
+  const range = `linhas ${first}–${first + rows - 1}`;
+  return `Página ${page + 1} · ${range}${hasMore ? ", há mais" : ""}`;
 }

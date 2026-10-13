@@ -4,21 +4,21 @@ import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, ConnectionConfig } from "@/bindings";
 import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
-import { renderWithClient } from "@/test/render";
+import { renderWithClient, rowAction } from "@/test/render";
 
 function renderApp() {
   return renderWithClient(<App />);
 }
 
 async function editConnection(user: ReturnType<typeof userEvent.setup>, name: string) {
-  await user.click(await screen.findByRole("button", { name: `Editar ${name}` }));
+  await rowAction(user, name, "Editar conexão");
 }
 
 test("lists connections with engine and read-only marker", async () => {
   fakeBackend([prodPostgres]);
   renderApp();
 
-  const item = await screen.findByRole("button", { name: /^Postgres prod/ });
+  const item = await screen.findByRole("treeitem", { name: /^Postgres prod/ });
 
   expect(item).toHaveTextContent("PostgreSQL");
   expect(item).toHaveTextContent("somente leitura");
@@ -42,11 +42,55 @@ test("Ctrl+B collapses and expands the sidebar", async () => {
   expect(screen.getByRole("button", { name: "Recolher lateral" })).toBeInTheDocument();
 });
 
-test("shows an empty state when there are no connections", async () => {
+test("shows an empty state when there are no connections, with a way to create one", async () => {
   fakeBackend([]);
+  const user = userEvent.setup();
   renderApp();
 
   expect(await screen.findByText("Nenhuma conexão cadastrada.")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Comece por uma conexão" })).toBeInTheDocument();
+  await user.click(screen.getAllByRole("button", { name: "Nova conexão" })[0]);
+  expect(screen.getByRole("heading", { name: "Nova conexão" })).toBeInTheDocument();
+
+  // Cancelar leaves the form without saving
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("heading", { name: "Nova conexão" })).not.toBeInTheDocument();
+});
+
+test("Testar conexão tries the typed draft without saving it, and a later edit retires the result", async () => {
+  const calls = fakeBackend([], {
+    test_connection: () => {
+      throw { kind: "database", message: "password authentication failed" } satisfies AppError;
+    }
+  });
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  // the engine reshapes the form, so it comes first; prod says what it changes where it is chosen
+  const fields = screen.getAllByRole("combobox").map(field => field.getAttribute("id"));
+  expect(fields[0]).toBe("engine");
+  await user.selectOptions(screen.getByLabelText("Ambiente"), "prod");
+  expect(screen.getByLabelText("Ambiente")).toHaveAccessibleDescription(
+    /toda escrita mostra o comando exato/
+  );
+  await user.type(screen.getByLabelText("Senha"), "wrong");
+  // no name yet: it never reaches the database, so the draft can still be tested
+  await user.click(screen.getByRole("button", { name: "Testar conexão" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Não conectou: password authentication failed"
+  );
+  const tested = callsTo(calls, "test_connection")[0] as {
+    config: ConnectionConfig;
+    secret: unknown;
+  };
+  expect(tested.config).toMatchObject({ engine: "postgres", environment: "prod" });
+  expect(tested.secret).toEqual({ action: "set", value: "wrong" });
+  expect(callsTo(calls, "save_connection")).toHaveLength(0);
+
+  await user.type(screen.getByLabelText("Senha"), "!");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 test("creates a connection and sends the password as a secret change", async () => {
@@ -54,9 +98,14 @@ test("creates a connection and sends the password as a secret change", async () 
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: "Nova" }));
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
   await user.type(screen.getByLabelText("Nome"), "Local PG");
   await user.type(screen.getByLabelText("Senha"), "s3cret");
+  // no environment yet: saving asks for one instead of defaulting to Local
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  expect(screen.getByLabelText("Ambiente")).toHaveAttribute("aria-invalid", "true");
+  expect(callsTo(calls, "save_connection")).toHaveLength(0);
+  await user.selectOptions(screen.getByLabelText("Ambiente"), "local");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
   await waitFor(() => expect(callsTo(calls, "save_connection")).toHaveLength(1));
@@ -70,7 +119,7 @@ test("creates a connection and sends the password as a secret change", async () 
     target: { kind: "network", host: "localhost", port: 5432 }
   });
   expect(save.secret).toEqual({ action: "set", value: "s3cret" });
-  expect(await screen.findByRole("button", { name: /^Local PG/ })).toBeInTheDocument();
+  expect(await screen.findByRole("treeitem", { name: /^Local PG/ })).toBeInTheDocument();
 });
 
 test("blocks submit and shows inline errors when the form is invalid", async () => {
@@ -78,7 +127,7 @@ test("blocks submit and shows inline errors when the form is invalid", async () 
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: "Nova" }));
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
   expect(screen.getByText("Informe um nome")).toBeInTheDocument();
@@ -91,8 +140,8 @@ test("switching to sqlite swaps network fields for a file path", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: "Nova" }));
-  await user.selectOptions(screen.getByLabelText("Banco"), "sqlite");
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  await user.selectOptions(screen.getByLabelText("Tipo de banco"), "sqlite");
 
   expect(screen.getByLabelText("Arquivo")).toBeInTheDocument();
   expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
@@ -104,8 +153,8 @@ test("redis shows the key separator field", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: "Nova" }));
-  await user.selectOptions(screen.getByLabelText("Banco"), "redis");
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  await user.selectOptions(screen.getByLabelText("Tipo de banco"), "redis");
 
   expect(screen.getByLabelText("Separador de chaves")).toHaveValue(":");
   expect(screen.getByLabelText("Porta")).toHaveValue(6379);
@@ -192,8 +241,8 @@ test("saving a connection drops its cached session data", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  expect(await screen.findByRole("button", { name: "users" })).toBeInTheDocument();
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  expect(await screen.findByRole("treeitem", { name: "users" })).toBeInTheDocument();
   await editConnection(user, "Postgres prod");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -206,14 +255,15 @@ test("a MongoDB connection can be saved with a connection string", async () => {
   const user = userEvent.setup();
   renderApp();
 
-  await user.click(await screen.findByRole("button", { name: "Nova" }));
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
   await user.type(screen.getByLabelText("Nome"), "Atlas");
-  await user.selectOptions(screen.getByLabelText("Banco"), "mongo");
-  await user.click(screen.getByLabelText("Connection string"));
+  await user.selectOptions(screen.getByLabelText("Ambiente"), "dev");
+  await user.selectOptions(screen.getByLabelText("Tipo de banco"), "mongo");
+  await user.click(screen.getByLabelText("URI de conexão"));
   expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
-  await user.type(screen.getByRole("textbox", { name: /Database padrão/ }), "shop");
+  await user.type(screen.getByRole("textbox", { name: /Banco padrão/ }), "shop");
   await user.type(
-    screen.getByLabelText("Connection string", { selector: "input#uri" }),
+    screen.getByLabelText("URI de conexão", { selector: "input#uri" }),
     "mongodb+srv://me:pw@c.example.net/"
   );
   await user.click(screen.getByRole("button", { name: "Salvar" }));

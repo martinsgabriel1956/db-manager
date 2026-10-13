@@ -10,15 +10,17 @@ import {
   prodPostgres,
   usersStructure
 } from "@/test/fakeBackend";
-import { renderWithClient } from "@/test/render";
+import { renderWithClient, rowAction } from "@/test/render";
 
 type ApplyArgs = { connectionId: string; changes: TableChanges; confirmed: boolean };
 
 async function openUsers(connection: ConnectionConfig) {
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: new RegExp(`^${connection.name}`) }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
+  await user.click(
+    await screen.findByRole("treeitem", { name: new RegExp(`^${connection.name}`) })
+  );
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
   await screen.findAllByRole("gridcell");
   return user;
 }
@@ -53,7 +55,7 @@ test("editing a cell stages it and save sends an update keyed by the primary key
   expect(cell("20")).toHaveAttribute("data-edited", "true");
   expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();
   // navigation is locked while edits are pending
-  expect(screen.getByRole("button", { name: "Próxima" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Próxima página" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
 
   await user.click(screen.getByRole("button", { name: "Salvar" }));
@@ -142,7 +144,12 @@ test("a new row can be dropped and discard clears everything", async () => {
 
   await editCell(user, "1", "7");
   await user.click(screen.getByRole("button", { name: "Descartar" }));
+  // dropping staged edits asks first, like closing the tab
+  const dialog = await screen.findByRole("dialog", { name: "Descartar alterações?" });
+  expect(dialog).toHaveTextContent("users tem 1 alteração pendente");
+  await user.click(within(dialog).getByRole("button", { name: "Descartar alterações" }));
 
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
   expect(cell("1")).toBeInTheDocument();
   expect(applied(calls)).toHaveLength(0);
@@ -198,6 +205,10 @@ test("read-only connections cannot edit", async () => {
   expect(screen.queryByRole("button", { name: "Adicionar linha" })).not.toBeInTheDocument();
   await user.dblClick(cell("2"));
   expect(screen.queryByRole("textbox", { name: /^Editar / })).not.toBeInTheDocument();
+  // the refused edit says why, to screen readers too
+  expect(
+    screen.getByText("Conexão somente leitura: a célula não pode ser editada")
+  ).toBeInTheDocument();
 });
 
 test("tables without a primary key are read-only", async () => {
@@ -241,4 +252,69 @@ test("the grid is operable from the keyboard: arrows select, Enter edits and com
   expect(cell("20")).toBeInTheDocument();
   expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();
   expect(grid).toHaveFocus();
+});
+
+test("closing a tab with staged edits asks first and keeps them on Voltar", async () => {
+  const calls = fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+  await editCell(user, "2", "20");
+
+  const tab = screen.getByRole("tab", { name: /· users \(1 alteração pendente\)/ });
+  await user.click(tab);
+  await user.keyboard("{Delete}");
+
+  const dialog = await screen.findByRole("dialog", { name: "Descartar alterações?" });
+  expect(dialog).toHaveTextContent("Postgres dev · users tem 1 alteração pendente");
+  // the safe choice has focus: Enter on reflex keeps the edits
+  expect(within(dialog).getByRole("button", { name: "Voltar" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(cell("20")).toHaveAttribute("data-edited", "true");
+  await waitFor(() => expect(screen.getByRole("tab", { name: /· users/ })).toHaveFocus());
+
+  await user.click(screen.getByRole("button", { name: "Fechar aba Postgres dev · users" }));
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar e fechar" })
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("tab", { name: /· users/ })).not.toBeInTheDocument()
+  );
+  // discarding never touches the database
+  expect(applied(calls)).toHaveLength(0);
+});
+
+test("Escape in the grid clears the selection and closes the cell detail", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.click(cell("2"));
+  expect(screen.getByRole("complementary", { name: "Valor da célula" })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("complementary", { name: "Valor da célula" })).not.toBeInTheDocument();
+});
+
+test("the sort chip names the sorted column and clears it", async () => {
+  const calls = fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.click(screen.getByRole("button", { name: /^id/ }));
+  expect(screen.getByText("Ordenado")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Remover ordenação" }));
+  expect(screen.queryByText("Ordenado")).not.toBeInTheDocument();
+  const browses = callsTo(calls, "browse_table") as { request: { sort: unknown } }[];
+  expect(browses.at(-1)?.request.sort).toBeNull();
+});
+
+test("opening the connection form keeps staged edits in the hidden tabs", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+  await editCell(user, "2", "20");
+
+  await rowAction(user, "Postgres dev", "Editar conexão");
+  expect(screen.getByRole("heading", { name: /^Editar conexão/ })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+  expect(cell("20")).toHaveAttribute("data-edited", "true");
+  expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();
 });

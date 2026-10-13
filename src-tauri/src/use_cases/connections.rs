@@ -100,6 +100,29 @@ fn non_empty(value: Option<String>) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// A draft to test: the same rules as saving, minus the name (it does not reach
+/// the database). Returns the normalized config and the secret it would connect
+/// with, read without touching the keychain: a new one as typed, the saved one
+/// when kept, none when cleared.
+pub fn prepare_test(
+    store: &ConnectionStore,
+    secrets: &dyn SecretStore,
+    config: ConnectionConfig,
+    secret: SecretChange,
+) -> Result<(ConnectionConfig, Option<String>), AppError> {
+    let config = normalize(config);
+    if config.id.trim().is_empty() {
+        return Err(AppError::validation("id da conexão ausente"));
+    }
+    validate_target(&config, &secret, &store.load()?)?;
+    let password = match (config.engine, secret) {
+        (Engine::Sqlite, _) | (_, SecretChange::Clear) => None,
+        (_, SecretChange::Set(value)) => Some(value),
+        (_, SecretChange::Keep) => secrets.get(&config.id)?,
+    };
+    Ok((config, password))
+}
+
 fn validate(
     config: &ConnectionConfig,
     secret: &SecretChange,
@@ -119,6 +142,16 @@ fn validate(
     if name_taken {
         return invalid("já existe uma conexão com esse nome");
     }
+    validate_target(config, secret, existing)
+}
+
+/// Engine, target, secret and Redis separator: everything a connection attempt depends on.
+fn validate_target(
+    config: &ConnectionConfig,
+    secret: &SecretChange,
+    existing: &[ConnectionConfig],
+) -> Result<(), AppError> {
+    let invalid = |msg: &str| Err(AppError::validation(msg));
 
     match (&config.engine, &config.target) {
         (Engine::Sqlite, Target::File { path }) => {
@@ -140,20 +173,20 @@ fn validate(
             match secret {
                 SecretChange::Set(uri) if !is_connection_string(uri) => {
                     return invalid(
-                        "a connection string deve começar com mongodb:// ou mongodb+srv://",
+                        "a URI de conexão deve começar com mongodb:// ou mongodb+srv://",
                     );
                 }
                 SecretChange::Keep | SecretChange::Clear if is_new => {
-                    return invalid("informe a connection string");
+                    return invalid("informe a URI de conexão");
                 }
                 SecretChange::Clear => {
-                    return invalid("a conexão por connection string precisa dela salva");
+                    return invalid("a conexão por URI precisa da URI salva");
                 }
                 _ => {}
             }
         }
         (_, Target::Uri { .. }) => {
-            return invalid("connection string só se aplica ao MongoDB");
+            return invalid("URI de conexão só se aplica ao MongoDB");
         }
         (_, Target::File { .. }) => {
             return invalid("este banco precisa de host/porta, não de arquivo");
@@ -591,12 +624,12 @@ mod tests {
             (
                 mongo_uri("1"),
                 SecretChange::Keep,
-                "informe a connection string",
+                "informe a URI de conexão",
             ),
             (
                 mongo_uri("1"),
                 SecretChange::Set("http://x".into()),
-                "a connection string deve começar com mongodb:// ou mongodb+srv://",
+                "a URI de conexão deve começar com mongodb:// ou mongodb+srv://",
             ),
             (
                 ConnectionConfig {
@@ -606,7 +639,7 @@ mod tests {
                     ..postgres("1", "pg")
                 },
                 SecretChange::Keep,
-                "connection string só se aplica ao MongoDB",
+                "URI de conexão só se aplica ao MongoDB",
             ),
         ];
         for (config, secret, expected) in cases {
@@ -628,7 +661,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             validation_message(save(&store, &secrets, mongo_uri("1"), SecretChange::Clear)),
-            "a conexão por connection string precisa dela salva"
+            "a conexão por URI precisa da URI salva"
         );
     }
 
@@ -715,5 +748,79 @@ mod tests {
 
         assert!(outcome.keychain_warning.is_some());
         assert!(list(&store).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_draft_uses_the_typed_secret_and_writes_nothing() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+
+        // a draft needs no name and is not stored
+        let (config, password) = prepare_test(
+            &store,
+            &secrets,
+            postgres("1", "  "),
+            SecretChange::Set("typed".into()),
+        )
+        .unwrap();
+
+        assert_eq!(config.name, "");
+        assert_eq!(password.as_deref(), Some("typed"));
+        assert!(list(&store).unwrap().is_empty());
+        assert_eq!(secrets.stored("1"), None);
+    }
+
+    #[test]
+    fn test_draft_keeps_the_saved_secret_or_drops_it() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        save(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Set("saved".into()),
+        )
+        .unwrap();
+
+        let keep = prepare_test(&store, &secrets, postgres("1", "pg"), SecretChange::Keep).unwrap();
+        let clear =
+            prepare_test(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
+        let file = prepare_test(&store, &secrets, sqlite("2"), SecretChange::Keep).unwrap();
+
+        assert_eq!(keep.1.as_deref(), Some("saved"));
+        assert_eq!(clear.1, None);
+        assert_eq!(file.1, None);
+        // testing never changes what is stored
+        assert_eq!(secrets.stored("1").as_deref(), Some("saved"));
+    }
+
+    #[test]
+    fn test_draft_is_validated_like_a_save() {
+        let (_dir, store) = store();
+        let mut no_host = postgres("1", "pg");
+        no_host.target = Target::Network {
+            host: " ".into(),
+            port: 5432,
+            database: "app".into(),
+            username: "postgres".into(),
+        };
+
+        let err = prepare_test(
+            &store,
+            &MemorySecrets::default(),
+            no_host,
+            SecretChange::Keep,
+        )
+        .unwrap_err();
+        let new_uri = prepare_test(
+            &store,
+            &MemorySecrets::default(),
+            mongo_uri("2"),
+            SecretChange::Keep,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.to_string(), "informe o host");
+        assert_eq!(new_uri.to_string(), "informe a URI de conexão");
     }
 }

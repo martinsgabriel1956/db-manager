@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { commands, type Engine } from "@/bindings";
 import { Button } from "@/components/ui/button";
+import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
 import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunner";
 import { ExportButton } from "@/features/export/ExportButton";
@@ -14,7 +15,6 @@ import { RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
   connectionId: string;
-  connectionName: string;
   engine: Engine;
   defaultSchema: string;
   sql: string;
@@ -26,8 +26,11 @@ type ResultsPanelProps = {
   /** the script behind the result, re-run in full by the export */
   sql: string;
   state: RunState;
+  engine: Engine;
   onLoadMore: () => void;
 };
+
+type WaitingPaneProps = { title: string; children: ReactNode };
 
 export function summary(state: RunState): string | null {
   if (state.status !== "rows" && state.status !== "command") {
@@ -47,7 +50,6 @@ export function summary(state: RunState): string | null {
 
 export function SqlWorkspace({
   connectionId,
-  connectionName,
   engine,
   defaultSchema,
   sql,
@@ -67,45 +69,41 @@ export function SqlWorkspace({
   }
 
   return (
-    <>
-      <Group orientation="vertical" className="h-full">
+    <div className="flex h-full flex-col">
+      {/* the same view header as tables and collections: title left, connection and action right */}
+      <div className="flex items-center gap-4 border-b border-foreground bg-background px-4 py-2">
+        <h2 className="display-caps text-[1.75rem] leading-[1.15]">SQL</h2>
+        <span className="hidden text-xs text-muted-foreground min-[1100px]:inline">
+          {RUN_SHORTCUT} executa a seleção ou tudo
+        </span>
+        <div className="ml-auto flex min-w-0 items-center gap-4">
+          <ConnectionContext connectionId={connectionId} />
+          {isRunning ? (
+            <Button size="sm" variant="outline" onClick={runner.cancel}>
+              <Square /> Cancelar
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              title={`${RUN_SHORTCUT} executa a seleção ou tudo`}
+              onClick={() => runFromEditor(editorApi.current?.textToRun() ?? sql)}
+            >
+              <Play /> Executar
+            </Button>
+          )}
+        </div>
+      </div>
+      <Group orientation="vertical" className="min-h-0 flex-1">
         <Panel defaultSize="45" minSize={80}>
-          <div className="flex h-full flex-col">
-            <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5">
-              <h2 className="flex items-baseline gap-1.5">
-                <span className="display-caps text-lg">SQL</span>
-                <span className="text-sm font-semibold">· {connectionName}</span>
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {RUN_SHORTCUT} executa a seleção ou tudo
-              </span>
-              <div className="ml-auto flex gap-2">
-                {isRunning ? (
-                  <Button size="sm" variant="outline" onClick={runner.cancel}>
-                    <Square /> Cancelar
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={() => runFromEditor(editorApi.current?.textToRun() ?? sql)}
-                  >
-                    <Play /> Executar
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="min-h-0 flex-1">
-              <SqlEditor
-                value={sql}
-                onChange={onSqlChange}
-                onRun={runFromEditor}
-                completion={completion.data}
-                engine={engine}
-                defaultSchema={defaultSchema}
-                apiRef={editorApi}
-              />
-            </div>
-          </div>
+          <SqlEditor
+            value={sql}
+            onChange={onSqlChange}
+            onRun={runFromEditor}
+            completion={completion.data}
+            engine={engine}
+            defaultSchema={defaultSchema}
+            apiRef={editorApi}
+          />
         </Panel>
         {/* 1px line with a 9px grab area; focused it thickens to 3px without moving the panels */}
         <Separator className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40" />
@@ -116,6 +114,7 @@ export function SqlWorkspace({
             connectionId={connectionId}
             sql={lastSql}
             state={runner.state}
+            engine={engine}
             onLoadMore={runner.loadMore}
           />
         </Panel>
@@ -127,11 +126,24 @@ export function SqlWorkspace({
         onConfirm={runner.confirm}
         onCancel={runner.dismiss}
       />
-    </>
+    </div>
   );
 }
 
-function ResultsPanel({ connectionId, sql, state, onLoadMore }: ResultsPanelProps) {
+/** The results area while nothing can be shown yet: the same grid paper as the idle state. */
+function WaitingPane({ title, children }: WaitingPaneProps) {
+  return (
+    <div
+      role="status"
+      className="grid h-full content-center justify-items-start gap-2 px-8 grid-paper"
+    >
+      <p className="display-caps text-3xl">{title}</p>
+      <p className="max-w-[52ch] text-sm text-muted-foreground">{children}</p>
+    </div>
+  );
+}
+
+function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsPanelProps) {
   const [selected, setSelected] = useState<SelectedCell | null>(null);
   const text = summary(state);
 
@@ -146,10 +158,21 @@ function ResultsPanel({ connectionId, sql, state, onLoadMore }: ResultsPanelProp
     );
   }
   if (state.status === "running") {
-    return <p className="p-3 text-sm text-muted-foreground">Executando…</p>;
+    return (
+      <WaitingPane title="Executando…">
+        {/* SQLite has no real cancel, only the connection timeout */}
+        {engine === "sqlite"
+          ? "O SQLite não cancela uma query em andamento: ela para no timeout da conexão."
+          : "Cancelar, no topo, interrompe a query no próprio banco."}
+      </WaitingPane>
+    );
   }
   if (state.status === "confirm") {
-    return <p className="p-3 text-sm text-muted-foreground">Aguardando confirmação…</p>;
+    return (
+      <WaitingPane title="Aguardando confirmação…">
+        Nada rodou ainda: o comando só vai ao banco depois que você confirmar.
+      </WaitingPane>
+    );
   }
   if (state.status === "error") {
     return (
@@ -205,6 +228,7 @@ function ResultsPanel({ connectionId, sql, state, onLoadMore }: ResultsPanelProp
             onLoadMore={onLoadMore}
             selected={selected}
             onSelect={setSelected}
+            readOnlyHint="Resultado de query: somente leitura; para editar, abra a tabela"
           />
         </div>
         {selected && selectedCell && (

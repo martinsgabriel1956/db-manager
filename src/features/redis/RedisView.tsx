@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ConnectionConfig } from "@/bindings";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { DEFAULT_REDIS_SEPARATOR } from "@/features/connections/options";
 import { ConsolePanel } from "@/features/redis/ConsolePanel";
 import { InfoPanel } from "@/features/redis/InfoPanel";
@@ -23,12 +24,7 @@ export function RedisView({ connection, db }: RedisViewProps) {
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
       <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="flex min-w-0 items-baseline gap-1.5 py-2.5">
-          <span className="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            {connection.name} ·
-          </span>
-          <span className="shrink-0 display text-[1.75rem]">db{db}</span>
-        </h2>
+        <h2 className="shrink-0 py-2 display text-[1.75rem] leading-[1.15]">db{db}</h2>
         <TabsList aria-label="Seções do Redis" className="shrink-0">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
             <TabsTrigger key={id} value={id}>
@@ -37,6 +33,7 @@ export function RedisView({ connection, db }: RedisViewProps) {
           ))}
         </TabsList>
         {connection.readOnly && <Badge variant="held">Somente leitura</Badge>}
+        <ConnectionContext connectionId={connection.id} className="ml-auto" />
       </div>
       {/* panels stay mounted so the selected key and the console scrollback survive switching */}
       <TabsContent value="keys" forceMount className="min-h-0 flex-1">

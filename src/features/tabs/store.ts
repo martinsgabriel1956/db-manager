@@ -33,6 +33,11 @@ type TabsState = {
   openHistory: () => void;
   activate: (id: string) => void;
   close: (id: string) => void;
+  /** closes at once, or asks first when the tab holds staged edits; true when it closed */
+  requestClose: (id: string) => boolean;
+  /** the tab waiting for "discard staged edits?" (not persisted) */
+  closeRequest: string | null;
+  cancelClose: () => void;
   /** drops tabs of connections that no longer exist (deleted, or stale persisted state) */
   keepConnections: (connectionIds: string[]) => void;
   setSql: (id: string, sql: string) => void;
@@ -62,7 +67,7 @@ function neighbourOf(tabs: Tab[], closedIndex: number): string | null {
 
 export const useTabs = create<TabsState>()(
   persist(
-    set => ({
+    (set, get) => ({
       ...INITIAL_TABS,
       openTable: target =>
         set(state => {
@@ -134,8 +139,21 @@ export const useTabs = create<TabsState>()(
           }
           const tabs = state.tabs.filter(tab => tab.id !== id);
           const activeId = state.activeId === id ? neighbourOf(tabs, index) : state.activeId;
-          return { tabs, activeId };
+          return { tabs, activeId, closeRequest: null };
         }),
+      requestClose: id => {
+        const { tabs, pending, close } = get();
+        const tab = tabs.find(candidate => candidate.id === id);
+        // staged edits live only in the open view: closing it would drop them silently
+        if (tab?.kind === "table" && (pending[tableKey(tab)] ?? 0) > 0) {
+          set({ closeRequest: id });
+          return false;
+        }
+        close(id);
+        return true;
+      },
+      closeRequest: null,
+      cancelClose: () => set({ closeRequest: null }),
       keepConnections: connectionIds =>
         set(state => {
           const tabs = state.tabs.filter(

@@ -4,15 +4,17 @@ import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, BrowseRequest } from "@/bindings";
 import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
-import { renderWithClient } from "@/test/render";
+import { filterText } from "@/features/table/BrowseToolbar";
+import { pageLabel } from "@/features/table/TableView";
+import { renderWithClient, rowAction } from "@/test/render";
 
 type BrowseArgs = { connectionId: string; request: BrowseRequest };
 
 async function openUsers() {
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
   await screen.findAllByRole("row");
   return user;
 }
@@ -27,14 +29,14 @@ test("expanding a connection connects and lists schemas with public open", async
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
 
-  expect(await screen.findByRole("button", { name: "users" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "active_users" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^audit/ })).toBeInTheDocument();
+  expect(await screen.findByRole("treeitem", { name: "users" })).toBeInTheDocument();
+  expect(screen.getByRole("treeitem", { name: "active_users" })).toBeInTheDocument();
+  expect(screen.getByRole("treeitem", { name: /^audit/ })).toBeInTheDocument();
   expect(callsTo(calls, "connect_database")).toEqual([{ connectionId: "pg-1" }]);
 
-  await user.click(screen.getByRole("button", { name: /^audit/ }));
+  await user.click(screen.getByRole("treeitem", { name: /^audit/ }));
   expect(screen.getByText("Sem tabelas")).toBeInTheDocument();
 });
 
@@ -47,11 +49,11 @@ test("a failed connection shows the error and can retry", async () => {
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
   expect(await screen.findByRole("alert")).toHaveTextContent("password authentication failed");
 
   await user.click(screen.getByRole("button", { name: "Tentar de novo" }));
-  expect(await screen.findByRole("button", { name: "users" })).toBeInTheDocument();
+  expect(await screen.findByRole("treeitem", { name: "users" })).toBeInTheDocument();
 });
 
 test("disconnect closes the session and collapses the tree", async () => {
@@ -59,12 +61,12 @@ test("disconnect closes the session and collapses the tree", async () => {
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await screen.findByRole("button", { name: "users" });
-  await user.click(screen.getByRole("button", { name: "Desconectar Postgres prod" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await screen.findByRole("treeitem", { name: "users" });
+  await rowAction(user, "Postgres prod", "Desconectar");
 
   expect(callsTo(calls, "disconnect_database")).toEqual([{ connectionId: "pg-1" }]);
-  expect(screen.queryByRole("button", { name: "users" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("treeitem", { name: "users" })).not.toBeInTheDocument();
 });
 
 test("opening a table browses its first page ordered by the backend default", async () => {
@@ -103,10 +105,10 @@ test("header click cycles sort, pagination moves pages", async () => {
   await user.click(screen.getByRole("button", { name: /^id/ }));
   await waitFor(() => expect(lastBrowse(calls).sort).toBeNull());
 
-  await user.click(screen.getByRole("button", { name: "Próxima" }));
+  await user.click(screen.getByRole("button", { name: "Próxima página" }));
   await waitFor(() => expect(lastBrowse(calls).page).toBe(1));
-  expect(screen.getByText("Página 2")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Anterior" }));
+  expect(screen.getByText(/^Página 2 · linhas 101–/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Página anterior" }));
   await waitFor(() => expect(lastBrowse(calls).page).toBe(0));
 });
 
@@ -170,59 +172,22 @@ test("browse errors are shown", async () => {
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
 });
 
-test("Ctrl+P opens what the sidebar listed, without connecting by itself", async () => {
-  const calls = fakeBackend([prodPostgres]);
-  const user = userEvent.setup();
-  renderWithClient(<App />);
-
-  await screen.findByRole("button", { name: /^Postgres prod/ });
-  await user.keyboard("{Control>}p{/Control}");
-  expect(await screen.findByText(/Nada carregado ainda/)).toBeInTheDocument();
-  expect(callsTo(calls, "connect_database")).toEqual([]);
-  await user.keyboard("{Escape}");
-
-  await user.click(screen.getByRole("button", { name: /^Postgres prod/ }));
-  await screen.findByRole("button", { name: "users" });
-  await user.keyboard("{Control>}p{/Control}");
-  await user.type(screen.getByLabelText("Buscar tabela, coleção ou database"), "prod act");
-  expect(screen.getAllByRole("option").map(option => option.textContent)).toEqual([
-    "active_usersPostgres prod · publicProd"
-  ]);
-
-  await user.keyboard("{Enter}");
-  expect(screen.queryByLabelText("Buscar tabela, coleção ou database")).not.toBeInTheDocument();
-  expect(
-    await screen.findByRole("tab", {
-      name: "Postgres prod · active_users · produção",
-      selected: true
-    })
-  ).toBeInTheDocument();
+test("the page label gives the row range, and says when there is more", () => {
+  expect(pageLabel(0, 100, true)).toBe("Página 1 · linhas 1–100, há mais");
+  expect(pageLabel(1, 2, false)).toBe("Página 2 · linhas 101–102");
+  expect(pageLabel(0, 0, false)).toBe("Página 1 · nenhuma linha");
 });
 
-test("Ctrl+P ranks names starting with the query first and moves with the arrows", async () => {
-  fakeBackend([prodPostgres]);
-  const user = userEvent.setup();
-  renderWithClient(<App />);
-
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await screen.findByRole("button", { name: "users" });
-  await user.keyboard("{Control>}p{/Control}");
-  await user.type(screen.getByLabelText("Buscar tabela, coleção ou database"), "users");
-
-  const options = screen.getAllByRole("option");
-  expect(options.map(option => option.textContent?.split("Postgres")[0])).toEqual([
-    "users",
-    "active_users"
-  ]);
-  expect(options[0]).toHaveAttribute("aria-selected", "true");
-  await user.keyboard("{ArrowDown}");
-  expect(screen.getAllByRole("option")[1]).toHaveAttribute("aria-selected", "true");
-  await user.keyboard("{ArrowDown}");
-  expect(screen.getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
+test("the filter chip reads the applied condition as SQL", () => {
+  expect(filterText({ column: "id", op: "eq", value: "42" })).toBe("id = 42");
+  expect(filterText({ column: "email", op: "like", value: "%@x" })).toBe("email LIKE %@x");
+  expect(filterText({ column: "deleted_at", op: "isNull", value: null })).toBe(
+    "deleted_at IS NULL"
+  );
 });

@@ -17,6 +17,8 @@ export function EnvTag({ environment, className }: EnvTagProps) {
         className
       )}
     >
+      {/* read in context: "ambiente Prod", not a bare "Prod" */}
+      <span className="sr-only">ambiente </span>
       {style.label}
     </span>
   );

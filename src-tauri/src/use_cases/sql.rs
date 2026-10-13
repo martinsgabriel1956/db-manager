@@ -34,11 +34,7 @@ pub async fn connect(
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let live = match config.engine {
-        Engine::Mongo => Live::Mongo(MongoAdapter::connect(&config, secret).await?),
-        Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(&config, secret).await?)),
-        _ => Live::Sql(SqlConnection::connect(&config, secret, config.read_only).await?),
-    };
+    let live = open(&config, secret).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -48,6 +44,26 @@ pub async fn connect(
             read_only: config.read_only,
         },
     );
+    Ok(())
+}
+
+/// Each adapter's connect reaches the server (handshake, ping or first pooled
+/// connection), so a wrong host or password fails here.
+async fn open(config: &ConnectionConfig, secret: Option<String>) -> Result<Live, AppError> {
+    Ok(match config.engine {
+        Engine::Mongo => Live::Mongo(MongoAdapter::connect(config, secret).await?),
+        Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(config, secret).await?)),
+        _ => Live::Sql(SqlConnection::connect(config, secret, config.read_only).await?),
+    })
+}
+
+/// Connects with a configuration that may not be saved and closes at once:
+/// nothing is registered, stored or written to the keychain.
+pub async fn test_connection(
+    config: &ConnectionConfig,
+    secret: Option<String>,
+) -> Result<(), AppError> {
+    open(config, secret).await?.close().await;
     Ok(())
 }
 

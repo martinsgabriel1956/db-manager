@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 import type { KeyDetail, KeyEdit, StreamEntry } from "@/bindings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -137,7 +138,14 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const ttlSecs = Number(ttl);
   const validTtl = ttl !== "" && Number.isInteger(ttlSecs) && ttlSecs > 0;
-  const unit = detail.value.kind === "string" ? "bytes" : "elementos";
+  const unit =
+    detail.value.kind === "string"
+      ? detail.length === 1
+        ? "byte"
+        : "bytes"
+      : detail.length === 1
+        ? "elemento"
+        : "elementos";
 
   return (
     <div className="grid gap-2 border-b bg-muted px-3 py-2">
@@ -210,27 +218,33 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
             </>
           )}
           {confirmingDelete ? (
-            // focused so Enter confirms; leaving it or Escape disarms the delete
-            <Button
-              size="xs"
-              variant="destructive"
-              className="ml-auto"
-              autoFocus
-              disabled={pending}
-              onClick={() => onSubmit([{ op: "delete" }], onDeleted)}
-              onBlur={() => setConfirmingDelete(false)}
-              onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
-            >
-              Confirmar exclusão
-            </Button>
+            <span className="ml-auto flex min-w-0 items-center gap-2">
+              {/* the exact command before the click, as everywhere else */}
+              <code className="min-w-0 truncate border border-foreground bg-background px-1.5 font-mono text-xs leading-6">
+                DEL {detail.key}
+              </code>
+              {/* focused so Enter confirms; leaving it or Escape disarms the delete */}
+              <Button
+                size="xs"
+                variant="destructive"
+                className="shrink-0"
+                autoFocus
+                disabled={pending}
+                onClick={() => onSubmit([{ op: "delete" }], onDeleted)}
+                onBlur={() => setConfirmingDelete(false)}
+                onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
+              >
+                Confirmar exclusão
+              </Button>
+            </span>
           ) : (
             <Button
               size="xs"
-              variant="ghost"
+              variant="outline"
               className="ml-auto text-destructive"
               onClick={() => setConfirmingDelete(true)}
             >
-              Excluir chave
+              <Trash2 /> Excluir chave
             </Button>
           )}
         </div>

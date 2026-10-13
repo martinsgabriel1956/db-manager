@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { clearMocks } from "@tauri-apps/api/mocks";
 import { afterEach, vi } from "vitest";
+import { useExplorer } from "@/features/explorer/store";
 import { INITIAL_TABS, useTabs } from "@/features/tabs/store";
 
 // tabs persist through tauri-plugin-store in the app; tests keep them in memory
@@ -32,5 +33,6 @@ globalThis.ResizeObserver = class {
 afterEach(() => {
   cleanup();
   clearMocks();
-  useTabs.setState(INITIAL_TABS);
+  useTabs.setState({ ...INITIAL_TABS, pending: {}, closeRequest: null });
+  useExplorer.setState({ expanded: [] });
 });

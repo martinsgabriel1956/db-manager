@@ -6,7 +6,7 @@ import type { ConnectionConfig, SchemaInfo } from "@/bindings";
 import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
 import { useTabs } from "@/features/tabs/store";
 import { fakeBackend, prodPostgres } from "@/test/fakeBackend";
-import { renderWithClient } from "@/test/render";
+import { renderWithClient, rowAction } from "@/test/render";
 
 const shopMysql: ConnectionConfig = {
   ...prodPostgres,
@@ -50,12 +50,12 @@ test("MySQL opens the configured database in the tree and has a SQL editor", asy
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Loja MySQL/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Loja MySQL/ }));
 
-  expect(await screen.findByRole("button", { name: "orders" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "events" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("treeitem", { name: "orders" })).toBeInTheDocument();
+  expect(screen.queryByRole("treeitem", { name: "events" })).not.toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Abrir editor SQL de Loja MySQL" }));
+  await rowAction(user, "Loja MySQL", "Nova query SQL");
   expect(useTabs.getState().tabs).toMatchObject([{ kind: "editor", connectionId: "my-1" }]);
 });
 
@@ -66,7 +66,7 @@ test("SQLite opens main", async () => {
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Arquivo/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Arquivo/ }));
 
-  expect(await screen.findByRole("button", { name: "notes" })).toBeInTheDocument();
+  expect(await screen.findByRole("treeitem", { name: "notes" })).toBeInTheDocument();
 });

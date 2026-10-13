@@ -42,10 +42,11 @@ const FIELD_LABEL: Record<keyof Query, string> = {
   projection: "Projeção"
 };
 
+/** examples, never mistaken for an applied value */
 const PLACEHOLDER: Record<keyof Query, string> = {
-  filter: '{"status": "paid"}',
-  sort: '{"_id": -1}',
-  projection: '{"name": 1}'
+  filter: 'ex.: {"ativo": true}',
+  sort: 'ex.: {"_id":-1}',
+  projection: 'ex.: {"nome":1}'
 };
 
 export function DocumentsPanel({
@@ -101,6 +102,16 @@ export function DocumentsPanel({
     }
   }
 
+  const filtered = applied.filter.trim() !== "";
+  const sorted = applied.sort.trim() !== "";
+  const unapplied = JSON.stringify(draft) !== JSON.stringify(applied);
+
+  function clearQuery() {
+    setDraft(EMPTY_QUERY);
+    setApplied(EMPTY_QUERY);
+    setPage(0);
+  }
+
   function closeEditor() {
     writer.reset();
     setEditing(null);
@@ -124,7 +135,12 @@ export function DocumentsPanel({
               />
             </label>
           ))}
-          <Button type="submit" size="sm" variant="outline" disabled={invalid.length > 0}>
+          <Button
+            type="submit"
+            size="sm"
+            variant={unapplied ? "default" : "outline"}
+            disabled={invalid.length > 0}
+          >
             Aplicar
           </Button>
         </div>
@@ -136,6 +152,26 @@ export function DocumentsPanel({
       </form>
 
       <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5 text-sm">
+        {/* filtration is the only magenta: the chips carry the applied query itself */}
+        {filtered && (
+          <span className="inline-flex h-[18px] min-w-0 items-center gap-1 bg-filter px-1.5 text-background">
+            <span className="legend">Filtro</span>
+            <span className="max-w-48 min-w-0 truncate font-mono text-[11px]">
+              {applied.filter}
+            </span>
+          </span>
+        )}
+        {sorted && (
+          <span className="inline-flex h-[18px] min-w-0 items-center gap-1 bg-filter px-1.5 text-background">
+            <span className="legend">Ordenado</span>
+            <span className="max-w-32 min-w-0 truncate font-mono text-[11px]">{applied.sort}</span>
+          </span>
+        )}
+        {(filtered || sorted || applied.projection.trim() !== "") && (
+          <Button size="sm" variant="ghost" onClick={clearQuery}>
+            Limpar consulta
+          </Button>
+        )}
         {/* a toggle between two renderings of the same documents, not tabs with panels */}
         <div role="group" aria-label="Visualização" className="flex border border-foreground">
           {(["tree", "json"] as const).map(option => (

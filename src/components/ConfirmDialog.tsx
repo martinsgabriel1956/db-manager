@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { EnvTag } from "@/features/connections/EnvTag";
 import { useConnections } from "@/features/connections/queries";
+import { useFocusReturn } from "@/features/tabs/focus";
 
 type ConfirmDialogProps = {
   /** named on the form, so the user signs knowing where the command runs */
@@ -29,15 +30,17 @@ export function ConfirmDialog({
   onConfirm,
   onCancel
 }: ConfirmDialogProps) {
-  const count = confirmation?.statements.length ?? 0;
   const connection = useConnections().data?.find(c => c.id === connectionId);
   // in production, confirming always names where it runs, whichever screen asked
   const isProd = connection?.environment === "prod";
   const label = isProd ? "Executar em produção" : confirmLabel;
+  // opened by a shortcut or a save, not a trigger: give focus back to the editor or grid that asked
+  const focusReturn = useFocusReturn();
 
   return (
     <Dialog open={confirmation !== null} onOpenChange={open => !open && onCancel()}>
       <DialogContent
+        {...focusReturn}
         showCloseButton={false}
         className="gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl"
       >
@@ -48,20 +51,17 @@ export function ConfirmDialog({
           </svg>
         </div>
         {/* the record's fields */}
-        <dl className="grid grid-cols-[2fr_1fr_1fr] border-b">
+        {/* the statements below speak for their own count */}
+        <dl className="grid grid-cols-[2fr_1fr] border-b">
           <div className="border-r px-5 py-2.5">
             <dt className="legend text-muted-foreground">Conexão</dt>
             <dd className="mt-1.5 truncate text-sm font-semibold">{connection?.name ?? "—"}</dd>
           </div>
-          <div className="border-r px-4 py-2.5">
+          <div className="px-4 py-2.5">
             <dt className="legend text-muted-foreground">Ambiente</dt>
             <dd className="mt-1.5">
               {connection ? <EnvTag environment={connection.environment} /> : "—"}
             </dd>
-          </div>
-          <div className="px-4 py-2.5">
-            <dt className="legend text-muted-foreground">Comandos</dt>
-            <dd className="mt-1.5 font-mono text-sm font-semibold">{count}</dd>
           </div>
         </dl>
         <div className="border-b px-5 py-2.5">

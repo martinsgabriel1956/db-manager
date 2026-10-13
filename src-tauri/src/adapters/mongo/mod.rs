@@ -43,7 +43,7 @@ impl MongoAdapter {
         let (mut options, default_database) = match &config.target {
             Target::Uri { database } => {
                 let uri = secret.ok_or_else(|| {
-                    AppError::validation("connection string não encontrada no keychain")
+                    AppError::validation("URI de conexão não encontrada no keychain")
                 })?;
                 let options = ClientOptions::parse(uri)
                     .await
@@ -77,7 +77,7 @@ impl MongoAdapter {
             }
             Target::File { .. } => {
                 return Err(AppError::validation(
-                    "MongoDB precisa de host/porta ou connection string",
+                    "MongoDB precisa de host/porta ou URI de conexão",
                 ));
             }
         };

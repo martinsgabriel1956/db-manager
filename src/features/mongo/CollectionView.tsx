@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { AggregationPanel } from "@/features/mongo/AggregationPanel";
 import { DocumentsPanel } from "@/features/mongo/DocumentsPanel";
 import { useIndexes } from "@/features/mongo/queries";
@@ -47,6 +48,7 @@ export function CollectionView({
           ))}
         </TabsList>
         {readOnly && <Badge variant="held">Somente leitura</Badge>}
+        <ConnectionContext connectionId={connectionId} className="ml-auto" />
       </div>
       {/* panels stay mounted so filters, results and editors survive switching */}
       <TabsContent value="documents" forceMount className="min-h-0 flex-1">
