@@ -68,6 +68,8 @@ const theme = EditorView.theme({
   ".cm-completionIcon-namespace::after": { content: "'SC'" },
   ".cm-completionIcon-variable::after, .cm-completionIcon-constant::after": { content: "'VR'" },
   ".cm-completionIcon-text::after": { content: "'TX'" },
+  // room around each option, in the 4px rhythm: the default 1px reads cramped
+  ".cm-tooltip-autocomplete > ul > li": { padding: "4px 8px 4px 4px" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--select)",
     color: "var(--select-foreground)"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { KeyDetail, KeyEdit, StreamEntry } from "@/bindings";
 import { Badge } from "@/components/ui/badge";
@@ -137,6 +137,7 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
   const [ttl, setTtl] = useState("");
   const [newName, setNewName] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const ttlSecs = Number(ttl);
   const validTtl = ttl !== "" && Number.isInteger(ttlSecs) && ttlSecs > 0;
   const unit =
@@ -222,6 +223,7 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
           <Button
             size="xs"
             variant="outline"
+            ref={deleteTriggerRef}
             className="ml-auto text-destructive"
             aria-expanded={confirmingDelete}
             onMouseDown={keepArmedFocus(confirmingDelete)}
@@ -237,6 +239,7 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
           pending={pending}
           onConfirm={() => onSubmit([{ op: "delete" }], onDeleted)}
           onDisarm={() => setConfirmingDelete(false)}
+          triggerRef={deleteTriggerRef}
         />
       )}
     </div>

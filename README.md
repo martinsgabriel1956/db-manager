@@ -2,6 +2,7 @@
 
 Cliente desktop (Tauri + React + Rust) para Postgres, MySQL, SQLite, MongoDB e Redis.
 Decisões de design e marcos: [docs/decisions.md](docs/decisions.md).
+O diagrama ER é desenhado com [React Flow](https://reactflow.dev) (licença MIT); o crédito fica aqui, não no canto do diagrama.
 
 ## Pré-requisitos
 

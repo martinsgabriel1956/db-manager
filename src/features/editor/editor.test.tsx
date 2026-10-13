@@ -309,6 +309,10 @@ test("dismissing the confirmation runs nothing and keeps the previous result", a
 
   await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   expect(callsTo(calls, "run_script")).toHaveLength(2);
-  expect(screen.getByText(/^Execução cancelada · nada rodou no banco/)).toBeInTheDocument();
+  const statuses = screen.getAllByRole("status");
+  expect(statuses[0]).toHaveTextContent("Execução cancelada Nada rodou no banco.");
+  // the kept result reads as the earlier one, without a receipt for a run that did not happen
+  expect(statuses[1]).toHaveTextContent(/^Resultado anterior · 1 linha/);
+  expect(screen.queryByText(/Confirmado e executado/)).not.toBeInTheDocument();
   expect(screen.getByRole("gridcell")).toHaveTextContent("1");
 });
