@@ -245,4 +245,5 @@ pub struct HistoryEntry {
     pub duration_ms: u32,
     pub success: bool,
     pub error: Option<String>,
+    pub starred: bool,
 }

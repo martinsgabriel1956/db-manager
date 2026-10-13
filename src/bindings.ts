@@ -24,7 +24,8 @@ export const commands = {
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
-	searchHistory: (text: string, connectionId: string | null) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId }),
+	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
+	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
 	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
@@ -237,6 +238,7 @@ export type HistoryEntry = {
 	durationMs: number,
 	success: boolean,
 	error: string | null,
+	starred: boolean,
 };
 
 export type IndexInfo = {

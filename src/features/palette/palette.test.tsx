@@ -57,6 +57,16 @@ test("the palette moves with the arrows, opens actions and says when nothing mat
   expect(await screen.findByRole("dialog", { name: "Legenda" })).toHaveTextContent("Ctrl+W");
 });
 
+test("Ctrl+P opens the same palette as Ctrl+K", async () => {
+  fakeBackend([devPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await screen.findByRole("treeitem", { name: /^Postgres dev/ });
+  await user.keyboard("{Control>}p{/Control}");
+  expect(await screen.findByRole("dialog", { name: "Ir para" })).toBeInTheDocument();
+});
+
 test("Ctrl+W closes the active tab", async () => {
   fakeBackend([devPostgres]);
   const user = userEvent.setup();

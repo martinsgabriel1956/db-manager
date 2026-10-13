@@ -115,8 +115,25 @@ pub async fn search_history(
     state: State<'_, AppState>,
     text: String,
     connection_id: Option<String>,
+    starred_only: bool,
 ) -> Result<Vec<HistoryEntry>, AppError> {
-    sql::search_history(&state.history, &text, connection_id.as_deref()).await
+    sql::search_history(
+        &state.history,
+        &text,
+        connection_id.as_deref(),
+        starred_only,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn star_history(
+    state: State<'_, AppState>,
+    id: u32,
+    starred: bool,
+) -> Result<(), AppError> {
+    state.history.set_starred(id, starred).await
 }
 
 #[tauri::command]

@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleX, SquareTerminal } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, CircleX, SquareTerminal, Star } from "lucide-react";
 import { commands, type ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { isSqlEngine } from "@/features/connections/options";
 import { errorMessage } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 
 type HistoryViewProps = {
   connections: ConnectionConfig[];
@@ -29,11 +30,19 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
   const [connectionId, setConnectionId] = useState(ALL);
+  const [starredOnly, setStarredOnly] = useState(false);
+  const queryClient = useQueryClient();
   const history = useQuery({
-    queryKey: ["history", search, connectionId],
-    queryFn: () => commands.searchHistory(search, connectionId === ALL ? null : connectionId),
+    queryKey: ["history", search, connectionId, starredOnly],
+    queryFn: () =>
+      commands.searchHistory(search, connectionId === ALL ? null : connectionId, starredOnly),
     // the previous results stay on screen while the next search runs
     placeholderData: keepPreviousData
+  });
+  const star = useMutation({
+    mutationFn: ({ id, starred }: { id: number; starred: boolean }) =>
+      commands.starHistory(id, starred),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["history"] })
   });
 
   useEffect(() => {
@@ -73,8 +82,22 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
             </option>
           ))}
         </NativeSelect>
+        <Button
+          size="sm"
+          variant={starredOnly ? "default" : "outline"}
+          className="h-7"
+          aria-pressed={starredOnly}
+          onClick={() => setStarredOnly(prev => !prev)}
+        >
+          <Star className={cn(starredOnly && "fill-current")} /> Favoritas
+        </Button>
       </div>
 
+      {star.isError && (
+        <p role="alert" className="p-3 text-sm text-destructive">
+          {errorMessage(star.error)}
+        </p>
+      )}
       {history.isError && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {errorMessage(history.error)}
@@ -83,14 +106,21 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
       {history.data?.length === 0 && (
         <div className="grid flex-1 content-center justify-items-start gap-2 px-10 grid-paper">
           {/* a search that finds nothing is not an empty history */}
-          {search !== "" || connectionId !== ALL ? (
+          {starredOnly && search === "" && connectionId === ALL ? (
+            <>
+              <p className="display-caps text-4xl">Nenhuma favorita</p>
+              <p className="max-w-[46ch] text-sm text-muted-foreground">
+                Marque a estrela de uma entrada para guardar a query aqui.
+              </p>
+            </>
+          ) : search !== "" || connectionId !== ALL || starredOnly ? (
             <>
               <p className="display-caps text-4xl">Nenhum resultado</p>
               <p className="max-w-[46ch] text-sm text-muted-foreground">
                 Nada no histórico corresponde
                 {search !== "" ? ` a “${search}”` : ""}
-                {connectionId !== ALL ? " nesta conexão" : ""}. Mude a busca ou escolha “Todas as
-                conexões”.
+                {connectionId !== ALL ? " nesta conexão" : ""}
+                {starredOnly ? " entre as favoritas" : ""}. Mude a busca ou os filtros.
               </p>
             </>
           ) : (
@@ -109,6 +139,17 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
         {history.data?.map(entry => (
           <li key={entry.id} className="grid gap-1 px-3 py-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                className="-ml-1"
+                aria-label="Favorita"
+                aria-pressed={entry.starred}
+                title={entry.starred ? "Remover das favoritas" : "Marcar como favorita"}
+                onClick={() => star.mutate({ id: entry.id, starred: !entry.starred })}
+              >
+                <Star className={cn(entry.starred && "fill-current text-foreground")} />
+              </Button>
               {entry.success ? (
                 <CircleCheck className="size-3.5 text-success" aria-label="sucesso" />
               ) : (

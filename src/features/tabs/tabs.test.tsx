@@ -16,7 +16,8 @@ const entries: HistoryEntry[] = [
     executedAt: "2026-10-11T12:00:00.000Z",
     durationMs: 8,
     success: true,
-    error: null
+    error: null,
+    starred: false
   },
   {
     id: 1,
@@ -26,7 +27,8 @@ const entries: HistoryEntry[] = [
     executedAt: "2026-10-11T11:00:00.000Z",
     durationMs: 3,
     success: false,
-    error: 'relation "x" does not exist [42P01]'
+    error: 'relation "x" does not exist [42P01]',
+    starred: true
   }
 ];
 
@@ -143,7 +145,11 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
   await user.type(screen.getByLabelText("Buscar no histórico"), "users");
   await user.selectOptions(screen.getByLabelText("Filtrar por conexão"), "pg-1");
   await waitFor(() =>
-    expect(callsTo(calls, "search_history")).toContainEqual({ text: "users", connectionId: "pg-1" })
+    expect(callsTo(calls, "search_history")).toContainEqual({
+      text: "users",
+      connectionId: "pg-1",
+      starredOnly: false
+    })
   );
 
   await user.click(screen.getByRole("button", { name: "Abrir no editor" }));
@@ -180,4 +186,44 @@ test("a search with no match is not reported as an empty history", async () => {
   await user.type(screen.getByLabelText("Buscar no histórico"), "orders");
   expect(await screen.findByText("Nenhum resultado")).toBeInTheDocument();
   expect(screen.getByText(/corresponde a “orders”/)).toBeInTheDocument();
+});
+
+test("history entries are starred and the favourites filter asks for starred only", async () => {
+  const calls = fakeBackend([prodPostgres], {
+    search_history: () => entries,
+    star_history: () => null
+  });
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "Histórico" }));
+  await screen.findByText("SELECT count(*) FROM users");
+  const stars = screen.getAllByRole("button", { name: "Favorita" });
+  expect(stars.map(star => star.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
+
+  await user.click(stars[0]);
+  await user.click(stars[1]);
+  expect(callsTo(calls, "star_history")).toEqual([
+    { id: 2, starred: true },
+    { id: 1, starred: false }
+  ]);
+
+  await user.click(screen.getByRole("button", { name: "Favoritas" }));
+  await waitFor(() =>
+    expect(callsTo(calls, "search_history")).toContainEqual({
+      text: "",
+      connectionId: null,
+      starredOnly: true
+    })
+  );
+});
+
+test("favourites with nothing starred say how to star", async () => {
+  fakeBackend([prodPostgres], { search_history: () => [] });
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("button", { name: "Histórico" }));
+  await user.click(await screen.findByRole("button", { name: "Favoritas" }));
+  expect(await screen.findByText("Nenhuma favorita")).toBeInTheDocument();
 });

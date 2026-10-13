@@ -21,7 +21,7 @@ const ENVIRONMENT_MEANING = [
 ] as const;
 
 const SHORTCUTS = [
-  ["Ctrl+K", "Ir para tabela, coleção ou ação"],
+  ["Ctrl+K ou Ctrl+P", "Ir para tabela, coleção ou ação"],
   ["Ctrl+W", "Fechar a aba ativa"],
   ["Ctrl+Tab", "Próxima aba (com Shift, a anterior)"],
   ["Ctrl+S", "Salvar as alterações da tabela"],

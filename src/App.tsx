@@ -117,7 +117,7 @@ export function App() {
         focusTabSoon(next.id);
       } else if (event.shiftKey) {
         return;
-      } else if (key === "k") {
+      } else if (key === "k" || key === "p") {
         event.preventDefault();
         openPalette();
       } else if (key === "b") {
@@ -312,7 +312,7 @@ export function App() {
                 size="sm"
                 variant="ghost"
                 className="justify-start"
-                aria-keyshortcuts="Control+K"
+                aria-keyshortcuts="Control+K Control+P"
                 onClick={() => openPalette()}
               >
                 <Search /> Ir para tabela…
