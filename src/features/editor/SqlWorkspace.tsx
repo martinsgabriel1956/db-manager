@@ -30,6 +30,8 @@ type ResultsPanelProps = {
   state: RunState;
   engine: Engine;
   onLoadMore: () => void;
+  /** an earlier run's result, under a cancelled one: it must not read as what just ran */
+  superseded?: boolean;
 };
 
 type WaitingPaneProps = { title: string; children: ReactNode };
@@ -90,7 +92,7 @@ export function SqlWorkspace({
             <Button
               size="sm"
               title={`${RUN_SHORTCUT} executa a seleção ou tudo`}
-              onClick={() => runFromEditor(editorApi.current?.textToRun() ?? sql)}
+              onClick={() => runFromEditor(editorApi.current?.prepareRun() ?? sql)}
             >
               <Play /> Executar
             </Button>
@@ -168,9 +170,19 @@ function Receipt({ connectionId, confirmed, text }: ReceiptProps) {
   );
 }
 
-function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsPanelProps) {
+function ResultsPanel({
+  connectionId,
+  sql,
+  state,
+  engine,
+  onLoadMore,
+  superseded = false
+}: ResultsPanelProps) {
   const [selected, setSelected] = useState<SelectedCell | null>(null);
-  const text = summary(state);
+  const result = summary(state);
+  const text = superseded && result ? `Resultado anterior · ${result}` : result;
+  // the receipt belongs to the run that just happened, never to the one kept under a cancel
+  const confirmed = "confirmed" in state && state.confirmed && !superseded;
 
   if (state.status === "idle") {
     return (
@@ -209,8 +221,12 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
     }
     return (
       <div className="flex h-full flex-col">
-        <p role="status" className="border-b border-foreground px-3 py-1 text-xs font-medium">
-          Execução cancelada · nada rodou no banco. Abaixo, o resultado anterior.
+        <p
+          role="status"
+          className="flex flex-wrap items-baseline gap-x-2 border-b border-foreground bg-background px-3 py-1.5 text-sm"
+        >
+          <span className="legend text-[0.75rem]">Execução cancelada</span>{" "}
+          <span>Nada rodou no banco.</span>
         </p>
         <div className="min-h-0 flex-1">
           <ResultsPanel
@@ -219,6 +235,7 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
             state={state.previous}
             engine={engine}
             onLoadMore={onLoadMore}
+            superseded
           />
         </div>
       </div>
@@ -234,7 +251,7 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
   if (state.status === "command") {
     return (
       <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 p-3 text-sm">
-        <Receipt connectionId={connectionId} confirmed={state.confirmed} text={text} />
+        <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
       </div>
     );
   }
@@ -245,9 +262,9 @@ function ResultsPanel({ connectionId, sql, state, engine, onLoadMore }: ResultsP
       <div className="flex items-center gap-2 border-b bg-muted px-3 py-1">
         <div
           role="status"
-          className={`flex min-w-0 items-center gap-2 text-xs ${state.confirmed ? "" : "text-muted-foreground"}`}
+          className={`flex min-w-0 items-center gap-2 text-xs ${confirmed ? "" : "text-muted-foreground"}`}
         >
-          <Receipt connectionId={connectionId} confirmed={state.confirmed} text={text} />
+          <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
         </div>
         <div className="ml-auto flex items-center gap-3">
           <CopyRowsMenu

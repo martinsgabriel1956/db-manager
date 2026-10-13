@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
@@ -18,6 +18,7 @@ type DocumentCardProps = {
 
 export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <article className="group grid gap-3 border border-foreground bg-background p-3">
@@ -44,6 +45,7 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
               <Button
                 size="icon-xs"
                 variant="ghost"
+                ref={deleteTriggerRef}
                 aria-label="Excluir documento"
                 aria-expanded={confirmingDelete}
                 onMouseDown={keepArmedFocus(confirmingDelete)}
@@ -61,6 +63,7 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
           command={`deleteOne({"_id": ${idOf(document)}})`}
           onConfirm={onDelete}
           onDisarm={() => setConfirmingDelete(false)}
+          triggerRef={deleteTriggerRef}
         />
       )}
     </article>

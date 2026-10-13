@@ -375,12 +375,16 @@ function ConnectionNode({
       </div>
 
       {expanded && (
-        // under the safelight on prod: production stays legible after its header scrolls away
+        // dashed under the safelight on prod, a texture and not only a colour: production
+        // stays legible after its header scrolls away. Drawn, not border-dashed: a 1px
+        // dashed border renders as dots, which is the "retido" notation
         <ul
           role="group"
           className={cn(
             "mb-2 ml-5 border-l py-0.5 pl-2",
-            connection.environment === "prod" ? "border-safelight" : "border-foreground"
+            connection.environment === "prod"
+              ? "border-l-0 bg-[linear-gradient(var(--safelight)_5px,transparent_0)] bg-[length:1px_8px] bg-repeat-y"
+              : "border-foreground"
           )}
         >
           {/* the editor needs no schema: offered before the listing even loads */}

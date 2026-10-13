@@ -30,7 +30,8 @@ type SqlEditorProps = {
   apiRef: RefObject<SqlEditorApi | null>;
 };
 
-export type SqlEditorApi = { textToRun: () => string };
+/** `prepareRun` closes a completion left open and returns what to run, as Mod-Enter does. */
+export type SqlEditorApi = { prepareRun: () => string };
 
 /** `{ schema: { table: [columns] } }` for CodeMirror's schema-aware autocomplete. */
 export function toNamespace(tables: CompletionTable[]): SQLNamespace {
@@ -142,7 +143,12 @@ export function SqlEditor({
       })
     });
     viewRef.current = view;
-    apiRef.current = { textToRun: () => textToRun(view.state) };
+    apiRef.current = {
+      prepareRun: () => {
+        closeCompletion(view);
+        return textToRun(view.state);
+      }
+    };
     return () => {
       apiRef.current = null;
       view.destroy();

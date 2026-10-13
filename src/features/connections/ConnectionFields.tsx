@@ -188,14 +188,19 @@ export function ConnectionFields({
               {textInput("username")}
             </Field>
           </div>
-          <Field id="password" label="Senha" error={errors.password}>
+          <Field
+            id="password"
+            label="Senha"
+            error={errors.password}
+            hint="Guardada no keychain do sistema, como a URI do MongoDB."
+          >
             <Input
               id="password"
               type="password"
               value={values.password}
               disabled={values.clearPassword}
               aria-invalid={errors.password ? true : undefined}
-              aria-describedby={errors.password ? "password-error" : undefined}
+              aria-describedby={errors.password ? "password-hint password-error" : "password-hint"}
               placeholder={isEditing ? "Deixe vazio para manter a senha salva" : ""}
               onChange={event => onChange({ password: event.target.value })}
             />
