@@ -37,6 +37,9 @@ export default defineConfig(() => ({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // a hang detector, not a speed check: UI tests take 1–6 s under coverage on a busy
+    // machine (parallel files, CodeMirror mounts) and the 5 s default failed them at random
+    testTimeout: 20_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
