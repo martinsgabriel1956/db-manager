@@ -103,3 +103,23 @@ test("editor text is kept per tab", () => {
 
   expect((state().tabs[0] as EditorTab).sql).toBe("SELECT now()");
 });
+
+test("closing several tabs focuses the nearest open tab, left first", () => {
+  state().openEditor("pg");
+  state().openEditor("pg");
+  state().openEditor("pg");
+  state().openEditor("pg");
+  const [first, second, third, fourth] = state().tabs;
+
+  state().activate(third.id);
+  state().closeTabs([second.id, third.id]);
+  expect(state().tabs.map(tab => tab.id)).toEqual([first.id, fourth.id]);
+  expect(state().activeId).toBe(first.id);
+
+  // the active tab stays put when others close around it
+  state().closeTabs([fourth.id]);
+  expect(state().activeId).toBe(first.id);
+
+  state().closeTabs([first.id]);
+  expect(state().activeId).toBeNull();
+});

@@ -318,3 +318,39 @@ test("opening the connection form keeps staged edits in the hidden tabs", async 
   expect(cell("20")).toHaveAttribute("data-edited", "true");
   expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();
 });
+
+test("closing every tab with staged edits asks once; Voltar keeps all of them open", async () => {
+  const calls = fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+  await editCell(user, "2", "20");
+  await user.click(screen.getByRole("button", { name: "Histórico" }));
+
+  await user.pointer({
+    keys: "[MouseRight]",
+    target: screen.getByRole("tab", { name: "Histórico" })
+  });
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar todas as abas (2)" }));
+
+  const dialog = await screen.findByRole("dialog", { name: "Descartar alterações?" });
+  expect(dialog).toHaveTextContent(
+    "Postgres dev · users tem 1 alteração pendente. Fechar as abas descarta todas"
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Voltar" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(screen.getByRole("tab", { name: "Histórico" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /· users/ })).toBeInTheDocument();
+
+  await user.pointer({
+    keys: "[MouseRight]",
+    target: screen.getByRole("tab", { name: "Histórico" })
+  });
+  await user.click(await screen.findByRole("menuitem", { name: "Fechar todas as abas (2)" }));
+  await user.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar e fechar" })
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("tab", { name: /· users/ })).not.toBeInTheDocument()
+  );
+  expect(screen.queryByRole("tab", { name: "Histórico" })).not.toBeInTheDocument();
+  expect(applied(calls)).toHaveLength(0);
+});
