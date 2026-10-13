@@ -68,6 +68,29 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
   ]);
 });
 
+test("Ctrl+T opens an editor on the active tab's connection", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  // no active connection yet: nothing opens
+  await screen.findByRole("button", { name: /^Postgres prod/ });
+  await user.keyboard("{Control>}t{/Control}");
+  expect(screen.queryAllByRole("tab")).toHaveLength(0);
+
+  await user.click(screen.getByRole("button", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("button", { name: "users" }));
+  await user.keyboard("{Control>}t{/Control}");
+
+  expect(tabNames()).toEqual([
+    "Postgres prod · users · produção",
+    "Postgres prod · SQL 1 · produção"
+  ]);
+  expect(
+    screen.getByRole("tab", { name: "Postgres prod · SQL 1 · produção", selected: true })
+  ).toBeInTheDocument();
+});
+
 test("open tabs move with the arrow keys and close with Delete", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();

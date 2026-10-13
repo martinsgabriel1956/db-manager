@@ -4,7 +4,7 @@ import { History, PanelLeftClose, PanelLeftOpen, Plus, TriangleAlert } from "luc
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
-import { defaultSchemaFor } from "@/features/connections/options";
+import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
 import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { ConnectionTree } from "@/features/explorer/ConnectionTree";
@@ -58,23 +58,6 @@ export function App() {
     localStorage.setItem("sidebar-collapsed", collapsed ? "1" : "0");
   }, [collapsed]);
 
-  // Ctrl+B (Cmd+B on macOS), from anywhere in the window
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        !event.shiftKey &&
-        !event.altKey &&
-        event.key.toLowerCase() === "b"
-      ) {
-        event.preventDefault();
-        setCollapsed(value => !value);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   useEffect(() => {
     if (connections.data) {
       keepConnections(connections.data.map(connection => connection.id));
@@ -87,6 +70,29 @@ export function App() {
   const activeConnectionId = form ? form.connectionId : tabConnectionId;
   const active = list.find(connection => connection.id === activeConnectionId) ?? null;
   const isProd = active?.environment === "prod";
+  const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
+
+  // Ctrl+B toggles the sidebar, Ctrl+T opens an editor on the active SQL connection
+  // (Cmd on macOS), from anywhere in the window
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "b") {
+        event.preventDefault();
+        setCollapsed(value => !value);
+      } else if (key === "t" && editorConnectionId) {
+        event.preventDefault();
+        setForm(null);
+        setNotice(null);
+        openEditor(editorConnectionId);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editorConnectionId, openEditor]);
 
   function showTabs() {
     setForm(null);
