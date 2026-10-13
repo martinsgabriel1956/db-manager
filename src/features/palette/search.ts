@@ -167,14 +167,17 @@ function fold(text: string): string {
 
 /**
  * Every word of the query must appear in the name or the connection name.
- * Names that start with the last word typed come first; the order is otherwise kept.
+ * Names that start with the last word typed come first; then the connection you are
+ * working in, then the rest, production last: with two `users`, Enter on the first
+ * match never lands in production by accident. The order is otherwise kept.
  */
-export function searchEntries(entries: PaletteEntry[], query: string): PaletteEntry[] {
+export function searchEntries(
+  entries: PaletteEntry[],
+  query: string,
+  activeConnectionId: string | null = null
+): PaletteEntry[] {
   const words = fold(query).split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return entries.slice(0, MAX_RESULTS);
-  }
-  const last = words[words.length - 1];
+  const last = words.at(-1) ?? "";
   const matches = entries.filter(entry => {
     const haystack = fold(`${entry.label} ${entry.connection?.name ?? ""} ${entry.kind}`);
     return words.every(word => haystack.includes(word));
@@ -183,9 +186,16 @@ export function searchEntries(entries: PaletteEntry[], query: string): PaletteEn
     const name = fold(entry.label.split(".").pop() ?? entry.label);
     return name.startsWith(last) ? 0 : 1;
   };
+  const place = ({ connection }: PaletteEntry) =>
+    connection?.id === activeConnectionId ? 0 : connection?.environment === "prod" ? 2 : 1;
   return matches
     .map((entry, index) => ({ entry, index }))
-    .sort((a, b) => startsWith(a.entry) - startsWith(b.entry) || a.index - b.index)
+    .sort(
+      (a, b) =>
+        startsWith(a.entry) - startsWith(b.entry) ||
+        place(a.entry) - place(b.entry) ||
+        a.index - b.index
+    )
     .slice(0, MAX_RESULTS)
     .map(({ entry }) => entry);
 }

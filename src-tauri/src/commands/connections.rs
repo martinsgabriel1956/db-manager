@@ -1,9 +1,10 @@
 use std::sync::PoisonError;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::AppState;
 use crate::domain::{AppError, ConnectionConfig, KeychainOutcome, SecretChange};
+use crate::tray;
 use crate::use_cases::{connections, sql};
 
 // The store lock serializes read-modify-write of connections.json. It guards no
@@ -23,6 +24,7 @@ pub async fn list_connections(
 #[tauri::command]
 #[specta::specta]
 pub async fn save_connection(
+    app: AppHandle,
     state: State<'_, AppState>,
     config: ConnectionConfig,
     secret: SecretChange,
@@ -33,6 +35,7 @@ pub async fn save_connection(
         connections::save(&store, state.secrets.as_ref(), config, secret)?
     };
     sql::disconnect(&state.registry, &id).await;
+    tray::refresh(&app);
     Ok(outcome)
 }
 
@@ -55,6 +58,7 @@ pub async fn test_connection(
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_connection(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<KeychainOutcome, AppError> {
@@ -63,5 +67,6 @@ pub async fn delete_connection(
         connections::delete(&store, state.secrets.as_ref(), &id)?
     };
     sql::disconnect(&state.registry, &id).await;
+    tray::refresh(&app);
     Ok(outcome)
 }

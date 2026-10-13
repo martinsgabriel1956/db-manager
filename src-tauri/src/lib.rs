@@ -8,7 +8,7 @@ mod use_cases;
 
 use std::sync::Mutex;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_specta::{Builder, ErrorHandlingMode, collect_commands};
 
 use registry::Registry;
@@ -30,6 +30,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
         .error_handling(ErrorHandlingMode::Throw)
         .commands(collect_commands![
             commands::app::quit_app,
+            commands::app::hide_window,
             commands::connections::list_connections,
             commands::connections::save_connection,
             commands::connections::delete_connection,
@@ -103,13 +104,14 @@ pub fn run() {
             tray::setup(app)?;
             Ok(())
         })
-        // the X hides the window: the app keeps running in the tray, with its connections
-        // and staged edits; "Sair" in the tray or Ctrl+Q ends it
+        // the X never ends the app: the UI says (once) that Ordo stays in the tray, then
+        // calls hide_window, which also closes production sessions; "Sair" in the tray or
+        // Ctrl+Q ends it
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                // best effort: a window that cannot hide stays open, nothing is lost
-                let _ = window.hide();
+                // best effort: if the UI cannot hear it, the window stays open, nothing is lost
+                let _ = window.emit("close-requested", ());
             }
         })
         .run(tauri::generate_context!())

@@ -288,6 +288,12 @@
   border-bottom: 1px solid var(--border);
 }
 
-.react-flow__attribution a {
+/* the credit stays, at the 11px floor and in the zone scale (React Flow's own #999 at 10px
+   fails 4.5:1); doubled class: React Flow's stylesheet loads after this one */
+.react-flow .react-flow__attribution {
+  font-size: 11px;
+}
+
+.react-flow .react-flow__attribution a {
   color: var(--muted-foreground);
 }

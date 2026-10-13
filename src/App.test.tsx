@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { emit } from "@tauri-apps/api/event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, ConnectionConfig } from "@/bindings";
@@ -42,6 +43,12 @@ test("Ctrl+B collapses and expands the sidebar", async () => {
   expect(screen.getByRole("img", { name: "Ordo" })).toBeInTheDocument();
   expect(screen.queryByText("Ordo")).not.toBeInTheDocument();
 
+  // collapsed, the tools are still there as named icons, and F6 lands on the first
+  expect(screen.getByRole("button", { name: "Histórico" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Legenda" })).toBeInTheDocument();
+  await user.keyboard("{F6}");
+  expect(screen.getByRole("button", { name: "Ir para tabela… (Ctrl K)" })).toHaveFocus();
+
   await user.keyboard("{Control>}b{/Control}");
   expect(screen.getByRole("button", { name: "Recolher lateral" })).toBeInTheDocument();
   expect(screen.queryByRole("img", { name: "Ordo" })).not.toBeInTheDocument();
@@ -60,6 +67,20 @@ test("shows an empty state when there are no connections, with a way to create o
 
   // Cancelar leaves the form without saving
   await user.click(screen.getByRole("button", { name: "Cancelar" }));
+  expect(screen.queryByRole("heading", { name: "Nova conexão" })).not.toBeInTheDocument();
+});
+
+test("cancelling a form with typed values asks once before dropping them", async () => {
+  fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  await user.type(screen.getByLabelText("Nome"), "Local PG");
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+  expect(screen.getByRole("heading", { name: "Nova conexão" })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Descartar o que foi digitado" }));
   expect(screen.queryByRole("heading", { name: "Nova conexão" })).not.toBeInTheDocument();
 });
 
@@ -279,6 +300,41 @@ test("a MongoDB connection can be saved with a connection string", async () => {
     config: { engine: "mongo", target: { kind: "uri", database: "shop" } },
     secret: { action: "set", value: "mongodb+srv://me:pw@c.example.net/" }
   });
+});
+
+test("the window's X says once that Ordo stays in the tray, then hides at once", async () => {
+  localStorage.removeItem("tray-notice-seen");
+  const calls = fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+  await screen.findByText("Nenhuma conexão cadastrada.");
+
+  await emit("close-requested");
+  const dialog = await screen.findByRole("dialog", { name: "O Ordo continua na bandeja" });
+  expect(dialog).toHaveTextContent("conexões de produção são encerradas");
+  // hiding is the default: Enter on the focused button
+  expect(screen.getByRole("button", { name: "Esconder na bandeja" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(callsTo(calls, "hide_window")).toHaveLength(1));
+
+  await emit("close-requested");
+  await waitFor(() => expect(callsTo(calls, "hide_window")).toHaveLength(2));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  localStorage.removeItem("tray-notice-seen");
+});
+
+test("the tray notice can quit instead of hiding", async () => {
+  localStorage.removeItem("tray-notice-seen");
+  const calls = fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+  await screen.findByText("Nenhuma conexão cadastrada.");
+
+  await emit("close-requested");
+  await user.click(await screen.findByRole("button", { name: "Sair do Ordo" }));
+  await waitFor(() => expect(callsTo(calls, "quit_app")).toHaveLength(1));
+  expect(callsTo(calls, "hide_window")).toHaveLength(0);
+  localStorage.removeItem("tray-notice-seen");
 });
 
 test("Ctrl+Q quits at once when nothing is staged", async () => {

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { PostgreSQL, schemaCompletionSource, sql } from "@codemirror/lang-sql";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { expect, test } from "vitest";
 import type { AppError, RunResponse, ScriptOutcome } from "@/bindings";
-import { textToRun, toNamespace } from "@/features/editor/SqlEditor";
+import { tagNames, textToRun, toNamespace } from "@/features/editor/SqlEditor";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { callsTo, executed, fakeBackend, prodPostgres, rowsOutcome } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
@@ -59,6 +61,25 @@ test("completion tables become a schema namespace", () => {
       { schema: "app", table: "logs", columns: [] }
     ])
   ).toEqual({ public: { users: ["id"], teams: ["id", "name"] }, app: { logs: [] } });
+});
+
+test("tables complete as TB and schemas as SC, never as data types", () => {
+  const tables = [{ schema: "public", table: "users", columns: ["id"] }];
+  const source = tagNames(
+    schemaCompletionSource({
+      dialect: PostgreSQL,
+      schema: toNamespace(tables),
+      defaultSchema: "public"
+    }),
+    new Set(["public"])
+  );
+  const doc = "SELECT * FROM u";
+  const state = EditorState.create({ doc, extensions: sql({ dialect: PostgreSQL }) });
+  const result = source(new CompletionContext(state, doc.length, true)) as CompletionResult;
+
+  const typeOf = (label: string) => result.options.find(option => option.label === label)?.type;
+  expect(typeOf("users")).toBe("class");
+  expect(typeOf("public")).toBe("namespace");
 });
 
 test("runs the editor content and shows the rows", async () => {

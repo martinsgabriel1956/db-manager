@@ -9,6 +9,12 @@ export const commands = {
 	 *  window needs its own way to quit when the tray is out of reach.
 	 */
 	quitApp: () => __TAURI_INVOKE<void>("quit_app"),
+	/**
+	 *  The window's X, once the UI has said so (see lib.rs): hides the window and closes
+	 *  the production sessions, so production is never open behind a window out of sight.
+	 *  Every query reconnects first, so they come back on their next use.
+	 */
+	hideWindow: () => __TAURI_INVOKE<null>("hide_window"),
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
 	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),

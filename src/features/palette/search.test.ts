@@ -77,6 +77,26 @@ test("names starting with the last word come first", () => {
   expect(labels(searchEntries(entries(), "u"))[0]).toBe("public.users (Postgres prod)");
 });
 
+test("the same table in prod and dev: the active connection first, production last", () => {
+  const both = paletteEntries(
+    connections,
+    [
+      { connectionId: prodPostgres.id, schemas },
+      { connectionId: devPostgres.id, schemas }
+    ],
+    []
+  );
+  const tables = (active: string | null) =>
+    labels(searchEntries(both, "users", active).filter(entry => entry.kind === "tabela"));
+
+  expect(tables(null)).toEqual(["public.users (Postgres dev)", "public.users (Postgres prod)"]);
+  // working in prod already, prod's own table is the expected pick
+  expect(tables(prodPostgres.id)).toEqual([
+    "public.users (Postgres prod)",
+    "public.users (Postgres dev)"
+  ]);
+});
+
 test("an empty query lists everything, capped", () => {
   const many = Array.from({ length: MAX_RESULTS + 10 }, (_, index) => ({
     ...entries()[0],

@@ -22,7 +22,10 @@ type CopyRowsMenuProps = {
 };
 
 type CopyState =
-  { status: "idle" } | { status: "done"; text: string } | { status: "error"; text: string };
+  | { status: "idle" }
+  /** `of`: the rows it speaks of; another page, filter or query makes it stale */
+  | { status: "done"; text: string; of: Cell[][] }
+  | { status: "error"; text: string; of: Cell[][] };
 
 /** "1 linha copiada", "3 linhas carregadas" */
 function rowCount(count: number, participle: string) {
@@ -32,7 +35,9 @@ function rowCount(count: number, participle: string) {
 
 /** Copies the selected row, or every loaded row, as JSON or INSERT. */
 export function CopyRowsMenu({ columns, rows, selectedRow, insert }: CopyRowsMenuProps) {
-  const [state, setState] = useState<CopyState>({ status: "idle" });
+  const [copied, setState] = useState<CopyState>({ status: "idle" });
+  const state: CopyState =
+    copied.status !== "idle" && copied.of !== rows ? { status: "idle" } : copied;
   const selected = selectedRow !== null && rows[selectedRow] ? [rows[selectedRow]] : null;
 
   async function copy(picked: Cell[][], format: "JSON" | "INSERT") {
@@ -40,9 +45,13 @@ export function CopyRowsMenu({ columns, rows, selectedRow, insert }: CopyRowsMen
       const text =
         format === "INSERT" && insert ? await insert(picked) : rowsAsJson(columns, picked);
       await navigator.clipboard.writeText(text);
-      setState({ status: "done", text: `${rowCount(picked.length, "copiada")} como ${format}` });
+      setState({
+        status: "done",
+        text: `${rowCount(picked.length, "copiada")} como ${format}`,
+        of: rows
+      });
     } catch (err) {
-      setState({ status: "error", text: `Não copiado: ${errorMessage(err)}` });
+      setState({ status: "error", text: `Não copiado: ${errorMessage(err)}`, of: rows });
     }
   }
 

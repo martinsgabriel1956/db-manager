@@ -106,6 +106,20 @@ impl Registry {
         lock(&self.connections).contains_key(connection_id)
     }
 
+    /// Open sessions: the tray menu prints the count while the window is hidden.
+    pub fn connection_count(&self) -> usize {
+        lock(&self.connections).len()
+    }
+
+    /// Ids of the open sessions in one environment.
+    pub fn connected_in(&self, environment: Environment) -> Vec<String> {
+        lock(&self.connections)
+            .iter()
+            .filter(|(_, connection)| connection.environment == environment)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     pub fn insert_connection(&self, connection_id: &str, connection: OpenConnection) {
         lock(&self.connections).insert(connection_id.to_string(), Arc::new(connection));
     }
@@ -158,7 +172,7 @@ impl Registry {
         lock(&self.cursors)
             .get(cursor_id)
             .map(|open| open.cursor.clone())
-            .ok_or_else(|| AppError::not_found("resultado (já foi fechado)"))
+            .ok_or_else(AppError::result_closed)
     }
 
     pub fn remove_cursor(&self, cursor_id: &str) {

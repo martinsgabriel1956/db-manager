@@ -34,6 +34,10 @@ type TabsState = {
   activate: (id: string) => void;
   close: (id: string) => void;
   closeTabs: (ids: string[]) => void;
+  /** closed tabs, most recent last, with their editor text (not persisted) */
+  closed: Tab[];
+  /** reopens the most recently closed tab (Ctrl+Shift+T); false when none is left */
+  reopenClosed: () => boolean;
   /** closes at once, or asks first when the tab holds staged edits; true when it closed */
   requestClose: (id: string) => boolean;
   /** same, for several tabs: one question covers all of them */
@@ -66,13 +70,24 @@ export function tableKey(target: TableTarget): string {
   return `${target.connectionId}/${target.schema}/${target.table}`;
 }
 
-export const INITIAL_TABS = { tabs: [] as Tab[], activeId: null };
+export const INITIAL_TABS = { tabs: [] as Tab[], activeId: null, closed: [] as Tab[] };
+
+/** How many closed tabs Ctrl+Shift+T can bring back. */
+const CLOSED_LIMIT = 20;
 
 function nextEditorTitle(tabs: Tab[], connectionId: string): string {
   const used = tabs
     .filter((tab): tab is EditorTab => tab.kind === "editor" && tab.connectionId === connectionId)
     .map(tab => Number(tab.title.replace("SQL ", "")) || 0);
   return `SQL ${Math.max(0, ...used) + 1}`;
+}
+
+/** Two tabs showing the same thing; editors never count, several per connection are allowed. */
+function sameTarget(a: Tab, b: Tab): boolean {
+  if (a.kind === "editor" || b.kind === "editor") {
+    return a.id === b.id;
+  }
+  return JSON.stringify({ ...a, id: "" }) === JSON.stringify({ ...b, id: "" });
 }
 
 /** After closing the active tab, focus the nearest open tab to its left (or else to its right). */
@@ -158,8 +173,31 @@ export const useTabs = create<TabsState>()(
             state.activeId !== null && closed.has(state.activeId)
               ? neighbourOf(state.tabs, activeIndex, closed)
               : state.activeId;
-          return { tabs, activeId, closeRequest: null };
+          // an unrun SQL draft closed by mistake comes back with Ctrl+Shift+T
+          const dropped = state.tabs.filter(tab => closed.has(tab.id));
+          return {
+            tabs,
+            activeId,
+            closeRequest: null,
+            closed: [...state.closed, ...dropped].slice(-CLOSED_LIMIT)
+          };
         }),
+      closed: [],
+      reopenClosed: () => {
+        const { closed, tabs } = get();
+        const tab = closed.at(-1);
+        if (!tab) {
+          return false;
+        }
+        // a table, Redis db, diagram or history opened again since then: just go there
+        const twin = tabs.find(open => sameTarget(open, tab));
+        set({
+          closed: closed.slice(0, -1),
+          tabs: twin ? tabs : [...tabs, tab],
+          activeId: (twin ?? tab).id
+        });
+        return true;
+      },
       requestClose: id => get().requestCloseTabs([id]),
       requestCloseTabs: ids => {
         const { tabs, pending, closeTabs } = get();
@@ -194,11 +232,18 @@ export const useTabs = create<TabsState>()(
           const tabs = state.tabs.filter(
             tab => tab.kind === "history" || connectionIds.includes(tab.connectionId)
           );
+          const closed = state.closed.filter(
+            tab => tab.kind === "history" || connectionIds.includes(tab.connectionId)
+          );
           if (tabs.length === state.tabs.length) {
-            return state;
+            return closed.length === state.closed.length ? state : { closed };
           }
           const activeStillOpen = tabs.some(tab => tab.id === state.activeId);
-          return { tabs, activeId: activeStillOpen ? state.activeId : (tabs[0]?.id ?? null) };
+          return {
+            tabs,
+            closed,
+            activeId: activeStillOpen ? state.activeId : (tabs[0]?.id ?? null)
+          };
         }),
       pending: {},
       setPending: (key, count) =>

@@ -233,6 +233,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     },
     connect_database: () => null,
     quit_app: () => null,
+    hide_window: () => null,
     test_connection: () => null,
     disconnect_database: () => null,
     list_schemas: () => schemas,
@@ -281,18 +282,22 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     cancel_run: () => null
   };
 
-  mockIPC((cmd, args) => {
-    calls.push({ cmd, args });
-    const handler = overrides[cmd] ?? defaults[cmd];
-    // tab persistence is mocked in setup.ts; other plugin calls answer null unless a test overrides them
-    if (!handler && cmd.startsWith("plugin:")) {
-      return null;
-    }
-    if (!handler) {
-      throw new Error(`unexpected command ${cmd}`);
-    }
-    return handler(args);
-  });
+  mockIPC(
+    (cmd, args) => {
+      calls.push({ cmd, args });
+      const handler = overrides[cmd] ?? defaults[cmd];
+      // tab persistence is mocked in setup.ts; other plugin calls answer null unless a test overrides them
+      if (!handler && cmd.startsWith("plugin:")) {
+        return null;
+      }
+      if (!handler) {
+        throw new Error(`unexpected command ${cmd}`);
+      }
+      return handler(args);
+      // events (the window's close-requested) go through the mock too, so tests can emit them
+    },
+    { shouldMockEvents: true }
+  );
 
   return calls;
 }

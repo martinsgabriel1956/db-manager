@@ -46,6 +46,27 @@ test("Redis lists databases and opens one in a tab, keys grouped by separator", 
   expect(screen.getByText("4 chaves")).toBeInTheDocument();
 });
 
+test("the key list is one tab stop, walked with the arrows", async () => {
+  fakeBackend([localRedis]);
+  const user = await openDb0();
+  const tree = screen.getByRole("list", { name: "Chaves" });
+  const rows = within(tree).getAllByRole("button");
+
+  expect(rows.filter(row => row.tabIndex === 0)).toHaveLength(1);
+  rows[0].focus();
+  await user.keyboard("{ArrowDown}");
+  expect(rows[1]).toHaveFocus();
+  expect(rows[0]).toHaveAttribute("tabindex", "-1");
+
+  // → opens the folder under the cursor
+  const folder = within(tree).getByRole("button", { name: /user/ });
+  folder.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(folder).toHaveAttribute("aria-expanded", "true");
+  await user.keyboard("{ArrowLeft}");
+  expect(folder).toHaveAttribute("aria-expanded", "false");
+});
+
 test("searching uses SCAN MATCH and pages continue from the cursor", async () => {
   const calls = fakeBackend([localRedis], {
     scan_keys: args => {
