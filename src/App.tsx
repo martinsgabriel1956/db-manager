@@ -1,10 +1,18 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpen, History, Plus, Search, TriangleAlert } from "lucide-react";
+import {
+  BookOpen,
+  History,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+  TriangleAlert
+} from "lucide-react";
 import type { ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
-import { defaultSchemaFor } from "@/features/connections/options";
+import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
 import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { ConnectionTree } from "@/features/explorer/ConnectionTree";
@@ -22,6 +30,7 @@ import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
 import { focusActiveTab } from "@/features/tabs/focus";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
+import { SIDEBAR_SHORTCUT } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 // React Flow and elk are only loaded when a diagram is opened
@@ -60,6 +69,15 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [legendOpen, setLegendOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("sidebar-collapsed") === "1"
+  );
+
+  const toggleSidebar = () => setCollapsed(value => !value);
+
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
 
   useEffect(() => {
     if (connections.data) {
@@ -73,6 +91,7 @@ export function App() {
   const activeConnectionId = form ? form.connectionId : tabConnectionId;
   const active = list.find(connection => connection.id === activeConnectionId) ?? null;
   const isProd = active?.environment === "prod";
+  const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
 
   // app-wide accelerators; each one is also reachable from a visible control
   useEffect(() => {
@@ -101,6 +120,14 @@ export function App() {
       } else if (key === "k") {
         event.preventDefault();
         openPalette();
+      } else if (key === "b") {
+        event.preventDefault();
+        setCollapsed(value => !value);
+      } else if (key === "t" && editorConnectionId) {
+        // an editor on the active SQL connection
+        event.preventDefault();
+        showTabs();
+        openEditor(editorConnectionId);
       } else if (key === "w" && !form && activeId) {
         event.preventDefault();
         requestClose(activeId);
@@ -108,7 +135,7 @@ export function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [form, tabs, activeId, requestClose, activate]);
+  }, [form, tabs, activeId, requestClose, activate, editorConnectionId, openEditor]);
 
   function showTabs() {
     setForm(null);
@@ -202,94 +229,118 @@ export function App() {
       )}
       <div className="flex min-h-0 flex-1">
         {/* 240px at the 960px minimum, 288px from 1100px: the grid keeps room for data */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-foreground grid-paper min-[1100px]:w-72">
-          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-foreground bg-background px-4">
-            <Wordmark />
-          </div>
-          {/* the brand and this header stay put; only the ledger scrolls */}
-          <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-4 pb-2">
-            <h1 className="legend text-muted-foreground">Conexões</h1>
-            <Button size="sm" variant="outline" onClick={createConnection}>
-              <Plus /> Nova conexão
-            </Button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {connections.isPending && (
-              <p className="px-4 text-sm text-muted-foreground">Carregando conexões…</p>
+        <aside
+          className={cn(
+            "flex shrink-0 flex-col border-r border-foreground grid-paper",
+            collapsed ? "w-12" : "w-60 min-[1100px]:w-72"
+          )}
+        >
+          <div
+            className={cn(
+              "flex h-14 shrink-0 items-center border-b border-foreground bg-background",
+              collapsed ? "justify-center" : "justify-between gap-2 pr-2 pl-4"
             )}
-            {connections.isError && (
-              <p
-                role="alert"
-                className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
-              >
-                {errorMessage(connections.error)}
-              </p>
-            )}
-            {connections.data && (
-              <ConnectionTree
-                connections={connections.data}
-                editingId={form?.connectionId ?? null}
-                activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
-                activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
-                onEdit={connectionId => {
-                  setNotice(null);
-                  setForm({ connectionId });
-                }}
-                onOpenTable={target => {
-                  showTabs();
-                  openTable(target);
-                }}
-                onOpenEditor={connectionId => {
-                  showTabs();
-                  openEditor(connectionId);
-                }}
-                onOpenRedis={target => {
-                  showTabs();
-                  openRedis(target);
-                }}
-                onOpenDiagram={target => {
-                  showTabs();
-                  openDiagram(target);
-                }}
-              />
-            )}
-          </div>
-          <nav
-            aria-label="Ferramentas"
-            className="grid shrink-0 gap-px border-t border-foreground bg-background p-2"
           >
+            {!collapsed && <Wordmark />}
             <Button
-              size="sm"
+              size="icon-sm"
               variant="ghost"
-              className="justify-start"
-              aria-keyshortcuts="Control+K"
-              onClick={() => openPalette()}
+              aria-label={collapsed ? "Expandir lateral" : "Recolher lateral"}
+              aria-expanded={!collapsed}
+              aria-keyshortcuts="Control+B"
+              title={`${collapsed ? "Expandir" : "Recolher"} lateral (${SIDEBAR_SHORTCUT})`}
+              onClick={toggleSidebar}
             >
-              <Search /> Ir para tabela…
-              <kbd className="ml-auto font-mono text-[11px] text-muted-foreground">Ctrl K</kbd>
+              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
             </Button>
-            <div className="grid grid-cols-2 gap-px">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="justify-start"
-                onClick={() => {
-                  showTabs();
-                  openHistory();
-                }}
-              >
-                <History /> Histórico
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="justify-start"
-                onClick={() => setLegendOpen(true)}
-              >
-                <BookOpen /> Legenda
+          </div>
+          {/* hidden, not unmounted, so the tree keeps its expanded nodes; the attribute keeps F6 out */}
+          <div className={cn("contents", collapsed && "hidden")} hidden={collapsed}>
+            {/* the brand and this header stay put; only the ledger scrolls */}
+            <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-4 pb-2">
+              <h1 className="legend text-muted-foreground">Conexões</h1>
+              <Button size="sm" variant="outline" onClick={createConnection}>
+                <Plus /> Nova conexão
               </Button>
             </div>
-          </nav>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {connections.isPending && (
+                <p className="px-4 text-sm text-muted-foreground">Carregando conexões…</p>
+              )}
+              {connections.isError && (
+                <p
+                  role="alert"
+                  className="mx-4 border border-destructive bg-background p-2 text-sm text-destructive"
+                >
+                  {errorMessage(connections.error)}
+                </p>
+              )}
+              {connections.data && (
+                <ConnectionTree
+                  connections={connections.data}
+                  editingId={form?.connectionId ?? null}
+                  activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
+                  activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
+                  onEdit={connectionId => {
+                    setNotice(null);
+                    setForm({ connectionId });
+                  }}
+                  onOpenTable={target => {
+                    showTabs();
+                    openTable(target);
+                  }}
+                  onOpenEditor={connectionId => {
+                    showTabs();
+                    openEditor(connectionId);
+                  }}
+                  onOpenRedis={target => {
+                    showTabs();
+                    openRedis(target);
+                  }}
+                  onOpenDiagram={target => {
+                    showTabs();
+                    openDiagram(target);
+                  }}
+                />
+              )}
+            </div>
+            <nav
+              aria-label="Ferramentas"
+              className="grid shrink-0 gap-px border-t border-foreground bg-background p-2"
+            >
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start"
+                aria-keyshortcuts="Control+K"
+                onClick={() => openPalette()}
+              >
+                <Search /> Ir para tabela…
+                <kbd className="ml-auto font-mono text-[11px] text-muted-foreground">Ctrl K</kbd>
+              </Button>
+              <div className="grid grid-cols-2 gap-px">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={() => {
+                    showTabs();
+                    openHistory();
+                  }}
+                >
+                  <History /> Histórico
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={() => setLegendOpen(true)}
+                >
+                  <BookOpen /> Legenda
+                </Button>
+              </div>
+            </nav>
+          </div>
         </aside>
 
         <main id="workspace" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">

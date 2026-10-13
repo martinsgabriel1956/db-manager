@@ -26,6 +26,22 @@ test("lists connections with engine and read-only marker", async () => {
   expect(item).toHaveTextContent("Prod");
 });
 
+test("Ctrl+B collapses and expands the sidebar", async () => {
+  fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await screen.findByText("Nenhuma conexão cadastrada.");
+  await user.keyboard("{Control>}b{/Control}");
+  expect(screen.getByRole("button", { name: "Expandir lateral" })).toHaveAttribute(
+    "aria-expanded",
+    "false"
+  );
+
+  await user.keyboard("{Control>}b{/Control}");
+  expect(screen.getByRole("button", { name: "Recolher lateral" })).toBeInTheDocument();
+});
+
 test("shows an empty state when there are no connections, with a way to create one", async () => {
   fakeBackend([]);
   const user = userEvent.setup();

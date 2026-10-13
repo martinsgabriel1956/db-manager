@@ -69,6 +69,29 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
   // two CodeMirror mounts: ~1.3s plain, past the 5s default under coverage instrumentation
 }, 10_000);
 
+test("Ctrl+T opens an editor on the active tab's connection", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  // no active connection yet: nothing opens
+  await screen.findByRole("treeitem", { name: /^Postgres prod/ });
+  await user.keyboard("{Control>}t{/Control}");
+  expect(screen.queryAllByRole("tab")).toHaveLength(0);
+
+  await user.click(screen.getByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await user.keyboard("{Control>}t{/Control}");
+
+  expect(tabNames()).toEqual([
+    "Postgres prod · users · produção",
+    "Postgres prod · SQL 1 · produção"
+  ]);
+  expect(
+    screen.getByRole("tab", { name: "Postgres prod · SQL 1 · produção", selected: true })
+  ).toBeInTheDocument();
+});
+
 test("open tabs move with the arrow keys and close with Delete", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
