@@ -175,3 +175,54 @@ test("browse errors are shown", async () => {
 
   expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
 });
+
+test("Ctrl+P opens what the sidebar listed, without connecting by itself", async () => {
+  const calls = fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await screen.findByRole("button", { name: /^Postgres prod/ });
+  await user.keyboard("{Control>}p{/Control}");
+  expect(await screen.findByText(/Nada carregado ainda/)).toBeInTheDocument();
+  expect(callsTo(calls, "connect_database")).toEqual([]);
+  await user.keyboard("{Escape}");
+
+  await user.click(screen.getByRole("button", { name: /^Postgres prod/ }));
+  await screen.findByRole("button", { name: "users" });
+  await user.keyboard("{Control>}p{/Control}");
+  await user.type(screen.getByLabelText("Buscar tabela, coleção ou database"), "prod act");
+  expect(screen.getAllByRole("option").map(option => option.textContent)).toEqual([
+    "active_usersPostgres prod · publicProd"
+  ]);
+
+  await user.keyboard("{Enter}");
+  expect(screen.queryByLabelText("Buscar tabela, coleção ou database")).not.toBeInTheDocument();
+  expect(
+    await screen.findByRole("tab", {
+      name: "Postgres prod · active_users · produção",
+      selected: true
+    })
+  ).toBeInTheDocument();
+});
+
+test("Ctrl+P ranks names starting with the query first and moves with the arrows", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
+  await screen.findByRole("button", { name: "users" });
+  await user.keyboard("{Control>}p{/Control}");
+  await user.type(screen.getByLabelText("Buscar tabela, coleção ou database"), "users");
+
+  const options = screen.getAllByRole("option");
+  expect(options.map(option => option.textContent?.split("Postgres")[0])).toEqual([
+    "users",
+    "active_users"
+  ]);
+  expect(options[0]).toHaveAttribute("aria-selected", "true");
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getAllByRole("option")[1]).toHaveAttribute("aria-selected", "true");
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getAllByRole("option")[0]).toHaveAttribute("aria-selected", "true");
+});

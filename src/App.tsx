@@ -9,6 +9,7 @@ import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { ConnectionTree } from "@/features/explorer/ConnectionTree";
 import { isConnectionQuery } from "@/features/explorer/queries";
+import { QuickOpen } from "@/features/explorer/QuickOpen";
 import { CollectionView } from "@/features/mongo/CollectionView";
 import { HistoryView } from "@/features/history/HistoryView";
 import { RedisView } from "@/features/redis/RedisView";
@@ -16,7 +17,7 @@ import { TableView } from "@/features/table/TableView";
 import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
-import { SIDEBAR_SHORTCUT } from "@/lib/platform";
+import { QUICK_OPEN_SHORTCUT, SIDEBAR_SHORTCUT } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 // React Flow and elk are only loaded when a diagram is opened
@@ -48,6 +49,7 @@ export function App() {
   } = useTabs();
   const [form, setForm] = useState<FormState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar-collapsed") === "1"
   );
@@ -72,8 +74,8 @@ export function App() {
   const isProd = active?.environment === "prod";
   const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
 
-  // Ctrl+B toggles the sidebar, Ctrl+T opens an editor on the active SQL connection
-  // (Cmd on macOS), from anywhere in the window
+  // Ctrl+B toggles the sidebar, Ctrl+T opens an editor on the active SQL connection,
+  // Ctrl+P finds a table to open (Cmd on macOS), from anywhere in the window
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) {
@@ -83,6 +85,9 @@ export function App() {
       if (key === "b") {
         event.preventDefault();
         setCollapsed(value => !value);
+      } else if (key === "p") {
+        event.preventDefault();
+        setQuickOpen(true);
       } else if (key === "t" && editorConnectionId) {
         event.preventDefault();
         setForm(null);
@@ -272,6 +277,7 @@ export function App() {
                   <h2 className="display-caps text-6xl">Nenhuma aba aberta</h2>
                   <p className="max-w-[46ch] text-sm text-muted-foreground">
                     Abra uma conexão na lateral para navegar pelas tabelas, ou crie uma nova.
+                    Depois, {QUICK_OPEN_SHORTCUT} abre qualquer tabela pelo nome.
                   </p>
                 </div>
               )}
@@ -293,6 +299,19 @@ export function App() {
           )}
         </main>
       </div>
+      <QuickOpen
+        open={quickOpen}
+        onOpenChange={setQuickOpen}
+        connections={list}
+        onOpenTable={target => {
+          showTabs();
+          openTable(target);
+        }}
+        onOpenRedis={target => {
+          showTabs();
+          openRedis(target);
+        }}
+      />
     </div>
   );
 }
