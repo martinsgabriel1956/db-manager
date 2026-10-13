@@ -47,7 +47,7 @@ test("Ctrl+B collapses and expands the sidebar", async () => {
   expect(screen.getByRole("button", { name: "Histórico" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Legenda" })).toBeInTheDocument();
   await user.keyboard("{F6}");
-  expect(screen.getByRole("button", { name: "Ir para tabela… (Ctrl K)" })).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Ir para… (Ctrl K)" })).toHaveFocus();
 
   await user.keyboard("{Control>}b{/Control}");
   expect(screen.getByRole("button", { name: "Recolher lateral" })).toBeInTheDocument();

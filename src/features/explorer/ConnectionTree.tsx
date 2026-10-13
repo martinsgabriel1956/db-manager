@@ -19,7 +19,7 @@ import {
   Table2,
   Unplug
 } from "lucide-react";
-import type { ConnectionConfig, SchemaInfo } from "@/bindings";
+import type { ConnectionConfig, Relation, SchemaInfo } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -93,6 +93,22 @@ export function targetSummary(connection: ConnectionConfig): string {
     return "URI de conexão";
   }
   return `${target.host}:${target.port}`;
+}
+
+/** "2 tabelas", or "1 tabela e 1 view" when views are among them: the count says what it counts. */
+export function countRelations(relations: Relation[], isMongo: boolean): string {
+  const plural = (count: number, one: string, many: string) =>
+    `${count} ${count === 1 ? one : many}`;
+  if (isMongo) {
+    return plural(relations.length, "coleção", "coleções");
+  }
+  const tables = relations.filter(relation => relation.kind === "table").length;
+  const views = relations.length - tables;
+  if (views === 0) {
+    return plural(tables, "tabela", "tabelas");
+  }
+  const viewCount = plural(views, "view", "views");
+  return tables === 0 ? viewCount : `${plural(tables, "tabela", "tabelas")} e ${viewCount}`;
 }
 
 function treeItems(tree: HTMLElement): HTMLElement[] {
@@ -288,7 +304,11 @@ function ConnectionNode({
   return (
     <li
       role="none"
-      className={cn("border-b border-border last:border-b-0", expanded && "border-b-foreground")}
+      className={cn(
+        "border-b border-border last:border-b-0",
+        expanded &&
+          (connection.environment === "prod" ? "border-b-safelight" : "border-b-foreground")
+      )}
     >
       {/* the record line: engine code, name, environment, target */}
       <div
@@ -355,7 +375,14 @@ function ConnectionNode({
       </div>
 
       {expanded && (
-        <ul role="group" className="mb-2 ml-5 border-l border-foreground py-0.5 pl-2">
+        // under the safelight on prod: production stays legible after its header scrolls away
+        <ul
+          role="group"
+          className={cn(
+            "mb-2 ml-5 border-l py-0.5 pl-2",
+            connection.environment === "prod" ? "border-safelight" : "border-foreground"
+          )}
+        >
           {/* the editor needs no schema: offered before the listing even loads */}
           {hasSqlEditor && (
             <li role="none">
@@ -470,9 +497,7 @@ function SchemaNode({
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLButtonElement>(null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
-  const one = schema.relations.length === 1;
-  const relationNoun = isMongo ? (one ? "coleção" : "coleções") : one ? "tabela" : "tabelas";
-  const relationCount = `${schema.relations.length} ${relationNoun}`;
+  const relationCount = countRelations(schema.relations, isMongo);
   const actions: RowAction[] = onOpenDiagram
     ? [
         {
@@ -515,10 +540,10 @@ function SchemaNode({
           <span className="truncate">{schema.name}</span>
           {/* read as "public · 2 tabelas", never "public2"; the word shows on hover */}
           <span className="sr-only"> · </span>
-          <span className="font-mono text-[11px]" title={relationCount}>
+          <span aria-hidden className="font-mono text-[11px]" title={relationCount}>
             {schema.relations.length}
           </span>
-          <span className="sr-only"> {relationNoun}</span>
+          <span className="sr-only">{relationCount}</span>
         </button>
         {actions.length > 0 && (
           <RowMenu

@@ -39,8 +39,10 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={confirmation !== null} onOpenChange={open => !open && onCancel()}>
+      {/* an alertdialog: it interrupts to ask for a decision about a risky write */}
       <DialogContent
         {...focusReturn}
+        role="alertdialog"
         showCloseButton={false}
         className="gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl"
       >

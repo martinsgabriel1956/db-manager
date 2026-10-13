@@ -181,7 +181,7 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
   await editCell(user, "2", "20");
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await screen.findByRole("alertdialog");
   expect(dialog).toHaveTextContent(`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2';`);
   await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
@@ -236,7 +236,7 @@ test("tables without a primary key are read-only", async () => {
 test("the grid is operable from the keyboard: arrows select, Enter edits and commits", async () => {
   fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);
-  const grid = screen.getByRole("grid", { name: "Resultado" });
+  const grid = screen.getByRole("grid", { name: "Linhas de users" });
 
   await user.click(cell("1"));
   expect(grid).toHaveFocus();

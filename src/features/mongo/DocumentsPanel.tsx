@@ -45,8 +45,9 @@ const FIELD_LABEL: Record<keyof Query, string> = {
 /** examples, never mistaken for an applied value */
 const PLACEHOLDER: Record<keyof Query, string> = {
   filter: 'ex.: {"ativo": true}',
-  sort: 'ex.: {"_id":-1}',
-  projection: 'ex.: {"nome":1}'
+  // short: these two fields are the narrow ones at the minimum window
+  sort: '{"_id":-1}',
+  projection: '{"nome":1}'
 };
 
 export function DocumentsPanel({

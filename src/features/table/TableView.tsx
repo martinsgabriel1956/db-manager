@@ -227,6 +227,7 @@ function TableData({
               selected={selected}
               onSelect={setSelected}
               editing={edit.editing}
+              label={`Linhas de ${table}`}
               readOnlyHint={
                 readOnly
                   ? "Conexão somente leitura: a célula não pode ser editada"

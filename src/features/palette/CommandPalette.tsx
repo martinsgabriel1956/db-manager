@@ -159,7 +159,7 @@ function PaletteBody({
       <p className="border-t bg-muted px-3 py-2 text-xs text-muted-foreground">
         {all.loaded === 0
           ? "Nenhuma conexão aberta ainda: escolha “Abrir conexão” para conectar e listar as tabelas."
-          : `Tabelas das conexões abertas (${all.loaded} de ${connections.length}); “Abrir conexão” inclui outra.`}{" "}
+          : `Lista as tabelas das conexões abertas (${all.loaded} de ${connections.length}). Para incluir outra, escolha “Abrir conexão”.`}{" "}
         ↑↓ escolhe, Enter abre.
       </p>
     </>

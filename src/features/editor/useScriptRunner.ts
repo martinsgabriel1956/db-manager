@@ -14,11 +14,24 @@ export type RunState =
   | { status: "running"; runId: string }
   /** destructive script, or a write on prod: waits for the user */
   | { status: "confirm"; runId: string; sql: string; confirmation: Confirmation }
+  /** the confirmation was dismissed: nothing ran, the previous result is still shown */
+  | { status: "cancelled"; runId: string; previous: SettledRun | null }
+  | SettledRun;
+
+/** A run that finished; `confirmed` when it went through the confirmation first. */
+export type SettledRun =
   | { status: "error"; runId: string; message: string }
-  | { status: "command"; runId: string; outcome: ScriptOutcome; rowsAffected: number }
+  | {
+      status: "command";
+      runId: string;
+      confirmed: boolean;
+      outcome: ScriptOutcome;
+      rowsAffected: number;
+    }
   | {
       status: "rows";
       runId: string;
+      confirmed: boolean;
       outcome: ScriptOutcome;
       columns: ResultColumn[];
       rows: Cell[][];
@@ -33,8 +46,24 @@ export type RunState =
  * cursor (and a connection) open while rows remain, so it is released on re-run
  * and on unmount.
  */
+/** What a new run would replace: kept so dismissing its confirmation can bring it back. */
+function settled(state: RunState, kept: SettledRun | null): SettledRun | null {
+  switch (state.status) {
+    case "idle":
+    case "running":
+      return null;
+    case "confirm":
+      return kept;
+    case "cancelled":
+      return state.previous;
+    default:
+      return state;
+  }
+}
+
 export function useScriptRunner(connectionId: string) {
   const [state, setState] = useState<RunState>({ status: "idle" });
+  const previousRef = useRef<SettledRun | null>(null);
   const queryClient = useQueryClient();
   const cursorRef = useRef<string | null>(null);
   const disposedRef = useRef(false);
@@ -62,7 +91,10 @@ export function useScriptRunner(connectionId: string) {
       }
       releaseCursor();
       const runId = crypto.randomUUID();
-      setState({ status: "running", runId });
+      setState(prev => {
+        previousRef.current = settled(prev, previousRef.current);
+        return { status: "running", runId };
+      });
       try {
         await commands.connectDatabase(connectionId);
         const response = await commands.runScript(connectionId, runId, sql, confirmed);
@@ -74,7 +106,13 @@ export function useScriptRunner(connectionId: string) {
         const { outcome } = response;
         const { result } = outcome;
         if (result.kind === "command") {
-          setState({ status: "command", runId, outcome, rowsAffected: result.rowsAffected });
+          setState({
+            status: "command",
+            runId,
+            confirmed,
+            outcome,
+            rowsAffected: result.rowsAffected
+          });
           return;
         }
         cursorRef.current = result.cursorId;
@@ -85,6 +123,7 @@ export function useScriptRunner(connectionId: string) {
         setState({
           status: "rows",
           runId,
+          confirmed,
           outcome,
           columns: result.batch.columns,
           rows: result.batch.rows,
@@ -108,9 +147,24 @@ export function useScriptRunner(connectionId: string) {
   }, [state, run]);
 
   const dismiss = useCallback(() => {
-    if (state.status === "confirm") {
-      setState({ status: "idle" });
+    if (state.status !== "confirm") {
+      return;
     }
+    const previous = previousRef.current;
+    // its cursor went at the start of the run: the rows on screen stay, the rest is gone
+    setState({
+      status: "cancelled",
+      runId: state.runId,
+      previous:
+        previous?.status === "rows" && previous.hasMore
+          ? {
+              ...previous,
+              cursorId: null,
+              hasMore: false,
+              loadError: "O restante deste resultado foi liberado; execute de novo para carregá-lo."
+            }
+          : previous
+    });
   }, [state]);
 
   const cancel = useCallback(() => {
