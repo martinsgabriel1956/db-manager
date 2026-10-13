@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import { App } from "@/App";
 import { layoutDiagram, nodeHeight } from "@/features/diagram/layout";
 import { callsTo, devMongo, devPostgres, diagram, fakeBackend } from "@/test/fakeBackend";
-import { renderWithClient } from "@/test/render";
+import { renderWithClient, rowAction } from "@/test/render";
 
 test("foreign keys inside the schema become edges, the rest is listed on the table", async () => {
   const { nodes, edges } = await layoutDiagram("public", diagram);
@@ -25,9 +25,9 @@ test("a SQL schema opens its ER diagram; double click opens a table", async () =
   const calls = fakeBackend([devPostgres]);
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: /^Postgres dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres dev/ }));
 
-  await user.click(await screen.findByRole("button", { name: "Diagrama ER de public" }));
+  await rowAction(user, "public", "Abrir diagrama ER");
 
   expect(await screen.findByRole("tab", { name: "Postgres dev · ER public" })).toBeInTheDocument();
   expect(await screen.findByText(/2 tabelas · 1 chave estrangeira/)).toBeInTheDocument();
@@ -51,11 +51,12 @@ test("an empty schema says so, and MongoDB has no diagram", async () => {
   fakeBackend([devPostgres, devMongo], { schema_diagram: () => [] });
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: /^Postgres dev/ }));
-  await user.click(await screen.findByRole("button", { name: "Diagrama ER de audit" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres dev/ }));
+  await rowAction(user, "audit", "Abrir diagrama ER");
   expect(await screen.findByText("O schema audit não tem tabelas.")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: /^Mongo dev/ }));
-  await screen.findAllByRole("button", { name: /^public/ });
-  expect(screen.getAllByRole("button", { name: /^Diagrama ER/ })).toHaveLength(2);
+  await user.click(screen.getByRole("treeitem", { name: /^Mongo dev/ }));
+  await screen.findAllByRole("treeitem", { name: /^public/ });
+  // the SQL schemas have the diagram in their menu; MongoDB databases have no menu
+  expect(screen.getAllByRole("button", { name: /^Ações de (public|audit)$/ })).toHaveLength(2);
 });

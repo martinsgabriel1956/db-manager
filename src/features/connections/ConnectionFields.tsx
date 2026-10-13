@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import type { Engine } from "@/bindings";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,14 +26,37 @@ type FieldProps = {
   id: keyof ConnectionFormValues;
   label: string;
   error?: string;
+  /** answers what the field changes; wire it with describedBy(id, …) */
+  hint?: string;
   children: ReactNode;
 };
 
-function Field({ id, label, error, children }: FieldProps) {
+/** Error first (when present), then the hint: both read with the field. */
+function describedBy(id: string, error: string | undefined, hint: boolean): string | undefined {
+  const ids = [error ? `${id}-error` : null, hint ? `${id}-hint` : null].filter(Boolean);
+  return ids.length > 0 ? ids.join(" ") : undefined;
+}
+
+/** What each environment changes, said where the environment is chosen. */
+const ENVIRONMENT_HINT: Record<ConnectionFormValues["environment"], string> = {
+  "": "Define as proteções desta conexão. Na dúvida entre dois, escolha o mais protegido.",
+  local:
+    "Banco na sua máquina. Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
+  dev: "Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
+  staging: "Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
+  prod: "Faixa vermelha na janela inteira, e toda escrita mostra o comando exato e pede confirmação."
+};
+
+function Field({ id, label, error, hint, children }: FieldProps) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid content-start gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       {children}
+      {hint && (
+        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      )}
       {error && (
         <p id={`${id}-error`} className="text-xs text-destructive">
           {error}
@@ -53,6 +77,9 @@ export function ConnectionFields({
   const isRedis = values.engine === "redis";
   const isMongo = values.engine === "mongo";
   const isUri = isMongo && values.mongoMode === "uri";
+  // TLS comes from the URI itself, and a file has none
+  const hasTls = !isSqlite && !isUri;
+  const advancedError = Boolean(errors.timeoutSecs || errors.caCertPath);
 
   function textInput(
     id: keyof ConnectionFormValues,
@@ -63,7 +90,7 @@ export function ConnectionFields({
         id={id}
         value={String(values[id])}
         aria-invalid={errors[id] ? true : undefined}
-        aria-describedby={errors[id] ? `${id}-error` : undefined}
+        aria-describedby={describedBy(id, errors[id], false)}
         onChange={event => onChange({ [id]: event.target.value })}
         {...props}
       />
@@ -72,11 +99,9 @@ export function ConnectionFields({
 
   return (
     <div className="grid gap-4">
+      {/* the engine reshapes every field below it, so it comes first */}
       <div className="grid grid-cols-2 gap-4">
-        <Field id="name" label="Nome" error={errors.name}>
-          {textInput("name", { placeholder: "ex.: Postgres prod" })}
-        </Field>
-        <Field id="engine" label="Banco">
+        <Field id="engine" label="Tipo de banco">
           <NativeSelect
             id="engine"
             className="w-full px-2.5"
@@ -89,6 +114,9 @@ export function ConnectionFields({
               </option>
             ))}
           </NativeSelect>
+        </Field>
+        <Field id="name" label="Nome" error={errors.name}>
+          {textInput("name", { placeholder: "ex.: Postgres prod" })}
         </Field>
       </div>
 
@@ -103,7 +131,7 @@ export function ConnectionFields({
                 checked={values.mongoMode === mode}
                 onChange={() => onChange({ mongoMode: mode })}
               />
-              {mode === "network" ? "Host e porta" : "Connection string"}
+              {mode === "network" ? "Host e porta" : "URI de conexão"}
             </label>
           ))}
         </fieldset>
@@ -115,7 +143,7 @@ export function ConnectionFields({
         </Field>
       ) : isUri ? (
         <>
-          <Field id="uri" label="Connection string" error={errors.uri}>
+          <Field id="uri" label="URI de conexão" error={errors.uri}>
             <Input
               id="uri"
               type="password"
@@ -132,9 +160,9 @@ export function ConnectionFields({
             />
           </Field>
           <p className="-mt-2 text-xs text-muted-foreground">
-            Fica no keychain do sistema, como uma senha. TLS e autenticação vêm da própria string.
+            Fica no keychain do sistema, como uma senha. TLS e autenticação vêm da própria URI.
           </p>
-          <Field id="database" label="Database padrão (opcional)" error={errors.database}>
+          <Field id="database" label="Banco padrão (opcional)" error={errors.database}>
             {textInput("database")}
           </Field>
         </>
@@ -151,7 +179,7 @@ export function ConnectionFields({
           <div className="grid grid-cols-2 gap-4">
             <Field
               id="database"
-              label={isRedis ? "Database (0–15)" : "Database"}
+              label={isRedis ? "Banco (0–15)" : "Banco de dados"}
               error={errors.database}
             >
               {textInput("database")}
@@ -182,27 +210,6 @@ export function ConnectionFields({
               Remover senha salva
             </label>
           )}
-          <div className="grid grid-cols-2 gap-4">
-            <Field id="tlsMode" label="TLS">
-              <NativeSelect
-                id="tlsMode"
-                className="w-full px-2.5"
-                value={values.tlsMode}
-                onChange={event =>
-                  onChange({ tlsMode: event.target.value as ConnectionFormValues["tlsMode"] })
-                }
-              >
-                {TLS_MODES.map(mode => (
-                  <option key={mode} value={mode}>
-                    {TLS_LABEL[mode]}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field id="caCertPath" label="Certificado CA (opcional)">
-              {textInput("caCertPath", { placeholder: "/caminho/para/ca.pem" })}
-            </Field>
-          </div>
         </>
       )}
 
@@ -212,36 +219,102 @@ export function ConnectionFields({
         </Field>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <Field id="environment" label="Ambiente">
-          <NativeSelect
+      {/* what guards this connection: chosen together, each one says what it changes */}
+      <div
+        role="group"
+        aria-labelledby="protection-title"
+        className="grid gap-4 border-t border-foreground pt-4"
+      >
+        <h3 id="protection-title" className="legend text-muted-foreground">
+          Proteção
+        </h3>
+        <div className="grid grid-cols-2 items-start gap-4">
+          <Field
             id="environment"
-            className="w-full px-2.5"
-            value={values.environment}
-            onChange={event =>
-              onChange({ environment: event.target.value as ConnectionFormValues["environment"] })
-            }
+            label="Ambiente"
+            hint={ENVIRONMENT_HINT[values.environment]}
+            error={errors.environment}
           >
-            {ENVIRONMENTS.map(environment => (
-              <option key={environment} value={environment}>
-                {ENVIRONMENT_STYLE[environment].label}
+            <NativeSelect
+              id="environment"
+              className="w-full px-2.5"
+              aria-invalid={errors.environment ? true : undefined}
+              aria-describedby={describedBy("environment", errors.environment, true)}
+              value={values.environment}
+              onChange={event =>
+                onChange({ environment: event.target.value as ConnectionFormValues["environment"] })
+              }
+            >
+              {/* no default: the least protected regime must not be the silent choice */}
+              <option value="" disabled>
+                Escolha o ambiente
               </option>
-            ))}
-          </NativeSelect>
-        </Field>
-        <Field id="timeoutSecs" label="Timeout (s, 0 = sem limite)" error={errors.timeoutSecs}>
-          {textInput("timeoutSecs", { type: "number" })}
-        </Field>
+              {ENVIRONMENTS.map(environment => (
+                <option key={environment} value={environment}>
+                  {ENVIRONMENT_STYLE[environment].label}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <div className="grid gap-1 pt-6">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={values.readOnly}
+                aria-describedby="readOnly-hint"
+                onChange={event => onChange({ readOnly: event.target.checked })}
+              />
+              Somente leitura
+            </label>
+            <p id="readOnly-hint" className="pl-6 text-xs text-muted-foreground">
+              O próprio banco recusa escritas: sessão somente leitura no Postgres e no MySQL,
+              arquivo aberto só para leitura no SQLite, só comandos de leitura no MongoDB e no
+              Redis.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={values.readOnly}
-          onChange={event => onChange({ readOnly: event.target.checked })}
-        />
-        Somente leitura
-      </label>
+      {/* rarely changed: folded, but opened by itself when one of its fields has an error */}
+      <details open={advancedError || undefined} className="group border-t border-foreground pt-4">
+        <summary className="flex cursor-default items-center gap-1.5 legend text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRight aria-hidden className="size-3.5 group-open:rotate-90" />
+          Avançado
+          <span className="font-sans text-xs font-normal tracking-normal normal-case">
+            {hasTls ? "TLS, certificado e timeout" : "timeout"}
+          </span>
+        </summary>
+        <div className="mt-4 grid gap-4">
+          {hasTls && (
+            <div className="grid grid-cols-2 gap-4">
+              <Field id="tlsMode" label="TLS">
+                <NativeSelect
+                  id="tlsMode"
+                  className="w-full px-2.5"
+                  value={values.tlsMode}
+                  onChange={event =>
+                    onChange({ tlsMode: event.target.value as ConnectionFormValues["tlsMode"] })
+                  }
+                >
+                  {TLS_MODES.map(mode => (
+                    <option key={mode} value={mode}>
+                      {TLS_LABEL[mode]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field id="caCertPath" label="Certificado CA (opcional)">
+                {textInput("caCertPath", { placeholder: "/caminho/para/ca.pem" })}
+              </Field>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <Field id="timeoutSecs" label="Timeout (s, 0 = sem limite)" error={errors.timeoutSecs}>
+              {textInput("timeoutSecs", { type: "number" })}
+            </Field>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

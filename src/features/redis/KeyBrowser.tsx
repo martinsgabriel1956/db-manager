@@ -45,7 +45,7 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
         <form onSubmit={search} className="flex gap-1 border-b p-2">
           <Input
             aria-label="Padrão de chaves"
-            placeholder="user:* (SCAN MATCH)"
+            placeholder="ex.: user:*"
             // a narrowed SCAN is filtration: the pattern field takes the magenta rule
             className={cn("h-7 font-mono text-xs", pattern !== "*" && "border-filter")}
             value={draft}
@@ -113,7 +113,14 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
 
       <div className="min-w-0 flex-1">
         {selected === null ? (
-          <p className="p-4 text-sm text-muted-foreground">Selecione uma chave.</p>
+          <div className="grid h-full content-center justify-items-start gap-2 px-8 grid-paper">
+            <p aria-hidden className="display-caps text-3xl">
+              Nenhuma chave aberta
+            </p>
+            <p className="max-w-[46ch] text-sm text-muted-foreground">
+              Selecione uma chave na lista para ver o tipo, o valor e o TTL.
+            </p>
+          </div>
         ) : (
           <KeyDetailView
             key={selected}

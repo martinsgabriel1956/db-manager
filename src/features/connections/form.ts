@@ -19,7 +19,8 @@ import {
 export type ConnectionFormValues = {
   name: string;
   engine: Engine;
-  environment: Environment;
+  /** empty until chosen: the protection regime is never a silent default */
+  environment: Environment | "";
   readOnly: boolean;
   timeoutSecs: string;
   host: string;
@@ -47,7 +48,7 @@ export type ParsedForm =
 export const EMPTY_FORM: ConnectionFormValues = {
   name: "",
   engine: "postgres",
-  environment: "local",
+  environment: "",
   readOnly: false,
   timeoutSecs: String(DEFAULT_TIMEOUT_SECS),
   host: "localhost",
@@ -161,15 +162,19 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
   if (isUri) {
     const uri = values.uri.trim();
     if (uri === "" && !isEditing) {
-      errors.uri = "Informe a connection string";
+      errors.uri = "Informe a URI de conexão";
     } else if (uri !== "" && !CONNECTION_STRING.test(uri)) {
       errors.uri = "Use mongodb:// ou mongodb+srv://";
     }
   }
 
   const target = toTarget(file, network, isUri ? values.database.trim() : undefined);
+  const environment = values.environment === "" ? null : values.environment;
+  if (!environment) {
+    errors.environment = "Escolha o ambiente: ele define as proteções desta conexão";
+  }
 
-  if (!common || !target || Object.keys(errors).length > 0) {
+  if (!common || !target || !environment || Object.keys(errors).length > 0) {
     return { success: false, errors };
   }
 
@@ -181,7 +186,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
       id,
       name: common.name,
       engine: values.engine,
-      environment: values.environment,
+      environment,
       readOnly: values.readOnly,
       timeoutSecs: common.timeoutSecs,
       target,

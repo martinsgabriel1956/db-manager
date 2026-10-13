@@ -5,7 +5,7 @@ import { App } from "@/App";
 import type { HistoryEntry } from "@/bindings";
 import { useTabs } from "@/features/tabs/store";
 import { callsTo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
-import { renderWithClient } from "@/test/render";
+import { renderWithClient, rowAction } from "@/test/render";
 
 const entries: HistoryEntry[] = [
   {
@@ -42,12 +42,12 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
-  await user.click(screen.getByRole("button", { name: "active_users" }));
-  await user.click(screen.getByRole("button", { name: "Abrir editor SQL de Postgres prod" }));
-  await user.click(screen.getByRole("button", { name: "Abrir editor SQL de Postgres prod" }));
-  await user.click(screen.getByRole("button", { name: "users" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await rowAction(user, "Postgres prod", "Nova query SQL");
+  await user.click(screen.getByRole("treeitem", { name: /^Nova query SQL/ }));
+  await user.click(screen.getByRole("treeitem", { name: "users" }));
 
   // every tab names its connection, and a production one says so
   expect(tabNames()).toEqual([
@@ -66,16 +66,17 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
     "Postgres prod · SQL 1 · produção",
     "Postgres prod · SQL 2 · produção"
   ]);
-});
+  // two CodeMirror mounts: ~1.3s plain, past the 5s default under coverage instrumentation
+}, 10_000);
 
 test("open tabs move with the arrow keys and close with Delete", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
-  await user.click(screen.getByRole("button", { name: "active_users" }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
   await user.click(screen.getByRole("tab", { name: /· users ·/ }));
 
   await user.keyboard("{ArrowRight}");
@@ -93,13 +94,13 @@ test("editing a connection hides the tabs and returns to them", async () => {
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Postgres prod/ }));
-  await user.click(await screen.findByRole("button", { name: "users" }));
-  await user.click(screen.getByRole("button", { name: "Editar Postgres prod" }));
-  expect(screen.getByRole("heading", { name: "Editar conexão" })).toBeInTheDocument();
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await rowAction(user, "Postgres prod", "Editar conexão");
+  expect(screen.getByRole("heading", { name: /^Editar conexão/ })).toBeInTheDocument();
   expect(screen.queryByRole("tablist", { name: "Abas abertas" })).not.toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "users" }));
+  await user.click(screen.getByRole("treeitem", { name: "users" }));
   expect(screen.getByRole("tablist", { name: "Abas abertas" })).toBeInTheDocument();
 });
 

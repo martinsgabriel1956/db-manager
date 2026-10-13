@@ -12,8 +12,10 @@ type CommandArgs = { db: number; command: string; confirmed: boolean };
 async function openDb0(connection: ConnectionConfig = localRedis) {
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: new RegExp(`^${connection.name}`) }));
-  await user.click(await screen.findByRole("button", { name: /^db0/ }));
+  await user.click(
+    await screen.findByRole("treeitem", { name: new RegExp(`^${connection.name}`) })
+  );
+  await user.click(await screen.findByRole("treeitem", { name: /^db0/ }));
   await screen.findByRole("list", { name: "Chaves" });
   return user;
 }
@@ -27,13 +29,11 @@ test("Redis lists databases and opens one in a tab, keys grouped by separator", 
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Cache/ }));
-  const db0 = await screen.findByRole("button", { name: /^db0/ });
+  await user.click(await screen.findByRole("treeitem", { name: /^Cache/ }));
+  const db0 = await screen.findByRole("treeitem", { name: /^db0/ });
   expect(db0).toHaveTextContent("4");
-  expect(screen.getByRole("button", { name: /^db1/ })).toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "Abrir editor SQL de Cache" })
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("treeitem", { name: /^db1/ })).toBeInTheDocument();
+  expect(screen.queryByRole("treeitem", { name: /^Nova query SQL/ })).not.toBeInTheDocument();
 
   await user.click(db0);
 
@@ -163,9 +163,11 @@ test("a string is saved, its TTL set, then renamed and deleted", async () => {
   expect(screen.getByText("kind=login")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Excluir chave" }));
+  // the exact command shows before the click
+  expect(screen.getByText("DEL events")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   await waitFor(() => expect(edits(calls)[3]?.request.edits).toEqual([{ op: "delete" }]));
-  expect(await screen.findByText("Selecione uma chave.")).toBeInTheDocument();
+  expect(await screen.findByText(/^Selecione uma chave na lista/)).toBeInTheDocument();
 });
 
 test("big and binary values are marked and binary items are read-only", async () => {

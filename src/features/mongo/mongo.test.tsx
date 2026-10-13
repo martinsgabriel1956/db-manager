@@ -25,8 +25,10 @@ const schemas = [
 async function openCustomers(connection: ConnectionConfig = devMongo) {
   const user = userEvent.setup();
   renderWithClient(<App />);
-  await user.click(await screen.findByRole("button", { name: new RegExp(`^${connection.name}`) }));
-  await user.click(await screen.findByRole("button", { name: "customers" }));
+  await user.click(
+    await screen.findByRole("treeitem", { name: new RegExp(`^${connection.name}`) })
+  );
+  await user.click(await screen.findByRole("treeitem", { name: "customers" }));
   await screen.findByText('ObjectId("65a1b2c3d4e5f60718293a4b")');
   return user;
 }
@@ -53,12 +55,12 @@ test("MongoDB opens databases and collections without a SQL editor", async () =>
   const user = userEvent.setup();
   renderWithClient(<App />);
 
-  await user.click(await screen.findByRole("button", { name: /^Mongo dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^Mongo dev/ }));
 
   // the connection's database opens by default
-  expect(await screen.findByRole("button", { name: "customers" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "events" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Abrir editor SQL/ })).not.toBeInTheDocument();
+  expect(await screen.findByRole("treeitem", { name: "customers" })).toBeInTheDocument();
+  expect(screen.queryByRole("treeitem", { name: "events" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("treeitem", { name: /^Nova query SQL/ })).not.toBeInTheDocument();
 });
 
 test("documents show typed values, switch to JSON, filter and page", async () => {
@@ -178,6 +180,9 @@ test("delete asks first; on prod the statement is confirmed", async () => {
   const user = await openCustomers(prodMongo);
 
   await user.click(screen.getAllByRole("button", { name: "Excluir documento" })[1]);
+  expect(
+    screen.getByText('deleteOne({"_id": {"$oid":"65a1b2c3d4e5f60718293a4c"}})')
+  ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   expect(await screen.findByRole("dialog")).toHaveTextContent("deleteOne");
   await user.click(screen.getByRole("button", { name: "Executar em produção" }));
@@ -268,4 +273,27 @@ test("indexes are listed", async () => {
 
   expect(await screen.findByText("_id_")).toBeInTheDocument();
   expect(screen.getByText('{"_id":1}')).toBeInTheDocument();
+});
+
+test("an applied filter lights the magenta chip with the query; edits not yet applied promote Aplicar", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  expect(screen.queryByRole("button", { name: "Limpar consulta" })).not.toBeInTheDocument();
+
+  await user.type(screen.getByRole("textbox", { name: "Filtro" }), '{{"name": "Ana"}');
+  expect(screen.getByRole("button", { name: "Aplicar" })).toHaveAttribute(
+    "data-variant",
+    "default"
+  );
+  await user.click(screen.getByRole("button", { name: "Aplicar" }));
+  expect(await screen.findByText('{"name": "Ana"}')).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Aplicar" })).toHaveAttribute(
+    "data-variant",
+    "outline"
+  );
+
+  await user.click(screen.getByRole("button", { name: "Limpar consulta" }));
+  expect(screen.queryByText('{"name": "Ana"}')).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Filtro" })).toHaveValue("");
+  await waitFor(() => expect(lastBrowse(calls).filter).toBe(""));
 });

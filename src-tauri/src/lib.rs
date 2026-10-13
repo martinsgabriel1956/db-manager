@@ -32,6 +32,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::connections::list_connections,
             commands::connections::save_connection,
             commands::connections::delete_connection,
+            commands::connections::test_connection,
             commands::sql::connect_database,
             commands::sql::disconnect_database,
             commands::sql::list_schemas,

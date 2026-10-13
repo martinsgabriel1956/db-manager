@@ -39,12 +39,35 @@ const theme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "var(--accent)", color: "var(--foreground)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "color-mix(in oklch, var(--ring) 40%, transparent)" },
+  // under the dialog layer (z-50): a lingering completion never paints over a sheet
   ".cm-tooltip": {
     backgroundColor: "var(--popover)",
     color: "var(--popover-foreground)",
     border: "1px solid var(--foreground)",
-    borderRadius: "0"
+    borderRadius: "0",
+    zIndex: "40"
   },
+  // the completion's kind as a legend code in a square cell, like the engine codes; no emoji
+  ".cm-completionIcon": {
+    width: "1.75rem",
+    paddingRight: "0.5rem",
+    opacity: "1",
+    fontFamily: "var(--font-display)",
+    fontStretch: "75%",
+    fontWeight: "600",
+    fontSize: "0.6875rem",
+    letterSpacing: "0.1em",
+    color: "var(--muted-foreground)"
+  },
+  "[aria-selected] > .cm-completionIcon": { color: "inherit" },
+  ".cm-completionIcon-keyword::after": { content: "'KW'" },
+  ".cm-completionIcon-type::after": { content: "'TY'" },
+  ".cm-completionIcon-class::after": { content: "'TB'" },
+  ".cm-completionIcon-property::after": { content: "'CL'" },
+  ".cm-completionIcon-function::after, .cm-completionIcon-method::after": { content: "'FN'" },
+  ".cm-completionIcon-namespace::after": { content: "'SC'" },
+  ".cm-completionIcon-variable::after, .cm-completionIcon-constant::after": { content: "'VR'" },
+  ".cm-completionIcon-text::after": { content: "'TX'" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--select)",
     color: "var(--select-foreground)"

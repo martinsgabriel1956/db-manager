@@ -1,8 +1,16 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject
+} from "react";
 import {
   ChevronDown,
   ChevronRight,
   Database,
+  Ellipsis,
   Eye,
   Lock,
   Network,
@@ -13,15 +21,25 @@ import {
 } from "lucide-react";
 import type { ConnectionConfig, SchemaInfo } from "@/bindings";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
-import { useDisconnect, useSchemas } from "@/features/explorer/queries";
 import { defaultSchemaFor, ENGINE_LABEL, isSqlEngine } from "@/features/connections/options";
+import { useDisconnect, useSchemas } from "@/features/explorer/queries";
+import { connectionRowId, useExplorer } from "@/features/explorer/store";
+import { treeMove } from "@/features/explorer/treeNav";
 import { useRedisDatabases } from "@/features/redis/queries";
 import type { DiagramTarget, RedisTarget, TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type TreeActions = {
+  /** the connection open in the form: marked as where you are */
+  editingId: string | null;
   activeTable: TableTarget | null;
   activeRedis: RedisTarget | null;
   onEdit: (connectionId: string) => void;
@@ -43,6 +61,19 @@ type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   onOpenDiagram?: (target: DiagramTarget) => void;
 };
 
+type RowAction = { label: string; icon: ReactNode; onSelect: () => void };
+
+type RowMenuProps = {
+  /** names the row: "Ações de Postgres prod" */
+  label: string;
+  actions: RowAction[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** where focus returns when the menu closes */
+  rowRef: RefObject<HTMLButtonElement | null>;
+  className?: string;
+};
+
 /** Rows on the grid paper under a connection (schemas, tables, Redis databases). */
 const TREE_ROW =
   "flex w-full items-center gap-1.5 px-1.5 h-7 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
@@ -57,19 +88,102 @@ export function targetSummary(connection: ConnectionConfig): string {
     return target.path.split(/[\\/]/).pop() ?? target.path;
   }
   if (target.kind === "uri") {
-    return "connection string";
+    return "URI de conexão";
   }
   return `${target.host}:${target.port}`;
 }
 
+function treeItems(tree: HTMLElement): HTMLElement[] {
+  return [...tree.querySelectorAll<HTMLElement>("[role='treeitem']")];
+}
+
+/** ↑↓ ← → Home End over the visible rows; Tab leaves the tree in one step. */
+function handleTreeKeyDown(event: KeyboardEvent<HTMLElement>) {
+  const elements = treeItems(event.currentTarget);
+  const index = elements.indexOf(event.target as HTMLElement);
+  if (index === -1) {
+    return;
+  }
+  const rows = elements.map(element => ({
+    level: Number(element.getAttribute("aria-level")),
+    expanded: element.hasAttribute("aria-expanded")
+      ? element.getAttribute("aria-expanded") === "true"
+      : null
+  }));
+  const move = treeMove(rows, index, event.key);
+  if (!move) {
+    return;
+  }
+  event.preventDefault();
+  if ("toggle" in move) {
+    elements[move.toggle].click();
+  } else {
+    elements[move.focus].focus();
+  }
+}
+
+/** Shift+F10 or the menu key opens the focused row's actions, as a right click does. */
+function isMenuKey(event: KeyboardEvent) {
+  return event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
+}
+
+/**
+ * Roving tab stop: exactly one row is tabbable, the last one focused, else the
+ * row of the open tab, else the first. Set on the DOM so re-renders keep it.
+ */
+function useRovingTabStop(treeRef: RefObject<HTMLUListElement | null>) {
+  const lastFocused = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) {
+      return;
+    }
+    const items = treeItems(tree);
+    const current =
+      items.find(item => item === lastFocused.current) ??
+      items.find(item => item.getAttribute("aria-selected") === "true") ??
+      items[0];
+    for (const item of items) {
+      item.tabIndex = item === current ? 0 : -1;
+    }
+  });
+
+  return (target: EventTarget) => {
+    const tree = treeRef.current;
+    if (!tree || !(target instanceof HTMLElement) || target.getAttribute("role") !== "treeitem") {
+      return;
+    }
+    lastFocused.current = target;
+    for (const item of treeItems(tree)) {
+      item.tabIndex = item === target ? 0 : -1;
+    }
+  };
+}
+
 export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps) {
+  const treeRef = useRef<HTMLUListElement>(null);
+  const trackFocus = useRovingTabStop(treeRef);
+
   if (connections.length === 0) {
-    return <p className="px-4 text-sm text-muted-foreground">Nenhuma conexão cadastrada.</p>;
+    return (
+      <div className="mx-4 mb-4 grid gap-2 border border-foreground bg-background p-3">
+        <p className="text-sm font-semibold">Nenhuma conexão cadastrada.</p>
+        <p className="text-xs text-muted-foreground">
+          Cadastre um Postgres, MySQL, SQLite, MongoDB ou Redis que já existe. A senha fica no
+          keychain do sistema, nunca em texto puro.
+        </p>
+      </div>
+    );
   }
   return (
     // one ruled ledger: shared rules, ink rules around an open connection's tree
     <ul
+      ref={treeRef}
+      role="tree"
       aria-label="Conexões"
+      onKeyDown={handleTreeKeyDown}
+      onFocus={event => trackFocus(event.target)}
       className="mx-4 mb-4 grid grid-cols-1 border border-foreground bg-background"
     >
       {connections.map(connection => (
@@ -79,8 +193,47 @@ export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps)
   );
 }
 
+/** The row's actions: a quiet "⋯" for the mouse, Shift+F10 or a right click from the row. */
+function RowMenu({ label, actions, open, onOpenChange, rowRef, className }: RowMenuProps) {
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          // the row is the keyboard's way in (Shift+F10): one tab stop per tree, not per row
+          tabIndex={-1}
+          aria-label={label}
+          className={cn(
+            "text-muted-foreground hover:text-foreground aria-expanded:text-foreground",
+            className
+          )}
+        >
+          <Ellipsis />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        aria-label={label}
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          rowRef.current?.focus();
+        }}
+      >
+        {actions.map(action => (
+          <DropdownMenuItem key={action.label} onSelect={action.onSelect}>
+            {action.icon}
+            {action.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ConnectionNode({
   connection,
+  editingId,
   activeTable,
   activeRedis,
   onEdit,
@@ -89,7 +242,10 @@ function ConnectionNode({
   onOpenRedis,
   onOpenDiagram
 }: ConnectionNodeProps) {
-  const [expanded, setExpanded] = useState(false);
+  const expanded = useExplorer(state => state.expanded.includes(connection.id));
+  const setExpanded = useExplorer(state => state.setExpanded);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rowRef = useRef<HTMLButtonElement>(null);
   const isRedis = connection.engine === "redis";
   const hasSqlEditor = isSqlEngine(connection.engine);
   const schemas = useSchemas(connection.id, expanded && !isRedis);
@@ -99,22 +255,73 @@ function ConnectionNode({
   const disconnect = useDisconnect();
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
+  const actions: RowAction[] = [
+    ...(hasSqlEditor
+      ? [
+          {
+            label: "Nova query SQL",
+            icon: <SquareTerminal />,
+            onSelect: () => onOpenEditor(connection.id)
+          }
+        ]
+      : []),
+    { label: "Editar conexão", icon: <Pencil />, onSelect: () => onEdit(connection.id) },
+    ...(listing.isSuccess
+      ? [
+          {
+            label: "Desconectar",
+            icon: <Unplug />,
+            onSelect: () => {
+              disconnect.mutate(connection.id);
+              setExpanded(connection.id, false);
+            }
+          }
+        ]
+      : [])
+  ];
+
   return (
-    <li className={cn("border-b border-border last:border-b-0", expanded && "border-b-foreground")}>
+    <li
+      role="none"
+      className={cn("border-b border-border last:border-b-0", expanded && "border-b-foreground")}
+    >
       {/* the record line: engine code, name, environment, target */}
-      <div className="group relative flex items-stretch">
+      <div
+        className="group relative flex items-stretch"
+        onContextMenu={event => {
+          event.preventDefault();
+          setMenuOpen(true);
+        }}
+      >
         <button
+          ref={rowRef}
           type="button"
+          id={connectionRowId(connection.id)}
+          role="treeitem"
+          aria-level={1}
           aria-expanded={expanded}
-          onClick={() => setExpanded(prev => !prev)}
-          className="grid min-w-0 flex-1 grid-cols-[auto_1fr] items-center gap-x-2.5 gap-y-0.5 py-2 pr-1.5 pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          aria-current={editingId === connection.id || undefined}
+          tabIndex={-1}
+          onClick={() => setExpanded(connection.id, !expanded)}
+          onKeyDown={event => {
+            if (isMenuKey(event)) {
+              event.preventDefault();
+              setMenuOpen(true);
+            }
+          }}
+          className={cn(
+            "grid min-w-0 flex-1 grid-cols-[auto_1fr] items-center gap-x-2.5 gap-y-0.5 py-2 pr-1.5 pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            // the form is open on this one: the "where you are" rule, inset like the active tab's
+            editingId === connection.id && "shadow-[inset_3px_0_0_var(--select)]"
+          )}
         >
           <EngineCode engine={connection.engine} className="row-span-2" />
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 truncate text-[13px] font-semibold">{connection.name}</span>
             <EnvTag environment={connection.environment} className="ml-auto" />
           </span>
-          <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+          {/* the second line ends short of the corner: the "⋯" sits there */}
+          <span className="flex min-w-0 items-center gap-1.5 pr-6 font-mono text-[11px] text-muted-foreground">
             <Chevron aria-hidden className="-ml-0.5 size-3 shrink-0" />
             {/* the engine is already in the code cell; screen readers still hear it */}
             <span className="sr-only">{ENGINE_LABEL[connection.engine]} · </span>
@@ -130,51 +337,51 @@ function ConnectionNode({
             )}
           </span>
         </button>
-        {/* laid over the end of the target line, never over the name or the environment: hidden at rest but still tabbable */}
-        <div className="pointer-events-none absolute right-1 bottom-1 flex items-center gap-0.5 bg-background pl-1 opacity-0 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
-          {hasSqlEditor && (
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label={`Abrir editor SQL de ${connection.name}`}
-              onClick={() => onOpenEditor(connection.id)}
-            >
-              <SquareTerminal />
-            </Button>
-          )}
-          {listing.isSuccess && (
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label={`Desconectar ${connection.name}`}
-              onClick={() => {
-                disconnect.mutate(connection.id);
-                setExpanded(false);
-              }}
-            >
-              <Unplug />
-            </Button>
-          )}
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label={`Editar ${connection.name}`}
-            onClick={() => onEdit(connection.id)}
-          >
-            <Pencil />
-          </Button>
-        </div>
+        <RowMenu
+          label={`Ações de ${connection.name}`}
+          actions={actions}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          rowRef={rowRef}
+          className="absolute right-1 bottom-1"
+        />
       </div>
 
       {expanded && (
-        <div className="mb-2 ml-5 border-l border-foreground py-0.5 pl-2">
+        <ul role="group" className="mb-2 ml-5 border-l border-foreground py-0.5 pl-2">
+          {/* the editor needs no schema: offered before the listing even loads */}
+          {hasSqlEditor && (
+            <li role="none">
+              <button
+                type="button"
+                role="treeitem"
+                aria-level={2}
+                tabIndex={-1}
+                onClick={() => onOpenEditor(connection.id)}
+                className={cn(TREE_ROW, "font-medium")}
+              >
+                <SquareTerminal className="size-3.5 shrink-0" />
+                Nova query SQL
+                <span className="sr-only"> em {connection.name}</span>
+              </button>
+            </li>
+          )}
           {listing.isPending && (
-            <p className="px-1.5 py-1 text-xs text-muted-foreground">Conectando…</p>
+            <li role="none" className="px-1.5 py-1 text-xs text-muted-foreground">
+              Conectando…
+            </li>
           )}
           {listing.isError && (
-            <div className="my-1 grid gap-1.5 border border-destructive bg-background p-2">
+            <li
+              role="none"
+              className="my-1 grid gap-1.5 border border-destructive bg-background p-2"
+            >
               <p role="alert" className="text-xs text-destructive">
                 {errorMessage(listing.error)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Confira host, porta e senha em Editar conexão e use Testar conexão, que tenta sem
+                salvar. Banco atrás de bastion: abra um túnel antes (ssh -L).
               </p>
               <Button
                 size="xs"
@@ -184,60 +391,53 @@ function ConnectionNode({
               >
                 Tentar de novo
               </Button>
-            </div>
+            </li>
           )}
-          {databases.data && (
-            <ul className="grid grid-cols-1">
-              {databases.data.map(database => {
-                const isActive =
-                  activeRedis?.connectionId === connection.id && activeRedis.db === database.index;
-                return (
-                  <li key={database.index}>
-                    <button
-                      type="button"
-                      aria-current={isActive || undefined}
-                      onClick={() =>
-                        onOpenRedis({ connectionId: connection.id, db: database.index })
-                      }
-                      className={cn(
-                        TREE_ROW,
-                        database.keys === 0 && "text-muted-foreground",
-                        isActive && ACTIVE_ROW
-                      )}
-                    >
-                      <Database className="size-3.5 shrink-0 opacity-70" />
-                      <span className="font-mono">db{database.index}</span>
-                      {/* full strength on the blue fill: 11px needs 4.5:1 */}
-                      <span
-                        className={cn(
-                          "ml-auto font-mono text-[11px]",
-                          !isActive && "text-muted-foreground"
-                        )}
-                      >
-                        {database.keys > 0 && database.keys}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {schemas.data && (
-            <ul className="grid grid-cols-1">
-              {schemas.data.map(schema => (
-                <SchemaNode
-                  key={schema.name}
-                  connectionId={connection.id}
-                  schema={schema}
-                  openByDefault={schema.name === defaultSchemaFor(connection)}
-                  activeTable={activeTable}
-                  onOpenTable={onOpenTable}
-                  onOpenDiagram={hasSqlEditor ? onOpenDiagram : undefined}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
+          {databases.data?.map(database => {
+            const isActive =
+              activeRedis?.connectionId === connection.id && activeRedis.db === database.index;
+            return (
+              <li role="none" key={database.index}>
+                <button
+                  type="button"
+                  role="treeitem"
+                  aria-level={2}
+                  aria-selected={isActive || undefined}
+                  tabIndex={-1}
+                  onClick={() => onOpenRedis({ connectionId: connection.id, db: database.index })}
+                  className={cn(
+                    TREE_ROW,
+                    database.keys === 0 && "text-muted-foreground",
+                    isActive && ACTIVE_ROW
+                  )}
+                >
+                  <Database className="size-3.5 shrink-0 opacity-70" />
+                  <span className="font-mono">db{database.index}</span>
+                  {/* full strength on the blue fill: 11px needs 4.5:1 */}
+                  <span
+                    className={cn(
+                      "ml-auto font-mono text-[11px]",
+                      !isActive && "text-muted-foreground"
+                    )}
+                  >
+                    {database.keys > 0 && database.keys}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          {schemas.data?.map(schema => (
+            <SchemaNode
+              key={schema.name}
+              connectionId={connection.id}
+              schema={schema}
+              openByDefault={schema.name === defaultSchemaFor(connection)}
+              activeTable={activeTable}
+              onOpenTable={onOpenTable}
+              onOpenDiagram={hasSqlEditor ? onOpenDiagram : undefined}
+            />
+          ))}
+        </ul>
       )}
     </li>
   );
@@ -252,37 +452,70 @@ function SchemaNode({
   onOpenDiagram
 }: SchemaNodeProps) {
   const [expanded, setExpanded] = useState(openByDefault);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rowRef = useRef<HTMLButtonElement>(null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
+  const actions: RowAction[] = onOpenDiagram
+    ? [
+        {
+          label: "Abrir diagrama ER",
+          icon: <Network />,
+          onSelect: () => onOpenDiagram({ connectionId, schema: schema.name })
+        }
+      ]
+    : [];
 
   return (
-    <li>
-      <div className="group flex items-center hover:bg-muted">
+    <li role="none">
+      <div
+        className="group flex items-center hover:bg-muted"
+        onContextMenu={event => {
+          if (actions.length > 0) {
+            event.preventDefault();
+            setMenuOpen(true);
+          }
+        }}
+      >
         <button
+          ref={rowRef}
           type="button"
+          role="treeitem"
+          aria-level={2}
           aria-expanded={expanded}
+          tabIndex={-1}
           onClick={() => setExpanded(prev => !prev)}
+          onKeyDown={event => {
+            if (actions.length > 0 && isMenuKey(event)) {
+              event.preventDefault();
+              setMenuOpen(true);
+            }
+          }}
           className={cn(TREE_ROW, "min-w-0 flex-1 text-muted-foreground hover:bg-transparent")}
         >
           <Chevron className="size-3.5 shrink-0" />
           <span className="truncate">{schema.name}</span>
+          {/* read as "public · 2 tabelas", never "public2" */}
+          <span className="sr-only"> · </span>
           <span className="font-mono text-[11px]">{schema.relations.length}</span>
+          <span className="sr-only">{schema.relations.length === 1 ? " tabela" : " tabelas"}</span>
         </button>
-        {onOpenDiagram && (
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label={`Diagrama ER de ${schema.name}`}
-            className="mr-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-            onClick={() => onOpenDiagram({ connectionId, schema: schema.name })}
-          >
-            <Network />
-          </Button>
+        {actions.length > 0 && (
+          <RowMenu
+            label={`Ações de ${schema.name}`}
+            actions={actions}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+            rowRef={rowRef}
+            className="mr-0.5"
+          />
         )}
       </div>
       {expanded && (
-        <ul className="grid grid-cols-1 pl-4">
+        <ul role="group" className="grid grid-cols-1 pl-4">
           {schema.relations.length === 0 && (
-            <li className="px-1.5 py-1 text-xs text-muted-foreground">Sem tabelas</li>
+            <li role="none" className="px-1.5 py-1 text-xs text-muted-foreground">
+              Sem tabelas
+            </li>
           )}
           {schema.relations.map(relation => {
             const isActive =
@@ -291,10 +524,13 @@ function SchemaNode({
               activeTable.table === relation.name;
             const Icon = relation.kind === "table" ? Table2 : Eye;
             return (
-              <li key={relation.name}>
+              <li role="none" key={relation.name}>
                 <button
                   type="button"
-                  aria-current={isActive || undefined}
+                  role="treeitem"
+                  aria-level={3}
+                  aria-selected={isActive || undefined}
+                  tabIndex={-1}
                   onClick={() =>
                     onOpenTable({ connectionId, schema: schema.name, table: relation.name })
                   }

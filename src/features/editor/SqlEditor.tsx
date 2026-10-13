@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { closeCompletion } from "@codemirror/autocomplete";
 import { basicSetup } from "codemirror";
 import { MySQL, PostgreSQL, sql, SQLite, type SQLNamespace } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
@@ -82,6 +83,8 @@ export function SqlEditor({
               {
                 key: "Mod-Enter",
                 run: editor => {
+                  // a completion left open would float over the result and the confirmation
+                  closeCompletion(editor);
                   onRunRef.current(textToRun(editor.state));
                   return true;
                 }

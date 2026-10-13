@@ -28,7 +28,8 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
-      className={cn("fixed inset-0 isolate z-50 bg-black/30", className)}
+      // the darkroom needs a deeper dim to lift the sheet off a near-black page
+      className={cn("fixed inset-0 isolate z-50 bg-black/30 dark:bg-black/60", className)}
       {...props}
     />
   );

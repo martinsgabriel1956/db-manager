@@ -8,6 +8,11 @@ export const commands = {
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
 	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),
 	deleteConnection: (id: string) => __TAURI_INVOKE<KeychainOutcome>("delete_connection", { id }),
+	/**
+	 *  Connects with the form's draft (saved or not) and closes right away, so wrong
+	 *  credentials are found before they are stored. Never touches open sessions.
+	 */
+	testConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret }),
 	connectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("connect_database", { connectionId }),
 	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
 	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),

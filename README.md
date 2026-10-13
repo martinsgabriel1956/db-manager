@@ -40,3 +40,13 @@ Dados e credenciais em [dev/demo](dev/demo) (descartáveis, só local).
 
 - Metadados das conexões: `~/.local/share/dev.nemomartins.dbmanager/connections.json`
 - Senhas: keychain do SO, serviço `db-manager`, usuário = id da conexão
+
+## Problemas de conexão
+
+No formulário, **Testar conexão** conecta com o que está preenchido, sem salvar nada nem tocar no keychain. Os erros mais comuns:
+
+- **Recusou a conexão / timeout:** confira host e porta, e se o banco aceita conexões de fora (`listen_addresses` no Postgres, `bind-address` no MySQL, `bind` no Redis). Para um banco atrás de bastion, abra um túnel antes (`ssh -L 5432:db-interno:5432 bastion`) e use `localhost`.
+- **Senha ou usuário recusados:** a senha salva fica no keychain; ao editar, deixe o campo vazio para manter a salva ou digite outra.
+- **TLS:** "Exigir" recusa servidores sem TLS; "Exigir e verificar certificado" precisa do certificado CA quando ele não é público.
+- **MongoDB por URI:** a URI inteira (`mongodb://` ou `mongodb+srv://`) é o segredo; TLS e autenticação vêm dela.
+- **Keychain indisponível (Linux sem Secret Service):** a conexão é salva, mas a senha não; o app avisa e nunca grava a senha em texto puro.
