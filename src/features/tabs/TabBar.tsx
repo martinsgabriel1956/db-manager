@@ -352,19 +352,24 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     onKeyDown={event => handleKeyDown(event, index, tab.id)}
                     onAuxClick={event => event.button === 1 && requestClose(tab.id)}
                     className={cn(
-                      "flex max-w-60 min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                      "flex min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                      // two names need the room of two: "Postgres prod · ER public" fits whole
+                      showConnection ? "max-w-80" : "max-w-60",
                       engine && !showConnection ? "pl-1.5" : "pl-3"
                     )}
                   >
                     <Icon className="size-3.5 shrink-0" />
-                    {/* the connection gives way first, so the table name stays readable */}
+                    {/* the connection gives way first and alone: the table name is cut only
+                        past 11rem, so the two never truncate together */}
                     {connection && showConnection && (
                       // room for "Postgres prod": two names that share a prefix still part
-                      <span className="max-w-28 min-w-0 shrink-[2] truncate font-normal">
+                      <span className="max-w-32 min-w-0 truncate font-normal">
                         {connection.name} ·
                       </span>
                     )}
-                    <span className="min-w-0 truncate">{title}</span>
+                    <span className={cn("min-w-0 truncate", showConnection && "max-w-44 shrink-0")}>
+                      {title}
+                    </span>
                     {/* production is printed on the tab itself, not only once the tab is active */}
                     {isProd && <EnvTag environment="prod" />}
                   </button>
@@ -424,7 +429,7 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                 <ContextMenuSeparator />
                 <ContextMenuItem disabled={closed.length === 0} onSelect={reopenClosed}>
                   <RotateCcw /> Reabrir aba fechada
-                  <kbd className="ml-auto pl-4 font-mono text-[11px] opacity-70">Ctrl Shift T</kbd>
+                  <kbd className="ml-auto pl-4 legend opacity-70">Ctrl Shift T</kbd>
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

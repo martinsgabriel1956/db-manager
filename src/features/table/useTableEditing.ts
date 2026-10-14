@@ -41,7 +41,10 @@ export function useTableEditing({
 }: Params) {
   const [staged, setStaged] = useState<Staged>(EMPTY_STAGED);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  /** the saved line; `confirmed` when it went through the confirmation, which earns a receipt */
+  const [notice, setNotice] = useState<{ text: string; confirmed: boolean } | null>(null);
+  /** the confirmation was cancelled: nothing ran, the edits stay staged */
+  const [cancelled, setCancelled] = useState(false);
   /** cells just saved, kept for one beat so their hatch develops away */
   const [developed, setDeveloped] = useState<Record<number, string[]> | null>(null);
   const queryClient = useQueryClient();
@@ -73,7 +76,7 @@ export function useTableEditing({
         { schema, table, changes: buildChanges(pageRows, columns, primaryKey, staged) },
         confirmed
       ),
-    onSuccess: response => {
+    onSuccess: (response, confirmed) => {
       if (response.status === "needsConfirmation") {
         setConfirmation(response.confirmation);
         return;
@@ -85,9 +88,10 @@ export function useTableEditing({
         )
       );
       setStaged(EMPTY_STAGED);
-      setNotice(
-        `${response.rowsChanged} ${response.rowsChanged === 1 ? "alteração salva" : "alterações salvas"}`
-      );
+      setNotice({
+        text: `${response.rowsChanged} ${response.rowsChanged === 1 ? "alteração salva" : "alterações salvas"}`,
+        confirmed
+      });
       queryClient.invalidateQueries({ queryKey: ["browse", connectionId] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
     },
@@ -101,6 +105,7 @@ export function useTableEditing({
     const name = columns[column].name;
     const inserted = newRowAt(row);
     setNotice(null);
+    setCancelled(false);
     setStaged(prev =>
       inserted
         ? stageInsertValue(prev, inserted.id, name, value)
@@ -115,7 +120,7 @@ export function useTableEditing({
       const inserted = newRowAt(row);
       const pending = inserted ? inserted.values : staged.updates[row];
       if (pending && name in pending) {
-        return pending[name] ?? "";
+        return pending[name];
       }
       return inserted ? "" : editText(pageRows[row][column]);
     },
@@ -140,19 +145,25 @@ export function useTableEditing({
     setValue,
     addRow: () => {
       setNotice(null);
+      setCancelled(false);
       setStaged(addRow);
     },
     /** deletes/restores an existing row, drops a new one */
     toggleRow: (row: number) => {
       const inserted = newRowAt(row);
       setNotice(null);
+      setCancelled(false);
       setStaged(prev => (inserted ? removeNewRow(prev, inserted.id) : toggleDelete(prev, row)));
     },
     discard: () => {
       save.reset();
+      setCancelled(false);
       setStaged(EMPTY_STAGED);
     },
-    save: () => save.mutate(false),
+    save: () => {
+      setCancelled(false);
+      save.mutate(false);
+    },
     saving: save.isPending,
     saveError: save.error ? errorMessage(save.error) : null,
     notice,
@@ -160,6 +171,10 @@ export function useTableEditing({
     clearNotice: () => setNotice(null),
     confirmation,
     confirm: () => save.mutate(true),
-    dismiss: () => setConfirmation(null)
+    cancelled,
+    dismiss: () => {
+      setConfirmation(null);
+      setCancelled(true);
+    }
   };
 }
