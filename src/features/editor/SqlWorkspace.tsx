@@ -10,7 +10,7 @@ import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunne
 import { ExportButton } from "@/features/export/ExportButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
-import { CellDetail } from "@/features/results/CellDetail";
+import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { useTabs } from "@/features/tabs/store";
 import { RUN_SHORTCUT } from "@/lib/platform";
@@ -162,7 +162,8 @@ function Receipt({ connectionId, confirmed, text }: ReceiptProps) {
     <>
       <span className="shrink-0">Confirmado e executado em</span>{" "}
       <ConnectionContext connectionId={connectionId} />{" "}
-      <span className="text-muted-foreground">· {text} ·</span>{" "}
+      {/* the count never wraps: in a narrow bar the connection name truncates first */}
+      <span className="shrink-0 whitespace-nowrap text-muted-foreground">· {text} ·</span>{" "}
       <Button size="xs" variant="link" className="h-auto px-0 underline" onClick={openHistory}>
         Ver no histórico
       </Button>
@@ -179,6 +180,9 @@ function ResultsPanel({
   superseded = false
 }: ResultsPanelProps) {
   const [selected, setSelected] = useState<SelectedCell | null>(null);
+  // the full value opens on demand (Space or Valor): the grid keeps its width meanwhile
+  const [detailOpen, setDetailOpen] = useState(false);
+  const gridAreaRef = useRef<HTMLDivElement>(null);
   const result = summary(state);
   const text = superseded && result ? `Resultado anterior · ${result}` : result;
   // the receipt belongs to the run that just happened, never to the one kept under a cancel
@@ -259,7 +263,7 @@ function ResultsPanel({
   const selectedCell = selected && state.rows[selected.row]?.[selected.column];
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b bg-muted px-3 py-1">
+      <div className="@container flex items-center gap-2 border-b bg-muted px-3 py-1">
         <div
           role="status"
           className={`flex min-w-0 items-center gap-2 text-xs ${confirmed ? "" : "text-muted-foreground"}`}
@@ -267,6 +271,7 @@ function ResultsPanel({
           <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <DetailToggle open={detailOpen} onToggle={() => setDetailOpen(prev => !prev)} />
           <CopyRowsMenu
             columns={state.columns}
             rows={state.rows}
@@ -293,7 +298,7 @@ function ResultsPanel({
           {state.loadError}
         </p>
       )}
-      <div className="flex min-h-0 flex-1">
+      <div ref={gridAreaRef} className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
           <ResultGrid
             columns={state.columns}
@@ -304,14 +309,19 @@ function ResultsPanel({
             selected={selected}
             onSelect={setSelected}
             label="Resultado da query"
+            detailOpen={detailOpen}
+            onToggleDetail={() => setDetailOpen(prev => !prev)}
             readOnlyHint="Resultado de query: somente leitura; para editar, abra a tabela"
           />
         </div>
-        {selected && selectedCell && (
+        {detailOpen && (
           <CellDetail
-            column={state.columns[selected.column]}
-            cell={selectedCell}
-            onClose={() => setSelected(null)}
+            column={selected ? (state.columns[selected.column] ?? null) : null}
+            cell={selectedCell ?? null}
+            onClose={() => {
+              setDetailOpen(false);
+              gridAreaRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
+            }}
           />
         )}
       </div>

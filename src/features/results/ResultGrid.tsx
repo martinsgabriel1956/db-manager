@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Cell, ResultColumn, Sort } from "@/bindings";
-import { gridText, isNumeric } from "@/features/results/format";
+import { formatCell, gridText, isNumeric } from "@/features/results/format";
 import { cn } from "@/lib/utils";
 
 export type SelectedCell = { row: number; column: number };
@@ -29,6 +29,8 @@ type ResultGridProps = {
   onLoadMore?: () => void;
   sort?: Sort | null;
   onSortChange?: (column: string) => void;
+  /** id of the text saying why sorting is locked right now (staged edits) */
+  sortLockedBy?: string;
   selected: SelectedCell | null;
   /** null clears the selection (and closes the cell detail) */
   onSelect: (cell: SelectedCell | null) => void;
@@ -37,10 +39,25 @@ type ResultGridProps = {
   readOnlyHint?: string;
   /** what the grid shows, e.g. the table name */
   label?: string;
+  /** Space toggles the full-value panel; Escape closes it before clearing the selection */
+  detailOpen?: boolean;
+  onToggleDetail?: () => void;
 };
 
-const COLUMN_WIDTH = 180;
 const ROW_HEIGHT = 28;
+/** column widths snap to the construction grid's 14px cell */
+const GRID_CELL = 14;
+const MIN_COLUMN_WIDTH = 4 * GRID_CELL;
+/** fitting stops here so one long JSON cannot push the rest out of view... */
+const MAX_FITTED_WIDTH = 26 * GRID_CELL;
+/** ...but a column you widen yourself may go further */
+const MAX_COLUMN_WIDTH = 100 * GRID_CELL;
+/** Spline Sans Mono advances 0.6em: 7.2px at the grid's 12px */
+const CHAR_WIDTH = 7.2;
+/** px-2 on both sides, the 1px rule, and the header's sort arrow with its gap */
+const CELL_CHROME = 16 + 1 + 18;
+/** enough rows to see the shape of a column without measuring a whole page */
+const FIT_SAMPLE_ROWS = 50;
 /** start fetching the next batch when this close to the end */
 const LOAD_MORE_THRESHOLD = 50;
 
@@ -57,6 +74,28 @@ function keepMounted(range: Range, extras: (number | undefined)[]): number[] {
   return missing.length === 0
     ? indexes
     : [...new Set([...indexes, ...missing])].sort((a, b) => a - b);
+}
+
+function clampWidth(width: number, max = MAX_COLUMN_WIDTH): number {
+  const snapped = Math.ceil(width / GRID_CELL) * GRID_CELL;
+  return Math.min(max, Math.max(MIN_COLUMN_WIDTH, snapped));
+}
+
+/**
+ * Each column as wide as its header or its longest value among the first rows,
+ * snapped to the 14px grid and capped: a short id stays narrow, a long JSON shows
+ * what fits and the detail panel holds the rest.
+ */
+export function fitColumnWidths(columns: ResultColumn[], rows: Cell[][]): number[] {
+  const sample = rows.slice(0, FIT_SAMPLE_ROWS);
+  return columns.map((column, index) => {
+    const header = column.name.length + 1 + column.typeName.length;
+    const longest = sample.reduce(
+      (max, row) => Math.max(max, row[index] ? formatCell(row[index]).length : 0),
+      header
+    );
+    return clampWidth(longest * CHAR_WIDTH + CELL_CHROME, MAX_FITTED_WIDTH);
+  });
 }
 
 /** Where a navigation key moves the selection; null = the key is not a grid move. */
@@ -101,13 +140,35 @@ export function ResultGrid({
   onLoadMore,
   sort,
   onSortChange,
+  sortLockedBy,
   selected,
   onSelect,
   editing,
   readOnlyHint = "Esta célula não pode ser editada",
-  label = "Resultado"
+  label = "Resultado",
+  detailOpen = false,
+  onToggleDetail
 }: ResultGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // fitted once per column set: paging or loading more rows keeps the widths you dragged
+  const signature = columns.map(column => `${column.name}:${column.typeName}`).join("\u0000");
+  const [fitted, setFitted] = useState(() => ({
+    signature,
+    widths: fitColumnWidths(columns, rows)
+  }));
+  let widths = fitted.widths;
+  if (fitted.signature !== signature) {
+    widths = fitColumnWidths(columns, rows);
+    setFitted({ signature, widths });
+  }
+  const resizeFrom = useRef<{ column: number; x: number; width: number } | null>(null);
+
+  function setWidth(column: number, width: number) {
+    setFitted(prev => ({
+      ...prev,
+      widths: prev.widths.map((current, index) => (index === column ? clampWidth(width) : current))
+    }));
+  }
   const headerRef = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<CellEditor | null>(null);
   /** Escape closes the inline input without the blur that follows committing it */
@@ -153,11 +214,12 @@ export function ResultGrid({
     } else if (top + ROW_HEIGHT > element.scrollTop + visibleRows) {
       element.scrollTop = top + ROW_HEIGHT - visibleRows;
     }
-    const left = column * COLUMN_WIDTH;
+    const left = widths.slice(0, column).reduce((sum, width) => sum + width, 0);
+    const columnWidth = widths[column] ?? 0;
     if (left < element.scrollLeft) {
       element.scrollLeft = left;
-    } else if (left + COLUMN_WIDTH > element.scrollLeft + element.clientWidth) {
-      element.scrollLeft = left + COLUMN_WIDTH - element.clientWidth;
+    } else if (left + columnWidth > element.scrollLeft + element.clientWidth) {
+      element.scrollLeft = left + columnWidth - element.clientWidth;
     }
   }
 
@@ -171,9 +233,25 @@ export function ResultGrid({
       startEditing(selected.row, selected.column);
       return;
     }
+    if (selected && event.key === " " && onToggleDetail) {
+      event.preventDefault();
+      onToggleDetail();
+      return;
+    }
     if (selected && event.key === "Escape") {
       event.preventDefault();
-      onSelect(null);
+      if (detailOpen && onToggleDetail) {
+        onToggleDetail();
+      } else {
+        onSelect(null);
+      }
+      return;
+    }
+    // Alt+← → narrows or widens the selected column by one grid cell
+    if (selected && event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      const step = event.key === "ArrowLeft" ? -GRID_CELL : GRID_CELL;
+      setWidth(selected.column, (widths[selected.column] ?? MIN_COLUMN_WIDTH) + step);
       return;
     }
     const pageRows = Math.max(
@@ -212,11 +290,13 @@ export function ResultGrid({
     horizontal: true,
     count: columns.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => COLUMN_WIDTH,
+    estimateSize: index => widths[index] ?? MIN_COLUMN_WIDTH,
     overscan: 3,
     rangeExtractor: range => keepMounted(range, [selected?.column, editor?.column]),
     initialRect: { width: 1024, height: 600 }
   });
+  // the virtualizer caches sizes: a fitted or dragged width must be measured again
+  useEffect(() => columnVirtualizer.measure(), [columnVirtualizer, widths]);
   const items = virtualizer.getVirtualItems();
   const visibleColumns = columnVirtualizer.getVirtualItems();
   const firstColumn = visibleColumns[0]?.index ?? 0;
@@ -233,7 +313,7 @@ export function ResultGrid({
     }
   }, [onLoadMore, hasMore, isLoadingMore, lastVisible, rows.length]);
 
-  const width = columns.length * COLUMN_WIDTH;
+  const width = widths.reduce((sum, columnWidth) => sum + columnWidth, 0);
 
   return (
     <div className="relative h-full">
@@ -272,7 +352,7 @@ export function ResultGrid({
           className="sticky top-0 z-10 h-7 border-b border-foreground bg-muted"
           style={{ width }}
         >
-          {visibleColumns.map(({ index, start }) => {
+          {visibleColumns.map(({ index, start, size }) => {
             const column = columns[index];
             const sortedHere = sort?.column === column.name ? sort.direction : null;
             const label = (
@@ -302,7 +382,7 @@ export function ResultGrid({
                         ? "none"
                         : undefined
                 }
-                style={{ width: COLUMN_WIDTH, left: start }}
+                style={{ width: size, left: start }}
                 // sorting is filtration: magenta rule under the sorted column
                 className={cn(
                   "absolute top-0 h-full border-r",
@@ -319,9 +399,48 @@ export function ResultGrid({
                   >
                     {label}
                   </button>
+                ) : sortLockedBy ? (
+                  // still reachable, so the reason is read where the sort was tried
+                  <button
+                    type="button"
+                    aria-disabled
+                    aria-describedby={sortLockedBy}
+                    className="flex h-full w-full cursor-not-allowed items-center gap-1.5 px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                  >
+                    {label}
+                  </button>
                 ) : (
                   <div className="flex h-full items-center gap-1.5 px-2">{label}</div>
                 )}
+                {/* drag the rule to resize, double click to fit again; the keyboard has Alt+← → */}
+                <span
+                  aria-hidden
+                  title="Arraste para ajustar a largura; duplo clique reajusta ao conteúdo"
+                  className="absolute inset-y-0 -right-[3px] z-10 w-[5px] cursor-col-resize hover:bg-foreground active:bg-foreground"
+                  onDoubleClick={() =>
+                    setWidth(
+                      index,
+                      fitColumnWidths(
+                        [column],
+                        rows.map(row => [row[index]])
+                      )[0]
+                    )
+                  }
+                  onPointerDown={event => {
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    resizeFrom.current = { column: index, x: event.clientX, width: size };
+                  }}
+                  onPointerMove={event => {
+                    const from = resizeFrom.current;
+                    if (from) {
+                      setWidth(from.column, from.width + event.clientX - from.x);
+                    }
+                  }}
+                  onPointerUp={() => {
+                    resizeFrom.current = null;
+                  }}
+                />
               </div>
             );
           })}
@@ -350,7 +469,7 @@ export function ResultGrid({
                   )}
                   style={{ height: ROW_HEIGHT, width, transform: `translateY(${item.start}px)` }}
                 >
-                  {visibleColumns.map(({ index: columnIndex, start }) => {
+                  {visibleColumns.map(({ index: columnIndex, start, size }) => {
                     const cell = rows[item.index][columnIndex];
                     const isSelected =
                       selected?.row === item.index && selected.column === columnIndex;
@@ -367,7 +486,7 @@ export function ResultGrid({
                         data-edited={isEdited || undefined}
                         onClick={() => onSelect({ row: item.index, column: columnIndex })}
                         onDoubleClick={() => startEditing(item.index, columnIndex)}
-                        style={{ width: COLUMN_WIDTH, left: start }}
+                        style={{ width: size, left: start }}
                         className={cn(
                           "absolute top-0 h-full cursor-default truncate border-r px-2 leading-7",
                           isNumeric(cell) && "text-right",

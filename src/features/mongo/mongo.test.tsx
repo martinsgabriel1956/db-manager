@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { ConnectionConfig, FindRequest, WriteRequest } from "@/bindings";
+import { aggregationSummary } from "@/features/mongo/AggregationPanel";
 import { invalidQueryFields } from "@/features/mongo/DocumentsPanel";
 import { callsTo, devMongo, fakeBackend } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
@@ -296,4 +297,10 @@ test("an applied filter lights the magenta chip with the query; edits not yet ap
   expect(screen.queryByText('{"name": "Ana"}')).not.toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "Filtro" })).toHaveValue("");
   await waitFor(() => expect(lastBrowse(calls).filter).toBe(""));
+});
+
+test("the aggregation summary counts documents in the singular and the plural", () => {
+  expect(aggregationSummary(1, false, 4)).toBe("1 documento · 4 ms");
+  expect(aggregationSummary(2, false, 4)).toBe("2 documentos · 4 ms");
+  expect(aggregationSummary(100, true, 9)).toBe("100+ documentos (mostrando os primeiros) · 9 ms");
 });

@@ -42,8 +42,9 @@ const ENVIRONMENT_HINT: Record<ConnectionFormValues["environment"], string> = {
   "": "Define as proteções desta conexão. Na dúvida entre dois, escolha o mais protegido.",
   local:
     "Banco na sua máquina. Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
-  dev: "Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
-  staging: "Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
+  dev: "Banco de desenvolvimento compartilhado. Comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
+  staging:
+    "Cópia de produção para testes, com as mesmas proteções de dev: comandos destrutivos (DROP, TRUNCATE, DELETE sem WHERE) pedem confirmação.",
   prod: "Faixa vermelha na janela inteira, e toda escrita mostra o comando exato e pede confirmação."
 };
 
@@ -192,7 +193,7 @@ export function ConnectionFields({
             id="password"
             label="Senha"
             error={errors.password}
-            hint="Guardada no keychain do sistema, como a URI do MongoDB."
+            hint="Guardada no keychain do sistema, não no arquivo de conexões."
           >
             <Input
               id="password"

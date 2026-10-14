@@ -80,8 +80,9 @@ type RowMenuProps = {
 const TREE_ROW =
   "flex w-full items-center gap-1.5 px-1.5 h-7 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
-/** Where you are: the table open in the active tab, filled in Crouwel blue. */
-const ACTIVE_ROW = "bg-select text-select-foreground font-semibold hover:bg-select";
+/** Where you are: the table open in the active tab, filled in Crouwel blue; focus inks it in paper. */
+const ACTIVE_ROW =
+  "bg-select text-select-foreground font-semibold hover:bg-select focus-visible:ring-select-foreground";
 
 /** Second line of the label: where the connection points, as stored. */
 export function targetSummary(connection: ConnectionConfig): string {

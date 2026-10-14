@@ -135,11 +135,14 @@ test("filters are applied from the toolbar and reset the page", async () => {
   await waitFor(() => expect(lastBrowse(calls).filters).toEqual([]));
 });
 
-test("clicking a cell shows its full value, json pretty-printed with big numbers intact", async () => {
+test("Space on a cell shows its full value, json pretty-printed with big numbers intact", async () => {
   fakeBackend([prodPostgres]);
   const user = await openUsers();
 
+  // selecting alone keeps the grid's width: the panel opens on demand
   await user.click(screen.getByText('{"id": 9007199254740993}'));
+  expect(screen.queryByRole("complementary", { name: "Valor da célula" })).not.toBeInTheDocument();
+  await user.keyboard(" ");
 
   const panel = screen.getByRole("complementary", { name: "Valor da célula" });
   expect(within(panel).getByText("profile")).toBeInTheDocument();

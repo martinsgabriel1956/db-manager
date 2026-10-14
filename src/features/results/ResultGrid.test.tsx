@@ -1,7 +1,46 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { Cell, ResultColumn } from "@/bindings";
-import { ResultGrid } from "@/features/results/ResultGrid";
+import { fitColumnWidths, ResultGrid } from "@/features/results/ResultGrid";
+
+test("columns fit their header or longest value, on the 14px grid and capped", () => {
+  const columns: ResultColumn[] = [
+    { name: "id", typeName: "int4", editable: true },
+    { name: "profile", typeName: "jsonb", editable: true }
+  ];
+  const rows: Cell[][] = [
+    [
+      { t: "int", v: "1" },
+      { t: "json", v: `{"bio": "${"x".repeat(300)}"}` }
+    ]
+  ];
+
+  const [id, profile] = fitColumnWidths(columns, rows);
+  // the header "id int4" (7 characters) is longer than "1": 7 × 7.2 + 35 = 85.4 → 98
+  expect(id).toBe(98);
+  expect(id % 14).toBe(0);
+  // a long value stops at the cap; the detail panel holds the rest
+  expect(profile).toBe(364);
+});
+
+test("Alt+arrows resize the selected column by one grid cell", async () => {
+  const columns: ResultColumn[] = [{ name: "id", typeName: "int4", editable: false }];
+  render(
+    <ResultGrid
+      columns={columns}
+      rows={[[{ t: "int", v: "1" }]]}
+      hasMore={false}
+      isLoadingMore={false}
+      selected={{ row: 0, column: 0 }}
+      onSelect={() => undefined}
+    />
+  );
+  const cell = screen.getByRole("gridcell");
+  expect(cell.style.width).toBe("98px");
+
+  fireEvent.keyDown(screen.getByRole("grid"), { key: "ArrowRight", altKey: true });
+  expect(screen.getByRole("gridcell").style.width).toBe("112px");
+});
 
 test("a wide result renders only the columns in view, numbered for assistive tech", () => {
   const columns: ResultColumn[] = Array.from({ length: 300 }, (_, n) => ({

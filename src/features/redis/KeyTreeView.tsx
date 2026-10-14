@@ -127,6 +127,13 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
               tabIndex={item.index === current ? 0 : -1}
               onFocus={() => setCursor(item.index)}
               title={isFolder ? undefined : node.entry.name}
+              // inside a folder the row shows only the last segment: the name read aloud
+              // starts with what is shown, then says the whole key
+              aria-label={
+                !isFolder && node.name !== node.entry.name
+                  ? `${node.entry.kind} ${node.name || "(vazio)"}, chave ${node.entry.name}`
+                  : undefined
+              }
               aria-expanded={isFolder ? open.has(node.id) : undefined}
               aria-current={isSelected || undefined}
               onClick={() => (isFolder ? toggle(node.id) : onSelect(node.entry.name))}
@@ -134,7 +141,7 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
                 KEY_ROW,
                 isFolder ? "gap-1" : "gap-2",
                 isSelected &&
-                  "bg-select font-semibold text-select-foreground hover:bg-select [&_.legend]:text-select-foreground"
+                  "bg-select font-semibold text-select-foreground hover:bg-select focus-visible:ring-select-foreground [&_.legend]:text-select-foreground"
               )}
               style={{ paddingLeft: 6 + depth * INDENT }}
             >
