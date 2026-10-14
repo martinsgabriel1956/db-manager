@@ -47,6 +47,8 @@ const SHORTCUTS = [
   [RUN_SHORTCUT, "Executar a seleção ou o editor inteiro"],
   ["↑ ↓ ← →", "Andar pela lateral e pela grade"],
   ["Enter / F2", "Editar a célula selecionada"],
+  ["Espaço", "Mostrar o valor inteiro da célula selecionada"],
+  ["Alt+← →", "Estreitar ou alargar a coluna da célula selecionada"],
   ["Delete", "Fechar a aba focada"],
   ["Esc", "Fechar painel, diálogo ou edição"]
 ] as const;

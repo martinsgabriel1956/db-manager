@@ -62,6 +62,11 @@ test("editing a cell stages it and save sends an update keyed by the primary key
   expect(screen.getByRole("button", { name: "Aplicar" })).toHaveAccessibleDescription(
     "Salve ou descarte as alterações para paginar, filtrar ou ordenar"
   );
+  const sortId = screen.getByRole("button", { name: /^id/ });
+  expect(sortId).toHaveAttribute("aria-disabled", "true");
+  expect(sortId).toHaveAccessibleDescription(
+    "Salve ou descarte as alterações para paginar, filtrar ou ordenar"
+  );
 
   await user.click(screen.getByRole("button", { name: "Salvar" }));
 
@@ -105,8 +110,9 @@ test("rows can be added, deleted, restored and set to NULL", async () => {
   const calls = fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);
 
-  // NULL through the detail panel
+  // NULL through the detail panel, opened from the results bar
   await user.click(cell('{"id": 9007199254740993}'));
+  await user.click(screen.getByRole("button", { name: "Valor" }));
   await user.click(screen.getByRole("button", { name: "Definir como NULL" }));
 
   // delete the second row, restore it, delete it again
@@ -291,14 +297,18 @@ test("closing a tab with staged edits asks first and keeps them on Voltar", asyn
   expect(applied(calls)).toHaveLength(0);
 });
 
-test("Escape in the grid clears the selection and closes the cell detail", async () => {
+test("Escape in the grid closes the cell detail first, then clears the selection", async () => {
   fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);
 
   await user.click(cell("2"));
+  await user.keyboard(" ");
   expect(screen.getByRole("complementary", { name: "Valor da célula" })).toBeInTheDocument();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("complementary", { name: "Valor da célula" })).not.toBeInTheDocument();
+  expect(cell("2")).toHaveAttribute("aria-selected", "true");
+  await user.keyboard("{Escape}");
+  expect(cell("2")).toHaveAttribute("aria-selected", "false");
 });
 
 test("the sort chip names the sorted column and clears it", async () => {

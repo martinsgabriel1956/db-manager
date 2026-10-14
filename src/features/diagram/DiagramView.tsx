@@ -7,6 +7,7 @@ import {
   MiniMap,
   Position,
   ReactFlow,
+  type AriaLabelConfig,
   type NodeProps
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -31,6 +32,29 @@ type DiagramViewProps = {
 };
 
 const NODE_TYPES = { table: TableNodeView };
+
+const DIRECTION: Record<string, string> = {
+  up: "para cima",
+  down: "para baixo",
+  left: "para a esquerda",
+  right: "para a direita"
+};
+
+/** React Flow speaks English by default, and its default says Delete removes a table: here it never does. */
+const ARIA_LABELS: Partial<AriaLabelConfig> = {
+  "node.a11yDescription.default": "Enter abre a tabela. As setas movem o quadro no diagrama.",
+  "node.a11yDescription.keyboardDisabled": "Enter abre a tabela.",
+  "node.a11yDescription.ariaLiveMessage": ({ direction, x, y }) =>
+    `Quadro movido ${DIRECTION[direction] ?? direction}. Posição x ${x}, y ${y}.`,
+  "edge.a11yDescription.default": "Chave estrangeira entre duas tabelas.",
+  "controls.ariaLabel": "Controles do diagrama",
+  "controls.zoomIn.ariaLabel": "Aproximar",
+  "controls.zoomOut.ariaLabel": "Afastar",
+  "controls.fitView.ariaLabel": "Enquadrar o diagrama inteiro",
+  "controls.interactive.ariaLabel": "Travar ou destravar o diagrama",
+  "minimap.ariaLabel": "Minimapa",
+  "handle.ariaLabel": "Ponto de ligação"
+};
 
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
@@ -86,6 +110,7 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
           nodesConnectable={false}
           edgesFocusable={false}
           deleteKeyCode={null}
+          ariaLabelConfig={ARIA_LABELS}
           minZoom={0.05}
           fitView
           colorMode="system"

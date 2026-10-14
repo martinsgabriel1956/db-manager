@@ -42,7 +42,8 @@ test("Redis lists databases and opens one in a tab, keys grouped by separator", 
   expect(within(tree).getByRole("button", { name: /user/ })).toHaveTextContent("2");
   expect(within(tree).queryByText("1")).not.toBeInTheDocument();
   await user.click(within(tree).getByRole("button", { name: /user/ }));
-  expect(within(tree).getByRole("button", { name: /hash\s*1/ })).toBeInTheDocument();
+  // the row shows the last segment; the name read aloud also says the whole key
+  expect(within(tree).getByRole("button", { name: "hash 1, chave user:1" })).toBeInTheDocument();
   expect(screen.getByText("4 chaves")).toBeInTheDocument();
 });
 

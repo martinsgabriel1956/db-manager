@@ -10,7 +10,7 @@ import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { ExportButton } from "@/features/export/ExportButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
-import { CellDetail } from "@/features/results/CellDetail";
+import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
 import { StructureView } from "@/features/table/StructureView";
@@ -121,6 +121,8 @@ function TableData({
 }: TableDataProps) {
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
+  // the full value opens on demand (Space or Valor): the grid keeps its width meanwhile
+  const [detailOpen, setDetailOpen] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const structure = useStructure(connectionId, schema, table);
 
@@ -153,12 +155,13 @@ function TableData({
   const lockedId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const wasDirty = useRef(dirty);
+  const focusGrid = () => rootRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
 
   // Salvar and Descartar unmount once nothing is staged: focus that was on them goes back
   // to the grid it came from, not to <body>
   useEffect(() => {
     if (wasDirty.current && !dirty && document.activeElement === document.body) {
-      rootRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
+      focusGrid();
     }
     wasDirty.current = dirty;
   }, [dirty]);
@@ -224,10 +227,13 @@ function TableData({
                   ? undefined
                   : column => restart(() => onSortChange(prev => nextSort(prev, column)))
               }
+              sortLockedBy={dirty ? lockedId : undefined}
               selected={selected}
               onSelect={setSelected}
               editing={edit.editing}
               label={`Linhas de ${table}`}
+              detailOpen={detailOpen}
+              onToggleDetail={() => setDetailOpen(prev => !prev)}
               readOnlyHint={
                 readOnly
                   ? "Conexão somente leitura: a célula não pode ser editada"
@@ -241,13 +247,16 @@ function TableData({
             <p className="p-3 text-sm text-muted-foreground">Carregando linhas…</p>
           )}
         </div>
-        {selected && selectedCell && batch && (
+        {detailOpen && batch && (
           <CellDetail
-            column={batch.columns[selected.column]}
-            cell={selectedCell}
-            onClose={() => setSelected(null)}
+            column={selected ? (batch.columns[selected.column] ?? null) : null}
+            cell={selectedCell ?? null}
+            onClose={() => {
+              setDetailOpen(false);
+              focusGrid();
+            }}
             onSetNull={
-              selectedEditable
+              selected && selectedEditable
                 ? () => edit.setValue(selected.row, selected.column, null)
                 : undefined
             }
@@ -309,6 +318,9 @@ function TableData({
             browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>
           )}
           {batch && (
+            <DetailToggle open={detailOpen} onToggle={() => setDetailOpen(prev => !prev)} />
+          )}
+          {batch && (
             <CopyRowsMenu
               columns={batch.columns}
               rows={batch.rows}
@@ -331,10 +343,14 @@ function TableData({
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {edit.canEdit ? (
                 <>
-                  {/* with edits staged, the room goes to why paging is locked */}
+                  {/* with edits staged, the room goes to why paging is locked; the short form
+                      keeps the hint in the 960px window with the sidebar open */}
                   {!dirty && (
-                    <span className="hidden text-xs text-muted-foreground @min-[72rem]:inline">
-                      Duplo clique ou Enter numa célula para editar
+                    <span className="hidden text-xs text-muted-foreground @min-[40rem]:inline">
+                      <span className="@min-[56rem]:hidden">Enter edita a célula</span>
+                      <span className="hidden @min-[56rem]:inline">
+                        Duplo clique ou Enter edita a célula
+                      </span>
                     </span>
                   )}
                   {/* words from 1100px; below, the icon and its name (read aloud and on hover) */}

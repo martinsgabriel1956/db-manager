@@ -67,10 +67,11 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
         {state.status === "done" && (
           <>
             <p role="status" className="mb-2 text-xs text-muted-foreground">
-              {state.outcome.documents.length}
-              {state.outcome.truncated
-                ? "+ documentos (mostrando os primeiros)"
-                : " documentos"} · {state.outcome.durationMs} ms
+              {aggregationSummary(
+                state.outcome.documents.length,
+                state.outcome.truncated,
+                state.outcome.durationMs
+              )}
             </p>
             <div className="grid gap-2">
               {/* aggregation output may lack or repeat _id: position is the identity here */}
@@ -90,4 +91,12 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
       />
     </div>
   );
+}
+
+/** "1 documento · 4 ms", or "100+ documentos (mostrando os primeiros) · 9 ms" when cut short. */
+export function aggregationSummary(count: number, truncated: boolean, durationMs: number): string {
+  const documents = truncated
+    ? `${count}+ documentos (mostrando os primeiros)`
+    : `${count} ${count === 1 ? "documento" : "documentos"}`;
+  return `${documents} · ${durationMs} ms`;
 }
