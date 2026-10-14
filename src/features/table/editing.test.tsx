@@ -106,6 +106,45 @@ test("escape cancels an edit, typing the original value back unstages it", async
   expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
 });
 
+test("an edited cell keeps the stored value in sight and Ctrl+Z puts it back", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await editCell(user, "2", "20");
+  expect(cell("20")).toHaveAttribute("title", "Antes: 2");
+  expect(cell("20")).toHaveTextContent("(alteração pendente, era 2)");
+
+  await user.click(cell("20"));
+  await user.keyboard("{Control>}z{/Control}");
+  expect(cell("2")).not.toHaveAttribute("data-edited");
+  expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
+});
+
+test("the value panel edits long values and stages only what changed", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.click(cell("NULL"));
+  await user.keyboard(" ");
+  const editor = screen.getByRole("textbox", { name: "Valor de profile" });
+  expect(editor).toHaveAttribute("placeholder", "Digite para substituir NULL");
+  expect(screen.getByText(/^Gravado como/)).toHaveTextContent("Gravado como NULL");
+  // leaving an untouched NULL stages nothing
+  await user.click(editor);
+  await user.tab();
+  expect(screen.queryByText(/^\d+ alteraç(ão|ões) pendentes?$/)).not.toBeInTheDocument();
+  expect(cell("NULL")).not.toHaveAttribute("data-edited");
+
+  await user.click(screen.getByRole("textbox", { name: "Valor de profile" }));
+  await user.keyboard('{{"a": 1}');
+  await user.keyboard("{Control>}{Enter}{/Control}");
+  expect(cell('{"a": 1}')).toHaveAttribute("data-edited", "true");
+  // jsonb reads indented in the panel; the staged text is what was typed, and the field
+  // keeps focus to go on editing
+  expect(screen.getByRole("textbox", { name: "Depois de profile" })).toHaveFocus();
+  expect(screen.getByRole("textbox", { name: "Depois de profile" })).toHaveValue('{\n  "a": 1\n}');
+});
+
 test("rows can be added, deleted, restored and set to NULL", async () => {
   const calls = fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);
@@ -207,6 +246,10 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
 
   const dialog = await screen.findByRole("alertdialog");
   expect(dialog).toHaveTextContent(`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2';`);
+  // the change is signed with what it replaces, not only as SQL
+  expect(within(dialog).getByRole("table", { name: "Valores alterados" })).toHaveTextContent(
+    "id = 2id'2' → '20'"
+  );
   // app shortcuts stay quiet while the confirmation owns the keyboard
   await user.keyboard("{Control>}w{/Control}");
   expect(screen.queryByRole("dialog", { name: "Descartar alterações?" })).not.toBeInTheDocument();

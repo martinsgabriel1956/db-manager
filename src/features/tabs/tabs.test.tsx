@@ -74,6 +74,24 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
   ]);
 });
 
+test("tabs of one connection side by side name it once, on the first of the run", async () => {
+  fakeBackend([prodPostgres, devPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("treeitem", { name: /^Postgres dev/ }));
+  await user.click((await screen.findAllByRole("treeitem", { name: "users" }))[1]);
+
+  const visible = screen.getAllByRole("tab").map(tab => tab.textContent);
+  expect(visible.filter(text => text?.includes("Postgres prod ·"))).toHaveLength(1);
+  expect(visible.filter(text => text?.includes("Postgres dev ·"))).toHaveLength(1);
+  // the accessible names stay whole on every tab
+  expect(tabNames()).toContain("Postgres prod · active_users · produção · somente leitura");
+});
+
 test("Ctrl+T opens an editor on the active tab's connection", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
@@ -180,8 +198,11 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
   expect(await screen.findByText("SELECT count(*) FROM users")).toBeInTheDocument();
   expect(screen.getByText('relation "x" does not exist [42P01]')).toBeInTheDocument();
   expect(screen.getByLabelText("erro")).toBeInTheDocument();
-  // the removed connection's entry cannot be reopened
-  expect(screen.getAllByRole("button", { name: "Abrir no editor" })).toHaveLength(1);
+  // the removed connection's entry cannot be reopened; the other says where it opens
+  const open = screen.getAllByRole("button", { name: /^Abrir no editor/ });
+  expect(open).toHaveLength(1);
+  expect(open[0]).toHaveAccessibleName(/^Abrir no editor de Postgres prod, produção: /);
+  expect(open[0]).toHaveTextContent("Abrir no editor de produção");
 
   await user.type(screen.getByLabelText("Buscar no histórico"), "users");
   await user.selectOptions(screen.getByLabelText("Filtrar por conexão"), "pg-1");
@@ -193,7 +214,7 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
     })
   );
 
-  await user.click(screen.getByRole("button", { name: "Abrir no editor" }));
+  await user.click(screen.getByRole("button", { name: /^Abrir no editor/ }));
   const editor = useTabs.getState().tabs.find(tab => tab.kind === "editor");
   expect(editor).toMatchObject({ connectionId: "pg-1", sql: "SELECT count(*) FROM users" });
   expect(
@@ -242,7 +263,8 @@ test("history entries are starred and the favourites filter asks for starred onl
 
   await user.click(await screen.findByRole("button", { name: "Histórico" }));
   await screen.findByText("SELECT count(*) FROM users");
-  const stars = screen.getAllByRole("button", { name: "Favorita" });
+  const stars = screen.getAllByRole("button", { name: /^Favorita: / });
+  expect(stars[0]).toHaveAccessibleName(/^Favorita: Postgres prod, /);
   expect(stars.map(star => star.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
 
   await user.click(stars[0]);

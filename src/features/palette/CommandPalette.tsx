@@ -8,10 +8,12 @@ import {
   browseSections,
   paletteEntries,
   searchEntries,
+  tabEntryId,
   type PaletteEntry,
   type PaletteTarget
 } from "@/features/palette/search";
 import { useFocusReturn } from "@/features/tabs/focus";
+import { useTabs } from "@/features/tabs/store";
 import { cn } from "@/lib/utils";
 
 type CommandPaletteProps = {
@@ -96,8 +98,17 @@ function PaletteBody({
     };
   }, [queryClient, connections]);
 
+  // where you were: the other open tabs, newest first, then the ones just closed
+  const tabs = useTabs(state => state.tabs);
+  const activeId = useTabs(state => state.activeId);
+  const closed = useTabs(state => state.closed);
+  const recent = [...tabs.filter(tab => tab.id !== activeId).reverse(), ...[...closed].reverse()]
+    .map(tabEntryId)
+    .filter(id => id !== null);
+
   // before a word is typed the palette is a short launcher by kind; after, one ranked list
-  const sections = query.trim() === "" ? browseSections(all.entries, activeConnectionId) : null;
+  const sections =
+    query.trim() === "" ? browseSections(all.entries, activeConnectionId, recent) : null;
   const results = sections
     ? sections.flatMap(section => section.entries)
     : searchEntries(all.entries, query, activeConnectionId);

@@ -87,9 +87,23 @@ pub struct CompletionTable {
 #[serde(rename_all = "camelCase")]
 pub enum FilterOp {
     Eq,
+    Ne,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
     Like,
+    /// value is a comma-separated list: `1, 2, 3`
+    In,
     IsNull,
     IsNotNull,
+}
+
+impl FilterOp {
+    /// IS NULL / IS NOT NULL compare with nothing; every other operator needs a value.
+    pub fn needs_value(self) -> bool {
+        !matches!(self, FilterOp::IsNull | FilterOp::IsNotNull)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -97,7 +111,7 @@ pub enum FilterOp {
 pub struct Filter {
     pub column: String,
     pub op: FilterOp,
-    /// required for Eq/Like, ignored for IsNull/IsNotNull
+    /// required unless the operator is IsNull/IsNotNull, where it is ignored
     pub value: Option<String>,
 }
 

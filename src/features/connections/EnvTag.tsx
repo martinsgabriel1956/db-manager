@@ -2,12 +2,17 @@ import type { Engine, Environment } from "@/bindings";
 import { ENGINE_CODE, ENGINE_LABEL, ENVIRONMENT_STYLE } from "@/features/connections/options";
 import { cn } from "@/lib/utils";
 
-type EnvTagProps = { environment: Environment; className?: string };
+type EnvTagProps = {
+  environment: Environment;
+  className?: string;
+  /** under a field already labelled "Ambiente": the tag reads "Prod", not "ambiente Prod" */
+  labelled?: boolean;
+};
 
 type EngineCodeProps = { engine: Engine; className?: string };
 
 /** The environment printed as a legend: dotted, solid, hatched or under the safelight. */
-export function EnvTag({ environment, className }: EnvTagProps) {
+export function EnvTag({ environment, className, labelled = false }: EnvTagProps) {
   const style = ENVIRONMENT_STYLE[environment];
   return (
     <span
@@ -18,7 +23,7 @@ export function EnvTag({ environment, className }: EnvTagProps) {
       )}
     >
       {/* read in context: "ambiente Prod", not a bare "Prod" */}
-      <span className="sr-only">ambiente </span>
+      {!labelled && <span className="sr-only">ambiente </span>}
       {style.label}
     </span>
   );

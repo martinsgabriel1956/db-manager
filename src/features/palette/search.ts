@@ -1,6 +1,6 @@
 import type { ConnectionConfig, RedisDatabase, SchemaInfo } from "@/bindings";
 import { isSqlEngine } from "@/features/connections/options";
-import type { DiagramTarget, RedisTarget, TableTarget } from "@/features/tabs/store";
+import type { DiagramTarget, RedisTarget, Tab, TableTarget } from "@/features/tabs/store";
 
 /** What a palette row opens. */
 export type PaletteTarget =
@@ -16,7 +16,13 @@ export type PaletteTarget =
   | { kind: "legend" };
 
 /** The headings of the palette before anything is typed, in this order. */
-export const PALETTE_GROUPS = ["Tabelas e coleções", "Bancos Redis", "Conexões", "Ações"] as const;
+export const PALETTE_GROUPS = [
+  "Recentes",
+  "Tabelas e coleções",
+  "Bancos Redis",
+  "Conexões",
+  "Ações"
+] as const;
 export type PaletteGroup = (typeof PALETTE_GROUPS)[number];
 
 export type PaletteEntry = {
@@ -179,12 +185,24 @@ function fold(text: string): string {
     .toLowerCase();
 }
 
+/** Every letter of `word` in `text`, in order: "usr" finds "users". */
+function isSubsequence(word: string, text: string): boolean {
+  let found = 0;
+  for (const char of text) {
+    if (char === word[found]) {
+      found++;
+    }
+  }
+  return found === word.length;
+}
+
 /**
- * Every word of the query must appear in the name or the connection name.
- * Names that start with the last word typed come first; then the connection you are
- * working in, then the rest, production last, even when it is the one you are in: with
- * two `users`, Enter on the first match never lands in production by accident. The order
- * is otherwise kept.
+ * Every word of the query must appear in the name or the connection name; a word that
+ * does not may still match the name with letters skipped ("usr" → users), ranked after
+ * every exact match. Names that start with the last word typed come first; then the
+ * connection you are working in, then the rest, production last, even when it is the one
+ * you are in: with two `users`, Enter on the first match never lands in production by
+ * accident. The order is otherwise kept.
  */
 export function searchEntries(
   entries: PaletteEntry[],
@@ -193,26 +211,44 @@ export function searchEntries(
 ): PaletteEntry[] {
   const words = fold(query).split(/\s+/).filter(Boolean);
   const last = words.at(-1) ?? "";
-  const matches = entries.filter(entry => {
+  const matches = entries.flatMap((entry, index) => {
     const haystack = fold(`${entry.label} ${entry.connection?.name ?? ""} ${entry.kind}`);
-    return words.every(word => haystack.includes(word));
+    const name = fold(entry.label);
+    if (words.every(word => haystack.includes(word))) {
+      return [{ entry, index, loose: false }];
+    }
+    if (words.every(word => haystack.includes(word) || isSubsequence(word, name))) {
+      return [{ entry, index, loose: true }];
+    }
+    return [];
   });
-  const startsWith = (entry: PaletteEntry) => {
+  const rank = ({ entry, loose }: (typeof matches)[number]) => {
+    if (loose) {
+      return 2;
+    }
     const name = fold(entry.label.split(".").pop() ?? entry.label);
     return name.startsWith(last) ? 0 : 1;
   };
   const place = ({ connection }: PaletteEntry) =>
     connection?.environment === "prod" ? 2 : connection?.id === activeConnectionId ? 0 : 1;
   return matches
-    .map((entry, index) => ({ entry, index }))
-    .sort(
-      (a, b) =>
-        startsWith(a.entry) - startsWith(b.entry) ||
-        place(a.entry) - place(b.entry) ||
-        a.index - b.index
-    )
+    .sort((a, b) => rank(a) - rank(b) || place(a.entry) - place(b.entry) || a.index - b.index)
     .slice(0, MAX_RESULTS)
     .map(({ entry }) => entry);
+}
+
+/** The palette row a tab reopens, by the same id `paletteEntries` gives it. */
+export function tabEntryId(tab: Tab): string | null {
+  switch (tab.kind) {
+    case "table":
+      return `table/${tab.connectionId}/${tab.schema}/${tab.table}`;
+    case "redis":
+      return `redis/${tab.connectionId}/${tab.db}`;
+    case "diagram":
+      return `diagram/${tab.connectionId}/${tab.schema}`;
+    default:
+      return null;
+  }
 }
 
 /** Rows per heading before anything is typed: the rest is one word away. */
@@ -221,20 +257,33 @@ export const GROUP_LIMIT = 5;
 export type PaletteSection = { group: PaletteGroup; entries: PaletteEntry[]; total: number };
 
 /**
- * The palette before a query: one short section per kind, ranked like a search (the
+ * The palette before a query: where you were first (the `recent` entry ids, most recent
+ * first, kept in that order), then one short section per kind, ranked like a search (the
  * connection you are in first, production last). Per-connection repeats wait for a word:
  * "Nova query SQL" shows only for the active connection, and "editar conexão" not at all.
  */
 export function browseSections(
   entries: PaletteEntry[],
-  activeConnectionId: string | null = null
+  activeConnectionId: string | null = null,
+  recent: string[] = []
 ): PaletteSection[] {
-  const shown = entries.filter(({ target }) =>
-    target.kind === "editor"
-      ? target.connectionId === activeConnectionId
-      : target.kind !== "editConnection"
+  const recentEntries = recent
+    .map(id => entries.find(entry => entry.id === id))
+    .filter(entry => entry !== undefined)
+    .slice(0, GROUP_LIMIT);
+  const shown = entries.filter(
+    entry =>
+      !recentEntries.includes(entry) &&
+      (entry.target.kind === "editor"
+        ? entry.target.connectionId === activeConnectionId
+        : entry.target.kind !== "editConnection")
   );
-  return PALETTE_GROUPS.flatMap(group => {
+  return PALETTE_GROUPS.flatMap((group): PaletteSection[] => {
+    if (group === "Recentes") {
+      return recentEntries.length === 0
+        ? []
+        : [{ group, entries: recentEntries, total: recentEntries.length }];
+    }
     const members = shown.filter(entry => entry.group === group);
     // ranked per heading: a long table list never pushes the actions past the result cap
     const inGroup = searchEntries(members, "", activeConnectionId);

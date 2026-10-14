@@ -5,7 +5,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { EnvTag } from "@/features/connections/EnvTag";
 import { useConnections } from "@/features/connections/queries";
+import type { CellDiff } from "@/features/table/staged";
 import { useFocusReturn } from "@/features/tabs/focus";
+import { cn } from "@/lib/utils";
 
 type ConfirmDialogProps = {
   /** named on the form, so the user signs knowing where the command runs */
@@ -14,6 +16,8 @@ type ConfirmDialogProps = {
   confirmLabel: string;
   /** appended to each statement: ";" for SQL, nothing for Redis commands */
   statementSuffix?: string;
+  /** a table save: each edited value with the one it replaces, so the change is signed, not only the SQL */
+  changes?: CellDiff[];
   pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -28,6 +32,7 @@ export function ConfirmDialog({
   confirmation,
   confirmLabel,
   statementSuffix = ";",
+  changes = [],
   pending = false,
   onConfirm,
   onCancel
@@ -71,7 +76,7 @@ export function ConfirmDialog({
           <div className="px-4 py-2.5">
             <dt className="legend text-muted-foreground">Ambiente</dt>
             <dd className="mt-1.5">
-              {connection ? <EnvTag environment={connection.environment} /> : "—"}
+              {connection ? <EnvTag environment={connection.environment} labelled /> : "—"}
             </dd>
           </div>
         </dl>
@@ -81,6 +86,36 @@ export function ConfirmDialog({
             {confirmation?.reason}
           </DialogDescription>
         </div>
+        {changes.length > 0 && (
+          <div className="border-b px-5 py-2.5">
+            <p className="legend text-muted-foreground">Antes → depois</p>
+            {/* focusable so a long list scrolls from the keyboard */}
+            <table
+              tabIndex={0}
+              aria-label="Valores alterados"
+              className="mt-1.5 block max-h-36 w-full overflow-auto font-mono text-xs outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
+            >
+              <tbody>
+                {changes.map(change => (
+                  <tr key={`${change.key}:${change.column}`} className="align-baseline">
+                    <th
+                      scope="row"
+                      className="py-0.5 pr-3 text-left font-normal whitespace-nowrap text-muted-foreground"
+                    >
+                      {change.key}
+                    </th>
+                    <td className="py-0.5 pr-3 font-semibold whitespace-nowrap">{change.column}</td>
+                    <td className="py-0.5 break-all">
+                      <DiffValue value={change.before} />
+                      <span className="text-muted-foreground"> → </span>
+                      <DiffValue value={change.after} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         {/* focusable so a long command scrolls from the keyboard: WebKitGTK never focuses scrollers */}
         <pre
           tabIndex={0}
@@ -133,5 +168,14 @@ export function ConfirmDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** NULL reads as the marker it is, never as the text "NULL" */
+function DiffValue({ value }: { value: string | null }) {
+  return (
+    <span className={cn(value === null && "text-muted-foreground italic")}>
+      {value === null ? "NULL" : `'${value}'`}
+    </span>
   );
 }

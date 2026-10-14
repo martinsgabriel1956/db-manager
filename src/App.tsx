@@ -16,6 +16,7 @@ import { commands, type ConnectionConfig } from "@/bindings";
 import { CloseWindowDialog } from "@/components/CloseWindowDialog";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
+import { EnvTag } from "@/features/connections/EnvTag";
 import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
 import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
@@ -116,8 +117,12 @@ export function App() {
   // app-wide accelerators; each one is also reachable from a visible control
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      // a dialog owns the keyboard while it is open
-      if (document.querySelector("[role='dialog'], [role='alertdialog']")) {
+      // a dialog owns the keyboard while it is open; one still fading out no longer does
+      if (
+        document.querySelector(
+          "[role='dialog']:not([data-state='closed']), [role='alertdialog']:not([data-state='closed'])"
+        )
+      ) {
         return;
       }
       if (event.key === "F6") {
@@ -299,17 +304,48 @@ export function App() {
       >
         Ir para a área de trabalho
       </a>
-      {/* production works under the safelight: the ring is a colour cue, the band says it in words */}
-      {isProd && active && (
-        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
+      {/* the environment band is always there, so moving between production and the rest never
+          shifts the window under the pointer: it changes colour and words, not height.
+          Production works under the safelight; the ring is a colour cue, the band says it in words */}
+      {isProd && active ? (
+        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 motion-reduce:animate-none">
           <TriangleAlert className="size-3.5" aria-hidden />
           <span className="legend text-[0.75rem]">Produção</span>
-          <span>
+          <span className="truncate">
             {active.name} ·{" "}
             {active.readOnly
               ? "somente leitura, imposta pelo banco"
               : "toda escrita pede confirmação com o comando exato"}
           </span>
+        </p>
+      ) : (
+        <p
+          className={cn(
+            "flex h-7 shrink-0 items-center gap-3 border-b bg-muted px-4 text-xs",
+            // in use, the band speaks in ink; with nothing in use it steps back
+            active ? "text-foreground" : "text-muted-foreground",
+            // staging is a copy of production: half a safelight, the hatch its tag already wears
+            active?.environment === "staging" && "border-b-foreground pl-0"
+          )}
+        >
+          {active?.environment === "staging" && (
+            <span aria-hidden className="h-full w-8 shrink-0 border-r border-foreground hatch" />
+          )}
+          {active ? (
+            <>
+              <EnvTag environment={active.environment} />
+              <span className="truncate">
+                {active.name} ·{" "}
+                {active.readOnly
+                  ? "somente leitura, imposta pelo banco"
+                  : active.environment === "staging"
+                    ? "cópia de produção; comandos destrutivos pedem confirmação"
+                    : "comandos destrutivos pedem confirmação; o resto vai direto ao banco"}
+              </span>
+            </>
+          ) : (
+            <span>Nenhuma conexão em uso</span>
+          )}
         </p>
       )}
       <div className="flex min-h-0 flex-1">

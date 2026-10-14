@@ -250,13 +250,14 @@ export function TabBar({ connections, form = null }: TabBarProps) {
           }
         }}
         style={cutMask ? { maskImage: cutMask, WebkitMaskImage: cutMask } : undefined}
-        className="relative flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // the strip rests on a tab's edge, never on half a word ("· 1 PROD")
+        className="relative flex min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {form && (
           <div
             role="presentation"
             className={cn(
-              "flex shrink-0 items-center border-r text-sm",
+              "flex shrink-0 snap-start items-center border-r text-sm",
               form.shown
                 ? "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
                 : "text-muted-foreground hover:bg-background hover:text-foreground"
@@ -298,6 +299,14 @@ export function TabBar({ connections, form = null }: TabBarProps) {
           const { connection, title } = tabParts(tab, connections);
           const Icon = tabIcon(tab, connection);
           const engine = connection?.engine ?? null;
+          // tabs of one connection side by side read as one run: its first tab carries the
+          // connection's name and PROD tag, the rest only their own table under the same rule
+          const previous = tabs[index - 1];
+          const runStart =
+            !previous ||
+            previous.kind === "history" ||
+            tab.kind === "history" ||
+            previous.connectionId !== tab.connectionId;
           const isActive = !away && tab.id === activeId;
           const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
           const isProd = connection?.environment === "prod";
@@ -317,14 +326,19 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                 <div
                   role="presentation"
                   className={cn(
-                    "group flex shrink-0 items-center border-r text-sm",
+                    "group flex shrink-0 snap-start items-center border-r text-sm",
                     // the tab a right click acts on stays marked while its menu is open
                     !isActive &&
                       "data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-[inset_0_0_0_1px_var(--foreground)]",
                     isActive
                       ? // the system's one diagonal: the active tab's corner is cut in blue
                         "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
-                      : "text-muted-foreground hover:bg-background hover:text-foreground"
+                      : "text-muted-foreground hover:bg-background hover:text-foreground",
+                    // production works under the safelight along the whole run, PROD tag or not
+                    isProd &&
+                      (isActive
+                        ? "shadow-[inset_0_3px_0_var(--select),inset_0_-2px_0_var(--safelight)]"
+                        : "shadow-[inset_0_-2px_0_var(--safelight)]")
                   )}
                 >
                   {/* the engine code names a lone connection's tabs; with several, the name does */}
@@ -354,23 +368,29 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     className={cn(
                       "flex min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                       // two names need the room of two: "Postgres prod · ER public" fits whole
-                      showConnection ? "max-w-80" : "max-w-60",
+                      showConnection && runStart ? "max-w-64" : "max-w-48",
                       engine && !showConnection ? "pl-1.5" : "pl-3"
                     )}
                   >
                     <Icon className="size-3.5 shrink-0" />
                     {/* the connection gives way first and alone: the table name is cut only
                         past 11rem, so the two never truncate together */}
-                    {connection && showConnection && (
-                      // room for "Postgres prod": two names that share a prefix still part
-                      <span className="max-w-32 min-w-0 truncate font-normal">
+                    {connection && showConnection && runStart && (
+                      // 96px: "Postgres pr…" and "Postgres de…" still part; whole on hover
+                      <span className="max-w-24 min-w-0 truncate font-normal">
                         {connection.name} ·
                       </span>
                     )}
-                    <span className={cn("min-w-0 truncate", showConnection && "max-w-44 shrink-0")}>
+                    <span
+                      className={cn(
+                        "min-w-0 truncate",
+                        showConnection && runStart && "max-w-36 shrink-0"
+                      )}
+                    >
                       {title}
                     </span>
-                    {/* production is printed on the tab itself, not only once the tab is active */}
+                    {/* production is printed on every one of its tabs: the first of a run can
+                        scroll out of the strip, and the 2px rule alone is colour */}
                     {isProd && <EnvTag environment="prod" />}
                   </button>
                   {/* staged exposure on this table: the same Δ the save button carries */}

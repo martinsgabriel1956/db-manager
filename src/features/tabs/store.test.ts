@@ -39,13 +39,13 @@ test("a schema diagram opens once", () => {
   expect(state().activeId).toBe(state().tabs[0].id);
 });
 
-test("editors are numbered per connection", () => {
+test("editors are numbered across connections, so no two read the same", () => {
   state().openEditor("pg");
   state().openEditor("pg", "SELECT 1");
   state().openEditor("other");
 
   const titles = state().tabs.map(tab => (tab as EditorTab).title);
-  expect(titles).toEqual(["SQL 1", "SQL 2", "SQL 1"]);
+  expect(titles).toEqual(["SQL 1", "SQL 2", "SQL 3"]);
   expect((state().tabs[1] as EditorTab).sql).toBe("SELECT 1");
   expect(state().activeId).toBe(state().tabs[2].id);
 });

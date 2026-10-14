@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, ConnectionConfig } from "@/bindings";
-import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import { callsTo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
 import { renderWithClient, rowAction } from "@/test/render";
 
 function renderApp() {
@@ -25,6 +25,19 @@ test("lists connections with engine and read-only marker", async () => {
   expect(item).toHaveTextContent("somente leitura");
   // prod is named in words, not only by the dot's color
   expect(item).toHaveTextContent("Prod");
+});
+
+test("the environment band stays in place and says the environment in words", async () => {
+  fakeBackend([prodPostgres, devPostgres]);
+  const user = userEvent.setup();
+  renderApp();
+
+  expect(await screen.findByText("Nenhuma conexão em uso")).toBeInTheDocument();
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  expect(
+    await screen.findByText(/^Postgres dev · comandos destrutivos pedem confirmação/)
+  ).toBeInTheDocument();
 });
 
 test("Ctrl+B collapses and expands the sidebar", async () => {
@@ -185,6 +198,34 @@ test("redis shows the key separator field", async () => {
 
   expect(screen.getByLabelText("Separador de chaves")).toHaveValue(":");
   expect(screen.getByLabelText("Porta")).toHaveValue(6379);
+});
+
+test("a pasted connection URL fills the fields and leaves the input empty", async () => {
+  fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  const url = screen.getByLabelText("Colar URL de conexão (opcional)");
+  await user.click(url);
+  await user.paste("mysql://root:s3nha@db.local:3307/shop");
+
+  expect(screen.getByLabelText("Tipo de banco")).toHaveValue("mysql");
+  expect(screen.getByLabelText("Host")).toHaveValue("db.local");
+  expect(screen.getByLabelText("Porta")).toHaveValue(3307);
+  expect(screen.getByLabelText("Banco de dados")).toHaveValue("shop");
+  expect(screen.getByLabelText("Usuário")).toHaveValue("root");
+  expect(screen.getByLabelText("Senha")).toHaveValue("s3nha");
+  expect(url).toHaveValue("");
+  expect(screen.getByText(/Campos preenchidos a partir da URL/)).toBeInTheDocument();
+
+  // typed, it waits for Enter: "postgres://d" already parses and must not fill early
+  await user.type(url, "postgres://dbhost/app");
+  expect(screen.getByLabelText("Host")).toHaveValue("db.local");
+  await user.keyboard("{Enter}");
+  expect(screen.getByLabelText("Tipo de banco")).toHaveValue("postgres");
+  expect(screen.getByLabelText("Host")).toHaveValue("dbhost");
+  expect(screen.getByLabelText("Banco de dados")).toHaveValue("app");
 });
 
 test("editing a prod connection marks the window and fills the form", async () => {

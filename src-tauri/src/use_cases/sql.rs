@@ -159,8 +159,12 @@ pub(crate) fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
         )));
     }
     for filter in &request.filters {
-        let needs_value = matches!(filter.op, FilterOp::Eq | FilterOp::Like);
-        if needs_value && filter.value.is_none() {
+        let value = filter.value.as_deref();
+        let missing = match filter.op {
+            FilterOp::In => value.is_none_or(|list| sql_builder::in_items(list).next().is_none()),
+            op => op.needs_value() && value.is_none(),
+        };
+        if missing {
             return Err(AppError::validation(format!(
                 "informe um valor para filtrar {}",
                 filter.column
@@ -497,6 +501,12 @@ mod tests {
                 .to_string(),
             "informe um valor para filtrar name"
         );
+        let empty_list = Filter {
+            column: "id".into(),
+            op: FilterOp::In,
+            value: Some(" , ".into()),
+        };
+        assert!(validate_browse(&request(100, vec![empty_list])).is_err());
     }
 }
 

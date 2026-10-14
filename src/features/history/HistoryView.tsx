@@ -5,6 +5,7 @@ import { commands, type ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { EnvTag } from "@/features/connections/EnvTag";
 import { isSqlEngine } from "@/features/connections/options";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -137,52 +138,62 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
       <ul
         className={`min-h-0 flex-1 divide-y overflow-auto ${history.data?.length === 0 ? "hidden" : ""}`}
       >
-        {history.data?.map(entry => (
-          <li key={entry.id} className="grid gap-1 px-3 py-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                className="-ml-1"
-                aria-label="Favorita"
-                aria-pressed={entry.starred}
-                title={entry.starred ? "Remover das favoritas" : "Marcar como favorita"}
-                onClick={() => star.mutate({ id: entry.id, starred: !entry.starred })}
-              >
-                <Star className={cn(entry.starred && "fill-current text-foreground")} />
-              </Button>
-              {entry.success ? (
-                <CircleCheck className="size-3.5 text-success" aria-label="sucesso" />
-              ) : (
-                <CircleX className="size-3.5 text-destructive" aria-label="erro" />
-              )}
-              <span>{formatExecutedAt(entry.executedAt)}</span>
-              <span>·</span>
-              <span className="font-medium text-foreground">{entry.connectionName}</span>
-              <span>·</span>
-              <span className="flex items-center gap-1.5">
-                <span
-                  aria-hidden
-                  className="h-1.5 bg-foreground/60"
-                  style={{ width: Math.max(2, (entry.durationMs / longest) * DURATION_BAR_PX) }}
-                />
-                {entry.durationMs} ms
-              </span>
-              {sqlConnections.has(entry.connectionId) && (
+        {history.data?.map(entry => {
+          // the connection as it is now; a deleted one keeps only the name it ran under
+          const connection = connections.find(candidate => candidate.id === entry.connectionId);
+          const isProd = connection?.environment === "prod";
+          const when = formatExecutedAt(entry.executedAt);
+          return (
+            <li key={entry.id} className="grid gap-1 px-3 py-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Button
-                  size="xs"
+                  size="icon-xs"
                   variant="ghost"
-                  className="ml-auto"
-                  onClick={() => onOpenInEditor(entry.connectionId, entry.sql)}
+                  className="-ml-1"
+                  aria-label={`Favorita: ${entry.connectionName}, ${when}`}
+                  aria-pressed={entry.starred}
+                  title={entry.starred ? "Remover das favoritas" : "Marcar como favorita"}
+                  onClick={() => star.mutate({ id: entry.id, starred: !entry.starred })}
                 >
-                  <SquareTerminal /> Abrir no editor
+                  <Star className={cn(entry.starred && "fill-current text-foreground")} />
                 </Button>
-              )}
-            </div>
-            <HistoryCommand text={entry.sql} />
-            {entry.error && <p className="text-xs text-destructive">{entry.error}</p>}
-          </li>
-        ))}
+                {entry.success ? (
+                  <CircleCheck className="size-3.5 text-success" aria-label="sucesso" />
+                ) : (
+                  <CircleX className="size-3.5 text-destructive" aria-label="erro" />
+                )}
+                <span>{when}</span>
+                <span>·</span>
+                <span className="font-medium text-foreground">{entry.connectionName}</span>
+                {/* the archive of the prod ritual marks production like every other screen */}
+                {connection && <EnvTag environment={connection.environment} />}
+                <span>·</span>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="h-1.5 bg-foreground/60"
+                    style={{ width: Math.max(2, (entry.durationMs / longest) * DURATION_BAR_PX) }}
+                  />
+                  {entry.durationMs} ms
+                </span>
+                {sqlConnections.has(entry.connectionId) && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="ml-auto"
+                    aria-label={`Abrir no editor de ${entry.connectionName}${isProd ? ", produção" : ""}: ${when}`}
+                    onClick={() => onOpenInEditor(entry.connectionId, entry.sql)}
+                  >
+                    {/* says where it opens: a write from here lands back on that connection */}
+                    <SquareTerminal /> Abrir no editor{isProd && " de produção"}
+                  </Button>
+                )}
+              </div>
+              <HistoryCommand text={entry.sql} />
+              {entry.error && <p className="text-xs text-destructive">{entry.error}</p>}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

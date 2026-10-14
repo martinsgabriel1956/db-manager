@@ -50,7 +50,12 @@ test("a failed connection shows the error and can retry", async () => {
   renderWithClient(<App />);
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("password authentication failed");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/^Não foi possível conectar a db:5432/);
+  expect(alert).toHaveTextContent("password authentication failed");
+  // a connection that failed offers no editor on it
+  expect(screen.queryByRole("treeitem", { name: /^Nova query SQL/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Editar conexão" })).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Tentar de novo" }));
   expect(await screen.findByRole("treeitem", { name: "users" })).toBeInTheDocument();
@@ -112,15 +117,16 @@ test("header click cycles sort, pagination moves pages", async () => {
   await waitFor(() => expect(lastBrowse(calls).page).toBe(0));
 });
 
-test("filters are applied from the toolbar and reset the page", async () => {
+test("filters add up as ANDed chips, each one removable, and reset the page", async () => {
   const calls = fakeBackend([prodPostgres]);
   const user = await openUsers();
 
   await waitFor(() => expect(screen.getByLabelText("Coluna do filtro")).toHaveValue("id"));
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "gte");
   await user.type(screen.getByLabelText("Valor do filtro"), "42");
   await user.click(screen.getByRole("button", { name: "Aplicar" }));
   await waitFor(() =>
-    expect(lastBrowse(calls).filters).toEqual([{ column: "id", op: "eq", value: "42" }])
+    expect(lastBrowse(calls).filters).toEqual([{ column: "id", op: "gte", value: "42" }])
   );
 
   await user.selectOptions(screen.getByLabelText("Coluna do filtro"), "profile");
@@ -128,10 +134,28 @@ test("filters are applied from the toolbar and reset the page", async () => {
   expect(screen.queryByLabelText("Valor do filtro")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Aplicar" }));
   await waitFor(() =>
-    expect(lastBrowse(calls).filters).toEqual([{ column: "profile", op: "isNull", value: null }])
+    expect(lastBrowse(calls).filters).toEqual([
+      { column: "id", op: "gte", value: "42" },
+      { column: "profile", op: "isNull", value: null }
+    ])
   );
 
-  await user.click(screen.getByRole("button", { name: "Limpar filtro" }));
+  // the applied value went to its chip: the next condition starts empty
+  expect(screen.queryByLabelText("Valor do filtro")).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "eq");
+  expect(screen.getByLabelText("Valor do filtro")).toHaveValue("");
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "isNull");
+
+  await user.click(screen.getByRole("button", { name: "Remover filtro id >= 42" }));
+  await waitFor(() =>
+    expect(lastBrowse(calls).filters).toEqual([{ column: "profile", op: "isNull", value: null }])
+  );
+  // one condition left: nothing to clear all at once
+  expect(screen.queryByRole("button", { name: "Limpar tudo" })).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Coluna do filtro"), "id");
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "isNotNull");
+  await user.click(screen.getByRole("button", { name: "Aplicar" }));
+  await user.click(await screen.findByRole("button", { name: "Limpar tudo" }));
   await waitFor(() => expect(lastBrowse(calls).filters).toEqual([]));
 });
 
@@ -193,6 +217,7 @@ test("the filter chip reads the applied condition as SQL", () => {
   expect(filterText({ column: "deleted_at", op: "isNull", value: null })).toBe(
     "deleted_at IS NULL"
   );
+  expect(filterText({ column: "id", op: "in", value: "1, 2" })).toBe("id IN (1, 2)");
 });
 
 test("copies the selected row as INSERT and the loaded rows as JSON, big numbers intact", async () => {

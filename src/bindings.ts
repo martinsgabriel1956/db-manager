@@ -213,11 +213,13 @@ export type ExportOutcome = {
 export type Filter = {
 	column: string,
 	op: FilterOp,
-	/**  required for Eq/Like, ignored for IsNull/IsNotNull */
+	/**  required unless the operator is IsNull/IsNotNull, where it is ignored */
 	value: string | null,
 };
 
-export type FilterOp = "eq" | "like" | "isNull" | "isNotNull";
+export type FilterOp = "eq" | "ne" | "lt" | "lte" | "gt" | "gte" | "like" | 
+/**  value is a comma-separated list: `1, 2, 3` */
+"in" | "isNull" | "isNotNull";
 
 /**  Documents and _ids cross the boundary as Extended JSON text (see adapters/mongo/ejson.rs). */
 export type FindRequest = {
