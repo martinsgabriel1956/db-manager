@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { PanelRight, X } from "lucide-react";
 import type { Cell, ResultColumn } from "@/bindings";
 import { Button } from "@/components/ui/button";
-import { detailText } from "@/features/results/format";
+import { detailText, prettyJson } from "@/features/results/format";
 import { cn } from "@/lib/utils";
 
 type CellDetailProps = {
@@ -14,6 +15,9 @@ type CellDetailProps = {
   /** the stored value a staged edit replaces */
   original?: Cell | null;
   onRevert?: () => void;
+  /** present when the cell can be written from here: the value the edit starts from, null is NULL */
+  editValue?: string | null;
+  onEdit?: (value: string | null) => void;
 };
 
 export function CellDetail({
@@ -22,7 +26,9 @@ export function CellDetail({
   onClose,
   onSetNull,
   original = null,
-  onRevert
+  onRevert,
+  editValue = null,
+  onEdit
 }: CellDetailProps) {
   return (
     <aside
@@ -52,18 +58,31 @@ export function CellDetail({
           onSetNull={onSetNull}
           original={original}
           onRevert={onRevert}
+          editValue={editValue}
+          onEdit={onEdit}
         />
       )}
     </aside>
   );
 }
 
-type CellValueProps = Pick<CellDetailProps, "onSetNull" | "original" | "onRevert"> & {
+type CellValueProps = Pick<
+  CellDetailProps,
+  "onSetNull" | "original" | "onRevert" | "editValue" | "onEdit"
+> & {
   column: ResultColumn;
   cell: Cell;
 };
 
-function CellValue({ column, cell, onSetNull, original, onRevert }: CellValueProps) {
+function CellValue({
+  column,
+  cell,
+  onSetNull,
+  original,
+  onRevert,
+  editValue,
+  onEdit
+}: CellValueProps) {
   return (
     <>
       {original && (
@@ -92,18 +111,29 @@ function CellValue({ column, cell, onSetNull, original, onRevert }: CellValuePro
           )}
         </div>
       )}
-      {/* focusable so a long value scrolls from the keyboard */}
-      <pre
-        tabIndex={0}
-        role="region"
-        aria-label={`Valor de ${column.name}`}
-        className={cn(
-          "flex-1 overflow-auto p-3 font-mono text-xs break-all whitespace-pre-wrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-          cell.t === "null" && "text-muted-foreground italic"
-        )}
-      >
-        {detailText(cell)}
-      </pre>
+      {onEdit ? (
+        <ValueEditor
+          key={column.name}
+          label={`${original ? "Depois" : "Valor"} de ${column.name}`}
+          initial={editValue ?? null}
+          // jsonb stores its own normal form: indented here, it reads like the panel always did
+          indentJson={column.typeName === "jsonb"}
+          onCommit={onEdit}
+        />
+      ) : (
+        // focusable so a long value scrolls from the keyboard
+        <pre
+          tabIndex={0}
+          role="region"
+          aria-label={`Valor de ${column.name}`}
+          className={cn(
+            "flex-1 overflow-auto p-3 font-mono text-xs break-all whitespace-pre-wrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            cell.t === "null" && "text-muted-foreground italic"
+          )}
+        >
+          {detailText(cell)}
+        </pre>
+      )}
       {onSetNull && cell.t !== "null" && (
         <div className="border-t px-3 py-2">
           <Button size="sm" variant="outline" onClick={onSetNull}>
@@ -121,6 +151,67 @@ function CellValue({ column, cell, onSetNull, original, onRevert }: CellValuePro
           Tipo não modelado: exibido como texto e não editável.
         </p>
       )}
+    </>
+  );
+}
+
+type ValueEditorProps = {
+  label: string;
+  /** null is NULL, shown as a placeholder */
+  initial: string | null;
+  indentJson: boolean;
+  onCommit: (value: string | null) => void;
+};
+
+/**
+ * The value written where it can be read whole: long text and JSON are edited here, not in
+ * a 28px line. It stages like the inline editor, on leaving the field or Ctrl+Enter, and only
+ * when the text changed, so opening a NULL never writes ''.
+ */
+function ValueEditor({ label, initial, indentJson, onCommit }: ValueEditorProps) {
+  const start = initial !== null && indentJson ? prettyJson(initial) : initial;
+  const [draft, setDraft] = useState(start);
+  // a revert or another cell starts the draft over; after a commit it already matches, and the
+  // field keeps focus (remounting it would drop the caret mid-edit)
+  const [base, setBase] = useState(start);
+  if (base !== start) {
+    setBase(start);
+    setDraft(start);
+  }
+
+  function commit() {
+    if (draft !== start) {
+      onCommit(draft);
+    }
+  }
+
+  return (
+    <>
+      <textarea
+        aria-label={label}
+        aria-describedby="value-editor-keys"
+        aria-keyshortcuts="Control+Enter"
+        spellCheck={false}
+        value={draft ?? ""}
+        placeholder={draft === null ? "NULL" : undefined}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={event => {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape" && draft !== start) {
+            // Esc first drops the draft; a second one closes the panel
+            event.stopPropagation();
+            setDraft(start);
+          }
+        }}
+        className="flex-1 resize-none bg-background p-3 font-mono text-xs break-all outline-none placeholder:text-muted-foreground placeholder:italic focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+      />
+      {/* without a box the field reads as a display: the keys say it is one to write in */}
+      <p id="value-editor-keys" className="border-t px-3 py-1.5 text-xs text-muted-foreground">
+        Editável · Ctrl+Enter ou sair do campo põe em stage · Esc descarta
+      </p>
     </>
   );
 }

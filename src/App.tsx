@@ -16,6 +16,7 @@ import { commands, type ConnectionConfig } from "@/bindings";
 import { CloseWindowDialog } from "@/components/CloseWindowDialog";
 import { Button } from "@/components/ui/button";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
+import { EnvTag } from "@/features/connections/EnvTag";
 import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
 import { useConnections } from "@/features/connections/queries";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
@@ -303,17 +304,35 @@ export function App() {
       >
         Ir para a área de trabalho
       </a>
-      {/* production works under the safelight: the ring is a colour cue, the band says it in words */}
-      {isProd && active && (
-        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
+      {/* the environment band is always there, so moving between production and the rest never
+          shifts the window under the pointer: it changes colour and words, not height.
+          Production works under the safelight; the ring is a colour cue, the band says it in words */}
+      {isProd && active ? (
+        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 motion-reduce:animate-none">
           <TriangleAlert className="size-3.5" aria-hidden />
           <span className="legend text-[0.75rem]">Produção</span>
-          <span>
+          <span className="truncate">
             {active.name} ·{" "}
             {active.readOnly
               ? "somente leitura, imposta pelo banco"
               : "toda escrita pede confirmação com o comando exato"}
           </span>
+        </p>
+      ) : (
+        <p className="flex h-7 shrink-0 items-center gap-3 border-b bg-muted px-4 text-xs text-muted-foreground">
+          {active ? (
+            <>
+              <EnvTag environment={active.environment} />
+              <span className="truncate">
+                {active.name} ·{" "}
+                {active.readOnly
+                  ? "somente leitura, imposta pelo banco"
+                  : "comandos destrutivos pedem confirmação; o resto vai direto ao banco"}
+              </span>
+            </>
+          ) : (
+            <span>Nenhuma conexão em uso</span>
+          )}
         </p>
       )}
       <div className="flex min-h-0 flex-1">

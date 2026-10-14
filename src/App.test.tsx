@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, ConnectionConfig } from "@/bindings";
-import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import { callsTo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
 import { renderWithClient, rowAction } from "@/test/render";
 
 function renderApp() {
@@ -25,6 +25,19 @@ test("lists connections with engine and read-only marker", async () => {
   expect(item).toHaveTextContent("somente leitura");
   // prod is named in words, not only by the dot's color
   expect(item).toHaveTextContent("Prod");
+});
+
+test("the environment band stays in place and says the environment in words", async () => {
+  fakeBackend([prodPostgres, devPostgres]);
+  const user = userEvent.setup();
+  renderApp();
+
+  expect(await screen.findByText("Nenhuma conexão em uso")).toBeInTheDocument();
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  expect(
+    await screen.findByText(/^Postgres dev · comandos destrutivos pedem confirmação/)
+  ).toBeInTheDocument();
 });
 
 test("Ctrl+B collapses and expands the sidebar", async () => {

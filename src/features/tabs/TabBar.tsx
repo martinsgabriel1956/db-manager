@@ -388,8 +388,9 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     >
                       {title}
                     </span>
-                    {/* production is printed in words once per run, not only once the tab is active */}
-                    {isProd && runStart && <EnvTag environment="prod" />}
+                    {/* production is printed on every one of its tabs: the first of a run can
+                        scroll out of the strip, and the 2px rule alone is colour */}
+                    {isProd && <EnvTag environment="prod" />}
                   </button>
                   {/* staged exposure on this table: the same Δ the save button carries */}
                   {staged > 0 && (

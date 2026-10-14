@@ -82,9 +82,10 @@ export const INITIAL_TABS = {
 /** How many closed tabs Ctrl+Shift+T can bring back. */
 const CLOSED_LIMIT = 20;
 
-function nextEditorTitle(tabs: Tab[], connectionId: string): string {
+/** Numbered across every connection: two "SQL 1" tabs would read the same in the strip. */
+function nextEditorTitle(tabs: Tab[]): string {
   const used = tabs
-    .filter((tab): tab is EditorTab => tab.kind === "editor" && tab.connectionId === connectionId)
+    .filter((tab): tab is EditorTab => tab.kind === "editor")
     .map(tab => Number(tab.title.replace("SQL ", "")) || 0);
   return `SQL ${Math.max(0, ...used) + 1}`;
 }
@@ -129,7 +130,7 @@ export const useTabs = create<TabsState>()(
             id: crypto.randomUUID(),
             kind: "editor",
             connectionId,
-            title: nextEditorTitle(state.tabs, connectionId),
+            title: nextEditorTitle(state.tabs),
             sql
           };
           return { tabs: [...state.tabs, tab], activeId: tab.id, freshEditorId: tab.id };

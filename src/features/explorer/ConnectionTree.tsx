@@ -398,8 +398,8 @@ function ConnectionNode({
               : "border-foreground"
           )}
         >
-          {/* the editor needs no schema: offered before the listing even loads */}
-          {hasSqlEditor && (
+          {/* the editor needs no schema: offered before the listing even loads, not after it failed */}
+          {hasSqlEditor && !listing.isError && (
             <li role="none">
               <button
                 type="button"
@@ -425,15 +425,22 @@ function ConnectionNode({
               role="none"
               className="my-1 grid gap-1.5 border border-destructive bg-background p-2"
             >
-              <p role="alert" className="text-xs text-destructive">
-                {errorMessage(listing.error)}
-              </p>
+              {/* the headline in our words; the driver's own, often English, follows as data */}
+              <div role="alert" className="grid gap-1">
+                <p className="text-xs font-semibold text-destructive">
+                  Não foi possível conectar
+                  {connection.target.kind === "network" && ` a ${targetSummary(connection)}`}
+                </p>
+                <p className="font-mono text-[11px] break-words text-muted-foreground">
+                  {errorMessage(listing.error)}
+                </p>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Confira host, porta e senha em Editar conexão e use Testar conexão, que tenta sem
                 salvar. Banco atrás de bastion: abra um túnel antes (ssh -L).
               </p>
               {/* both ways out the text names, within reach of Tab */}
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 <Button size="xs" variant="outline" onClick={() => listing.refetch()}>
                   Tentar de novo
                 </Button>

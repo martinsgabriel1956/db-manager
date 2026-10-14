@@ -120,6 +120,29 @@ test("an edited cell keeps the stored value in sight and Ctrl+Z puts it back", a
   expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
 });
 
+test("the value panel edits long values and stages only what changed", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.click(cell("NULL"));
+  await user.keyboard(" ");
+  const editor = screen.getByRole("textbox", { name: "Valor de profile" });
+  expect(editor).toHaveAttribute("placeholder", "NULL");
+  // leaving an untouched NULL stages nothing
+  await user.click(editor);
+  await user.tab();
+  expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("textbox", { name: "Valor de profile" }));
+  await user.keyboard('{{"a": 1}');
+  await user.keyboard("{Control>}{Enter}{/Control}");
+  expect(cell('{"a": 1}')).toHaveAttribute("data-edited", "true");
+  // jsonb reads indented in the panel; the staged text is what was typed, and the field
+  // keeps focus to go on editing
+  expect(screen.getByRole("textbox", { name: "Depois de profile" })).toHaveFocus();
+  expect(screen.getByRole("textbox", { name: "Depois de profile" })).toHaveValue('{\n  "a": 1\n}');
+});
+
 test("rows can be added, deleted, restored and set to NULL", async () => {
   const calls = fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);

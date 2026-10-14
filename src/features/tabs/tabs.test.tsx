@@ -198,8 +198,11 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
   expect(await screen.findByText("SELECT count(*) FROM users")).toBeInTheDocument();
   expect(screen.getByText('relation "x" does not exist [42P01]')).toBeInTheDocument();
   expect(screen.getByLabelText("erro")).toBeInTheDocument();
-  // the removed connection's entry cannot be reopened
-  expect(screen.getAllByRole("button", { name: "Abrir no editor" })).toHaveLength(1);
+  // the removed connection's entry cannot be reopened; the other says where it opens
+  const open = screen.getAllByRole("button", { name: /^Abrir no editor/ });
+  expect(open).toHaveLength(1);
+  expect(open[0]).toHaveAccessibleName(/^Abrir no editor de Postgres prod, produção: /);
+  expect(open[0]).toHaveTextContent("Abrir no editor de produção");
 
   await user.type(screen.getByLabelText("Buscar no histórico"), "users");
   await user.selectOptions(screen.getByLabelText("Filtrar por conexão"), "pg-1");
@@ -211,7 +214,7 @@ test("history lists runs, filters them and reopens SQL in an editor", async () =
     })
   );
 
-  await user.click(screen.getByRole("button", { name: "Abrir no editor" }));
+  await user.click(screen.getByRole("button", { name: /^Abrir no editor/ }));
   const editor = useTabs.getState().tabs.find(tab => tab.kind === "editor");
   expect(editor).toMatchObject({ connectionId: "pg-1", sql: "SELECT count(*) FROM users" });
   expect(
@@ -260,7 +263,8 @@ test("history entries are starred and the favourites filter asks for starred onl
 
   await user.click(await screen.findByRole("button", { name: "Histórico" }));
   await screen.findByText("SELECT count(*) FROM users");
-  const stars = screen.getAllByRole("button", { name: "Favorita" });
+  const stars = screen.getAllByRole("button", { name: /^Favorita: / });
+  expect(stars[0]).toHaveAccessibleName(/^Favorita: Postgres prod, /);
   expect(stars.map(star => star.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
 
   await user.click(stars[0]);

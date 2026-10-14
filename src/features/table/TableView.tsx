@@ -298,6 +298,17 @@ function TableData({
             onRevert={
               selected ? () => edit.editing.revert?.(selected.row, selected.column) : undefined
             }
+            editValue={
+              selected && selectedEditable
+                ? edit.editing.textFor(selected.row, selected.column)
+                : null
+            }
+            // a column with a fixed set of values is picked inline, from its list
+            onEdit={
+              selected && selectedEditable && !edit.editing.optionsFor?.(selected.column).length
+                ? value => edit.setValue(selected.row, selected.column, value)
+                : undefined
+            }
           />
         )}
       </div>

@@ -50,7 +50,12 @@ test("a failed connection shows the error and can retry", async () => {
   renderWithClient(<App />);
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("password authentication failed");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/^Não foi possível conectar a db:5432/);
+  expect(alert).toHaveTextContent("password authentication failed");
+  // a connection that failed offers no editor on it
+  expect(screen.queryByRole("treeitem", { name: /^Nova query SQL/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Editar conexão" })).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Tentar de novo" }));
   expect(await screen.findByRole("treeitem", { name: "users" })).toBeInTheDocument();
