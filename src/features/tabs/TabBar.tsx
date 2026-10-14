@@ -4,6 +4,7 @@ import {
   Database,
   History,
   Network,
+  Plug,
   RotateCcw,
   SquareTerminal,
   Table2,
@@ -28,7 +29,23 @@ import { ENGINE_CODE, ENGINE_LABEL } from "@/features/connections/options";
 import { tableKey, useTabs, type Tab } from "@/features/tabs/store";
 import { cn } from "@/lib/utils";
 
-type TabBarProps = { connections: ConnectionConfig[] };
+/**
+ * The connection form, shown as a tab of its own while it is open: the open tabs and
+ * their Δ stay in view, and leaving it parks the draft instead of dropping it.
+ */
+export type FormTab = {
+  label: string;
+  /** typed but not saved */
+  edited: boolean;
+  shown: boolean;
+  onShow: () => void;
+  /** a regular tab was picked: the form steps aside */
+  onLeave: () => void;
+};
+
+type TabBarProps = { connections: ConnectionConfig[]; form?: FormTab | null };
+
+export const FORM_TAB_ID = "open-tab-connection-form";
 
 type TabParts = { connection: ConnectionConfig | null; title: string };
 
@@ -71,7 +88,7 @@ export function tabPanelId(tabId: string): string {
   return `open-tab-panel-${tabId}`;
 }
 
-export function TabBar({ connections }: TabBarProps) {
+export function TabBar({ connections, form = null }: TabBarProps) {
   const {
     tabs,
     activeId,
@@ -118,9 +135,32 @@ export function TabBar({ connections }: TabBarProps) {
     }
   }, [activeId, overflowing, activeStaged]);
 
+  /** with the form shown, no regular tab is the current one */
+  const away = form?.shown ?? false;
+
+  function select(id: string) {
+    activate(id);
+    if (away) {
+      form?.onLeave();
+    }
+  }
+
+  function focusForm() {
+    form?.onShow();
+    document.getElementById(FORM_TAB_ID)?.focus();
+  }
+
+  /** the form tab, when open, sits before the first tab in the arrow order */
   function focusTab(index: number) {
+    if (form && (index === -1 || index === tabs.length)) {
+      focusForm();
+      return;
+    }
+    if (tabs.length === 0) {
+      return;
+    }
     const tab = tabs[(index + tabs.length) % tabs.length];
-    activate(tab.id);
+    select(tab.id);
     document.getElementById(tabElementId(tab.id))?.focus();
   }
 
@@ -159,12 +199,53 @@ export function TabBar({ connections }: TabBarProps) {
           clippedStart && "[mask-image:linear-gradient(to_right,transparent,black_32px)]"
         )}
       >
+        {form && (
+          <div
+            role="presentation"
+            className={cn(
+              "flex shrink-0 items-center border-r text-sm",
+              form.shown
+                ? "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
+                : "text-muted-foreground hover:bg-background hover:text-foreground"
+            )}
+          >
+            <button
+              type="button"
+              role="tab"
+              id={FORM_TAB_ID}
+              // spelled out: the label and the "rascunho" mark would read run together
+              aria-label={form.edited ? `${form.label} · rascunho` : form.label}
+              aria-selected={form.shown}
+              tabIndex={form.shown ? 0 : -1}
+              onClick={form.onShow}
+              onKeyDown={event => {
+                if (event.key === "ArrowRight" || event.key === "End") {
+                  event.preventDefault();
+                  focusTab(event.key === "End" ? tabs.length - 1 : 0);
+                } else if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  focusTab(tabs.length - 1);
+                }
+              }}
+              className="flex max-w-60 min-w-0 items-center gap-1.5 py-1.5 pr-3 pl-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            >
+              <Plug className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{form.label}</span>
+              {/* the "retido" dotted outline: held, not saved */}
+              {form.edited && (
+                <span className="h-[18px] shrink-0 border border-dotted border-foreground px-1 legend leading-4">
+                  rascunho
+                </span>
+              )}
+            </button>
+          </div>
+        )}
         {tabs.map((tab, index) => {
           const label = tabLabel(tab, connections);
           const { connection, title } = tabParts(tab, connections);
           const Icon = ICON[tab.kind];
           const engine = connection?.engine ?? null;
-          const isActive = tab.id === activeId;
+          const isActive = !away && tab.id === activeId;
           const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
           const isProd = connection?.environment === "prod";
           // spelled out: the visible parts are separate spans that would read run together
@@ -214,7 +295,7 @@ export function TabBar({ connections }: TabBarProps) {
                     aria-controls={tabPanelId(tab.id)}
                     aria-keyshortcuts="Delete"
                     tabIndex={isActive ? 0 : -1}
-                    onClick={() => activate(tab.id)}
+                    onClick={() => select(tab.id)}
                     onKeyDown={event => handleKeyDown(event, index, tab.id)}
                     onAuxClick={event => event.button === 1 && requestClose(tab.id)}
                     className={cn(
@@ -312,13 +393,13 @@ export function TabBar({ connections }: TabBarProps) {
             {tabs.map(tab => {
               const { connection, title } = tabParts(tab, connections);
               const Icon = ICON[tab.kind];
-              const isActive = tab.id === activeId;
+              const isActive = !away && tab.id === activeId;
               const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
               return (
                 // the same marks as the strip: blue rule where you are, PROD, Δ
                 <DropdownMenuItem
                   key={tab.id}
-                  onSelect={() => activate(tab.id)}
+                  onSelect={() => select(tab.id)}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(isActive && "font-semibold shadow-[inset_3px_0_0_var(--select)]")}
                 >

@@ -267,6 +267,13 @@ function TableData({
           It sizes by its own width (the sidebar takes 240–288px): the hint goes first, then the
           labels; Descartar and Salvar never shrink */}
       <div className="@container border-t bg-muted">
+        {dirty && (
+          // the one fact while edits are staged gets its own line, read whole at any width:
+          // the disabled pager, Aplicar and the sort headers point here for their reason
+          <p id={lockedId} className="border-b px-3 py-1 text-xs text-foreground">
+            Salve ou descarte as alterações para paginar, filtrar ou ordenar.
+          </p>
+        )}
         <div className="flex items-center gap-3 px-3 py-1.5 text-sm">
           <div className="flex shrink-0 items-center gap-1">
             <Button
@@ -296,26 +303,8 @@ function TableData({
               <ChevronRight />
             </Button>
           </div>
-          {dirty ? (
-            // the disabled pager, Aplicar and the sort headers point here for their reason
-            <span
-              id={lockedId}
-              title="Salve ou descarte as alterações para paginar, filtrar ou ordenar"
-              className="min-w-0 flex-1 truncate text-xs text-foreground"
-            >
-              <span aria-hidden className="@min-[60rem]:hidden">
-                Salve ou descarte para paginar
-              </span>
-              <span aria-hidden className="hidden @min-[60rem]:inline">
-                Salve ou descarte para paginar, filtrar ou ordenar
-              </span>
-              {/* read whole whatever the width */}
-              <span className="sr-only">
-                Salve ou descarte as alterações para paginar, filtrar ou ordenar
-              </span>
-            </span>
-          ) : (
-            browse.isFetching && <span className="text-xs text-muted-foreground">atualizando…</span>
+          {!dirty && browse.isFetching && (
+            <span className="text-xs text-muted-foreground">atualizando…</span>
           )}
           {batch && (
             <DetailToggle open={detailOpen} onToggle={() => setDetailOpen(prev => !prev)} />
@@ -343,9 +332,9 @@ function TableData({
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {edit.canEdit ? (
                 <>
-                  {/* with edits staged, the room goes to why paging is locked; the short form
+                  {/* gone while edits are staged or the saved notice speaks; the short form
                       keeps the hint in the 960px window with the sidebar open */}
-                  {!dirty && (
+                  {!dirty && !edit.notice && (
                     <span className="hidden text-xs text-muted-foreground @min-[40rem]:inline">
                       <span className="@min-[56rem]:hidden">Enter edita a célula</span>
                       <span className="hidden @min-[56rem]:inline">

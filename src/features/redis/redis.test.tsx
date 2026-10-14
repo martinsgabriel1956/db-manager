@@ -321,6 +321,8 @@ test("the console runs commands, prints errors, confirms and recalls history", a
   const user = await openDb0();
   await user.click(screen.getByRole("tab", { name: "Console" }));
   const input = screen.getByLabelText("Comando Redis");
+  // picking Console lands on its prompt: typing goes straight there
+  expect(input).toHaveFocus();
   const log = screen.getByRole("log", { name: "Saída do console" });
 
   await user.type(input, "GET user:2{Enter}");

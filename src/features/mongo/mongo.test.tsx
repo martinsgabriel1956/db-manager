@@ -110,7 +110,7 @@ test("editing replaces the document by _id with the edited Extended JSON", async
   const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
   const user = await openCustomers();
 
-  await user.click(screen.getAllByRole("button", { name: "Editar documento" })[0]);
+  await user.click(screen.getAllByRole("button", { name: /^Editar documento/ })[0]);
   const dialog = screen.getByRole("dialog");
   const view = editorIn(dialog);
   const text = view.state.doc.toString();
@@ -155,7 +155,7 @@ test("backend errors stay in the editor so the edit is not lost", async () => {
   });
   const user = await openCustomers();
 
-  await user.click(screen.getAllByRole("button", { name: "Editar documento" })[0]);
+  await user.click(screen.getAllByRole("button", { name: /^Editar documento/ })[0]);
   await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Salvar" }));
 
   expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(
@@ -180,7 +180,12 @@ test("delete asks first; on prod the statement is confirmed", async () => {
   });
   const user = await openCustomers(prodMongo);
 
-  await user.click(screen.getAllByRole("button", { name: "Excluir documento" })[1]);
+  // each card's actions are told apart by its _id, as the tree shows it
+  await user.click(
+    screen.getByRole("button", {
+      name: 'Excluir documento _id ObjectId("65a1b2c3d4e5f60718293a4c")'
+    })
+  );
   expect(
     screen.getByText('deleteOne({"_id": {"$oid":"65a1b2c3d4e5f60718293a4c"}})')
   ).toBeInTheDocument();
@@ -203,7 +208,7 @@ test("read-only connections cannot write documents", async () => {
 
   expect(screen.getByText("Somente leitura")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Novo documento" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Editar documento" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Editar documento/ })).not.toBeInTheDocument();
 });
 
 test("aggregations run, confirm $out and can be cancelled", async () => {

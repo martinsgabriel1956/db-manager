@@ -60,12 +60,12 @@ test("editing a cell stages it and save sends an update keyed by the primary key
   expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
   // and they say why
   expect(screen.getByRole("button", { name: "Aplicar" })).toHaveAccessibleDescription(
-    "Salve ou descarte as alterações para paginar, filtrar ou ordenar"
+    "Salve ou descarte as alterações para paginar, filtrar ou ordenar."
   );
   const sortId = screen.getByRole("button", { name: /^id/ });
   expect(sortId).toHaveAttribute("aria-disabled", "true");
   expect(sortId).toHaveAccessibleDescription(
-    "Salve ou descarte as alterações para paginar, filtrar ou ordenar"
+    "Salve ou descarte as alterações para paginar, filtrar ou ordenar."
   );
 
   await user.click(screen.getByRole("button", { name: "Salvar" }));

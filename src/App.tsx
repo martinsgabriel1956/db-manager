@@ -67,7 +67,10 @@ export function App() {
   } = useTabs();
   const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
   const setExpanded = useExplorer(state => state.setExpanded);
+  // the open connection form: shown, or parked behind the tabs with its draft intact
   const [form, setForm] = useState<FormState | null>(null);
+  const [formShown, setFormShown] = useState(false);
+  const [formEdited, setFormEdited] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -91,7 +94,10 @@ export function App() {
   const list = connections.data ?? [];
   const activeTab = tabs.find(tab => tab.id === activeId) ?? null;
   const tabConnectionId = activeTab && activeTab.kind !== "history" ? activeTab.connectionId : null;
-  const activeConnectionId = form ? form.connectionId : tabConnectionId;
+  const formConnection = list.find(connection => connection.id === form?.connectionId) ?? null;
+  const formLabel =
+    form?.connectionId === null ? "Nova conexão" : `Editar ${formConnection?.name ?? "conexão"}`;
+  const activeConnectionId = form && formShown ? form.connectionId : tabConnectionId;
   const active = list.find(connection => connection.id === activeConnectionId) ?? null;
   const isProd = active?.environment === "prod";
   const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
@@ -112,13 +118,18 @@ export function App() {
         return;
       }
       const key = event.key.toLowerCase();
-      if (key === "tab" && !form && tabs.length > 1) {
+      if (key === "tab" && formShown && tabs.length > 0) {
+        // from the form back to the tabs, the draft parked in its own tab
+        event.preventDefault();
+        showTabs();
+        requestAnimationFrame(focusActiveTab);
+      } else if (key === "tab" && !formShown && tabs.length > 1) {
         event.preventDefault();
         const index = tabs.findIndex(tab => tab.id === activeId);
         const next = tabs[(index + (event.shiftKey ? -1 : 1) + tabs.length) % tabs.length];
         activate(next.id);
         focusTabSoon(next.id);
-      } else if (key === "t" && event.shiftKey && !form) {
+      } else if (key === "t" && event.shiftKey && !formShown) {
         // the tab closed last, editor text included (also in the tab's right-click menu)
         event.preventDefault();
         if (reopenClosed()) {
@@ -141,7 +152,17 @@ export function App() {
         event.preventDefault();
         showTabs();
         openEditor(editorConnectionId);
-      } else if (key === "w" && !form && activeId) {
+      } else if (key === "w" && formShown) {
+        // the form's tab closes like Cancelar: a typed draft is never dropped without asking
+        event.preventDefault();
+        if (formEdited) {
+          setNotice(
+            "O rascunho tem alterações não salvas: Cancelar pede confirmação antes de descartar."
+          );
+        } else {
+          closeForm();
+        }
+      } else if (key === "w" && activeId) {
         event.preventDefault();
         requestClose(activeId);
       }
@@ -149,7 +170,8 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    form,
+    formShown,
+    formEdited,
     tabs,
     activeId,
     requestClose,
@@ -167,9 +189,33 @@ export function App() {
     }
   }
 
+  /** Back to the tabs; an open form is parked in its tab, not dropped. */
   function showTabs() {
-    setForm(null);
+    setFormShown(false);
     setNotice(null);
+  }
+
+  function closeForm() {
+    setForm(null);
+    setFormShown(false);
+    setFormEdited(false);
+  }
+
+  function openForm(connectionId: string | null) {
+    setNotice(null);
+    if (form && formEdited && form.connectionId !== connectionId) {
+      // one draft at a time: the one typed into comes back instead of being replaced
+      setFormShown(true);
+      setNotice(
+        `${formLabel} tem um rascunho não salvo: salve ou cancele antes de abrir outro formulário.`
+      );
+      return;
+    }
+    if (form?.connectionId !== connectionId) {
+      setFormEdited(false);
+    }
+    setForm({ connectionId });
+    setFormShown(true);
   }
 
   function openInEditor(connectionId: string, sql: string) {
@@ -183,16 +229,14 @@ export function App() {
   }
 
   function createConnection() {
-    setNotice(null);
-    setForm({ connectionId: null });
+    openForm(null);
   }
 
   function openFromPalette(target: PaletteTarget) {
     if (target.kind === "newConnection") {
       createConnection();
     } else if (target.kind === "editConnection") {
-      setNotice(null);
-      setForm({ connectionId: target.connectionId });
+      openForm(target.connectionId);
     } else if (target.kind === "legend") {
       setLegendOpen(true);
     } else if (target.kind === "connect") {
@@ -342,13 +386,10 @@ export function App() {
               {connections.data && (
                 <ConnectionTree
                   connections={connections.data}
-                  editingId={form?.connectionId ?? null}
-                  activeTable={!form && activeTab?.kind === "table" ? activeTab : null}
-                  activeRedis={!form && activeTab?.kind === "redis" ? activeTab : null}
-                  onEdit={connectionId => {
-                    setNotice(null);
-                    setForm({ connectionId });
-                  }}
+                  editingId={formShown ? (form?.connectionId ?? null) : null}
+                  activeTable={!formShown && activeTab?.kind === "table" ? activeTab : null}
+                  activeRedis={!formShown && activeTab?.kind === "redis" ? activeTab : null}
+                  onEdit={openForm}
                   onOpenTable={target => {
                     showTabs();
                     openTable(target);
@@ -408,6 +449,21 @@ export function App() {
         </aside>
 
         <main id="workspace" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
+          {/* the tabs stay in view over the form: their Δ and production marks never vanish */}
+          {(tabs.length > 0 || form) && (
+            <TabBar
+              connections={list}
+              form={
+                form && {
+                  label: formLabel,
+                  edited: formEdited,
+                  shown: formShown,
+                  onShow: () => setFormShown(true),
+                  onLeave: showTabs
+                }
+              }
+            />
+          )}
           {notice && (
             <p
               role="status"
@@ -416,12 +472,14 @@ export function App() {
               {notice}
             </p>
           )}
-          {form && (form.connectionId === null || active) && (
-            <div className="overflow-auto p-6">
+          {form && (form.connectionId === null || formConnection) && (
+            // parked, not unmounted: what was typed survives a trip to the tabs
+            <div hidden={!formShown} className="overflow-auto p-6">
               <ConnectionForm
                 key={form.connectionId ?? "new"}
-                connection={active}
-                onCancel={showTabs}
+                connection={formConnection}
+                onCancel={closeForm}
+                onEditedChange={setFormEdited}
                 onSaved={(id, keychainWarning) => {
                   dropConnectionCache(id);
                   setForm({ connectionId: id });
@@ -434,7 +492,7 @@ export function App() {
                   if (form.connectionId) {
                     dropConnectionCache(form.connectionId);
                   }
-                  setForm(null);
+                  closeForm();
                   setNotice(
                     keychainWarning &&
                       `Conexão excluída, mas a senha ficou no keychain: ${keychainWarning}`
@@ -444,8 +502,7 @@ export function App() {
             </div>
           )}
           {/* the tabs stay mounted under the form: opening it must not drop staged edits */}
-          <div hidden={form !== null} className="flex min-h-0 flex-1 flex-col">
-            {tabs.length > 0 && <TabBar connections={list} />}
+          <div hidden={formShown} className="flex min-h-0 flex-1 flex-col">
             {tabs.length === 0 && (
               <EmptyWorkspace
                 hasConnections={list.length > 0}

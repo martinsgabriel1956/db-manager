@@ -70,3 +70,29 @@ test("a wide result renders only the columns in view, numbered for assistive tec
   expect(selected).toHaveAttribute("aria-colindex", "251");
   expect(grid.getAttribute("aria-activedescendant")).toBe(selected?.id);
 });
+
+test("the grid tells what its keys do and says when the value panel opens", () => {
+  let open = false;
+  render(
+    <ResultGrid
+      columns={[{ name: "id", typeName: "int4", editable: false }]}
+      rows={[[{ t: "int", v: "1" }]]}
+      hasMore={false}
+      isLoadingMore={false}
+      selected={{ row: 0, column: 0 }}
+      onSelect={() => undefined}
+      detailOpen={open}
+      onToggleDetail={() => {
+        open = !open;
+      }}
+    />
+  );
+  const grid = screen.getByRole("grid");
+  expect(grid).toHaveAccessibleDescription(
+    "Espaço mostra o valor inteiro; Alt+← → ajusta a largura da coluna."
+  );
+
+  fireEvent.keyDown(grid, { key: " " });
+  expect(open).toBe(true);
+  expect(screen.getByText("Painel do valor aberto ao lado da grade")).toBeInTheDocument();
+});
