@@ -27,6 +27,18 @@ cargo llvm-cov --ignore-filename-regex '(main|lib)\.rs$' --fail-under-lines 70
 
 `src/bindings.ts` é gerado pelo `tauri-specta` a partir dos tipos Rust. Não edite à mão; o CI falha se estiver desatualizado.
 
+## Release
+
+Uma tag `v*` dispara o workflow [Release](.github/workflows/release.yml), que gera o `.deb` e o AppImage e publica no GitHub Releases. A versão da tag precisa bater com a de `package.json` e `src-tauri/tauri.conf.json`; senão o workflow falha antes de compilar.
+
+```bash
+# depois de subir a versão nos dois arquivos e fazer o merge na main
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Local, sem publicar: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
+
 ## Bancos de demonstração
 
 ```bash
