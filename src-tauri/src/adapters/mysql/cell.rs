@@ -89,9 +89,50 @@ pub fn to_cell(kind: Kind, type_name: &str, raw: Option<&[u8]>) -> Cell {
     }
 }
 
+/// Values a column accepts, from information_schema's COLUMN_TYPE:
+/// `tinyint(1)` (BOOLEAN) takes 1/0, `enum('a','it''s')` its labels.
+pub fn options(column_type: &str) -> Vec<String> {
+    if column_type.eq_ignore_ascii_case("tinyint(1)") {
+        return vec!["1".into(), "0".into()];
+    }
+    let Some(list) = column_type
+        .strip_prefix("enum(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    else {
+        return Vec::new();
+    };
+    let mut labels = Vec::new();
+    let mut chars = list.chars().peekable();
+    while chars.next() == Some('\'') {
+        let mut label = String::new();
+        while let Some(c) = chars.next() {
+            if c == '\'' {
+                // '' is a quote inside the label
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            label.push(c);
+        }
+        labels.push(label);
+        chars.next(); // the comma
+    }
+    labels
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn options_from_column_type() {
+        assert_eq!(options("tinyint(1)"), ["1", "0"]);
+        assert_eq!(options("enum('a','it''s','x,y')"), ["a", "it's", "x,y"]);
+        assert!(options("varchar(20)").is_empty());
+        assert!(options("tinyint(4)").is_empty());
+    }
 
     #[test]
     fn classifies_type_names() {

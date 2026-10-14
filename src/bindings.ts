@@ -122,6 +122,8 @@ export type ColumnInfo = {
 	nullable: boolean,
 	default: string | null,
 	isPrimaryKey: boolean,
+	/**  values the column accepts (enum labels, boolean literals); empty = free text */
+	options: string[],
 };
 
 /**  New value typed by the user; `None` writes NULL. */

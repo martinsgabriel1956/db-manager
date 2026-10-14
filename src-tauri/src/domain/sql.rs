@@ -34,6 +34,8 @@ pub struct ColumnInfo {
     pub nullable: bool,
     pub default: Option<String>,
     pub is_primary_key: bool,
+    /// values the column accepts (enum labels, boolean literals); empty = free text
+    pub options: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]

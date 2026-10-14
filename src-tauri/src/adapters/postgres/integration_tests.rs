@@ -127,10 +127,20 @@ async fn custom_types_resolve_instead_of_crashing() {
         &db,
         r"CREATE TYPE mood AS ENUM ('ok', 'sad');
           CREATE DOMAIN positive AS int CHECK (VALUE > 0);
-          CREATE EXTENSION IF NOT EXISTS citext",
+          CREATE EXTENSION IF NOT EXISTS citext;
+          CREATE TABLE feelings (id int PRIMARY KEY, mood mood, fine boolean)",
     )
     .await
     .unwrap();
+
+    // the grid offers the values of enums and booleans
+    let structure = db.table_structure("public", "feelings").await.unwrap();
+    let options: Vec<_> = structure
+        .columns
+        .iter()
+        .map(|c| c.options.clone())
+        .collect();
+    assert_eq!(options, [vec![], vec!["ok", "sad"], vec!["true", "false"]]);
 
     let script = run(
         &db,

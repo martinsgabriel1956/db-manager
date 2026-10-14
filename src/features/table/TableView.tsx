@@ -141,7 +141,18 @@ function TableData({
   const batch = browse.data;
   const primaryKey =
     structure.data?.columns.filter(column => column.isPrimaryKey).map(column => column.name) ?? [];
-  const edit = useTableEditing({ connectionId, schema, table, readOnly, batch, primaryKey });
+  const options = Object.fromEntries(
+    structure.data?.columns.map(column => [column.name, column.options]) ?? []
+  );
+  const edit = useTableEditing({
+    connectionId,
+    schema,
+    table,
+    readOnly,
+    batch,
+    primaryKey,
+    options
+  });
   const dirty = edit.count > 0;
   const setPending = useTabs(state => state.setPending);
   const connections = useConnections();

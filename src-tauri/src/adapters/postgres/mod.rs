@@ -23,6 +23,8 @@ use crate::domain::{
 const MAX_POOL_CONNECTIONS: u32 = 5;
 const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// name, type, nullable, default, primary key, options
+type ColumnRow = (String, String, bool, Option<String>, bool, Vec<String>);
 /// name, definition, columns, referenced schema, table and columns
 type ForeignKeyRow = (String, String, Vec<String>, String, String, Vec<String>);
 
@@ -273,9 +275,13 @@ impl PostgresAdapter {
         schema: &str,
         table: &str,
     ) -> Result<TableStructure, AppError> {
-        let columns = sqlx::query_as::<_, (String, String, bool, Option<String>, bool)>(
+        let columns = sqlx::query_as::<_, ColumnRow>(
             r"SELECT a.attname::text, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
-                     pg_get_expr(d.adbin, d.adrelid), COALESCE(a.attnum = ANY(i.indkey::int2[]), false)
+                     pg_get_expr(d.adbin, d.adrelid), COALESCE(a.attnum = ANY(i.indkey::int2[]), false),
+                     CASE WHEN a.atttypid = 'boolean'::regtype THEN ARRAY['true', 'false']
+                          ELSE ARRAY(SELECT e.enumlabel::text FROM pg_enum e
+                                     WHERE e.enumtypid = a.atttypid ORDER BY e.enumsortorder)
+                     END
               FROM pg_attribute a
               JOIN pg_class c ON c.oid = a.attrelid
               JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -324,12 +330,13 @@ impl PostgresAdapter {
             columns: columns
                 .into_iter()
                 .map(
-                    |(name, data_type, nullable, default, is_primary_key)| ColumnInfo {
+                    |(name, data_type, nullable, default, is_primary_key, options)| ColumnInfo {
                         name,
                         data_type,
                         nullable,
                         default,
                         is_primary_key,
+                        options,
                     },
                 )
                 .collect(),

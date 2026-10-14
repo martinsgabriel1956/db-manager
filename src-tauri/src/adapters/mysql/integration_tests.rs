@@ -146,6 +146,10 @@ async fn values_types_and_introspection() {
     assert_eq!(structure.columns[0].data_type, "bigint unsigned");
     assert!(structure.columns[0].is_primary_key && !structure.columns[0].nullable);
     assert!(structure.columns[1].nullable);
+    // active BOOLEAN, mood ENUM: the grid offers their values
+    assert_eq!(structure.columns[5].options, ["1", "0"]);
+    assert_eq!(structure.columns[9].options, ["ok", "sad"]);
+    assert!(structure.columns[2].options.is_empty());
     let definitions: Vec<_> = structure
         .indexes
         .iter()

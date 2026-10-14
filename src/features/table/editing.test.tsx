@@ -258,6 +258,37 @@ test("read-only connections cannot edit", async () => {
   ).toBeInTheDocument();
 });
 
+test("a column with a fixed set of values is edited by picking one", async () => {
+  const withOptions: TableStructure = {
+    ...usersStructure,
+    columns: usersStructure.columns.map(column =>
+      column.name === "profile" ? { ...column, options: ["true", "false"] } : column
+    )
+  };
+  const calls = fakeBackend([devPostgres], { table_structure: () => withOptions });
+  const user = await openUsers(devPostgres);
+
+  await user.dblClick(cell("NULL"));
+  const select = screen.getByRole("combobox", { name: "Editar profile" });
+  expect(
+    within(select)
+      .getAllByRole("option")
+      .map(option => option.textContent)
+  ).toEqual(["NULL", "true", "false"]);
+  await user.selectOptions(select, "false");
+  await user.keyboard("{Enter}");
+  await user.click(screen.getByRole("button", { name: "Salvar (1 alteração pendente)" }));
+
+  await waitFor(() => expect(applied(calls)).toHaveLength(1));
+  expect(applied(calls)[0].changes.changes).toEqual([
+    {
+      kind: "update",
+      key: [{ column: "id", value: { t: "int", v: "2" } }],
+      values: [{ column: "profile", value: "false" }]
+    }
+  ]);
+});
+
 test("tables without a primary key are read-only", async () => {
   const noKey: TableStructure = {
     ...usersStructure,

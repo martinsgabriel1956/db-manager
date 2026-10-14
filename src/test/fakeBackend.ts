@@ -121,16 +121,44 @@ export const diagram: DiagramTable[] = [
   {
     name: "teams",
     columns: [
-      { name: "id", dataType: "integer", nullable: false, default: null, isPrimaryKey: true },
-      { name: "name", dataType: "text", nullable: true, default: null, isPrimaryKey: false }
+      {
+        name: "id",
+        dataType: "integer",
+        nullable: false,
+        default: null,
+        isPrimaryKey: true,
+        options: []
+      },
+      {
+        name: "name",
+        dataType: "text",
+        nullable: true,
+        default: null,
+        isPrimaryKey: false,
+        options: []
+      }
     ],
     foreignKeys: []
   },
   {
     name: "users",
     columns: [
-      { name: "id", dataType: "integer", nullable: false, default: null, isPrimaryKey: true },
-      { name: "team_id", dataType: "integer", nullable: true, default: null, isPrimaryKey: false }
+      {
+        name: "id",
+        dataType: "integer",
+        nullable: false,
+        default: null,
+        isPrimaryKey: true,
+        options: []
+      },
+      {
+        name: "team_id",
+        dataType: "integer",
+        nullable: true,
+        default: null,
+        isPrimaryKey: false,
+        options: []
+      }
     ],
     foreignKeys: [
       {
@@ -166,8 +194,22 @@ export const schemas: SchemaInfo[] = [
 
 export const usersStructure: TableStructure = {
   columns: [
-    { name: "id", dataType: "integer", nullable: false, default: null, isPrimaryKey: true },
-    { name: "profile", dataType: "jsonb", nullable: true, default: null, isPrimaryKey: false }
+    {
+      name: "id",
+      dataType: "integer",
+      nullable: false,
+      default: null,
+      isPrimaryKey: true,
+      options: []
+    },
+    {
+      name: "profile",
+      dataType: "jsonb",
+      nullable: true,
+      default: null,
+      isPrimaryKey: false,
+      options: []
+    }
   ],
   indexes: [{ name: "users_pkey", definition: "CREATE UNIQUE INDEX users_pkey ON users (id)" }],
   foreignKeys: []

@@ -14,6 +14,8 @@ export type GridEditing = {
   textFor: (row: number, column: number) => string | null;
   /** null writes NULL */
   onCommit: (row: number, column: number, value: string | null) => void;
+  /** values the column accepts (enum, boolean): edited with a list instead of free text */
+  optionsFor?: (column: number) => string[];
   rowStatus: (row: number) => "new" | "deleted" | null;
   isEdited: (row: number, column: number) => boolean;
   /** just saved: the hatch develops away */
@@ -561,13 +563,11 @@ export function ResultGrid({
                         )}
                       >
                         {isEditing ? (
-                          <input
-                            autoFocus
+                          <CellInput
+                            options={editing?.optionsFor?.(columnIndex) ?? []}
                             aria-label={`Editar ${columns[columnIndex]?.name}`}
-                            className="h-full w-full bg-background font-mono outline-none placeholder:text-muted-foreground placeholder:italic"
-                            value={editor.value ?? ""}
-                            placeholder={editor.value === null ? "NULL" : undefined}
-                            onChange={event => setEditor({ ...editor, value: event.target.value })}
+                            value={editor.value}
+                            onChange={value => setEditor({ ...editor, value })}
                             onBlur={commit}
                             onKeyDown={event => {
                               // handing focus back to the grid blurs the input, which commits
@@ -611,5 +611,52 @@ export function ResultGrid({
         )}
       </div>
     </div>
+  );
+}
+
+type CellInputProps = {
+  options: string[];
+  "aria-label": string;
+  value: string | null;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+};
+
+/** Free text, or the column's values to pick from when it has a fixed set. */
+function CellInput({ options, value, onChange, ...rest }: CellInputProps) {
+  const className = "h-full w-full bg-background font-mono outline-none";
+  if (options.length > 0) {
+    return (
+      <select
+        autoFocus
+        className={cn(className, value === null && "text-muted-foreground italic")}
+        value={value ?? ""}
+        onChange={event => onChange(event.target.value)}
+        {...rest}
+      >
+        {/* NULL is shown, not offered: Ctrl+Shift+N sets it */}
+        {value === null && (
+          <option value="" disabled>
+            NULL
+          </option>
+        )}
+        {options.map(option => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      className={cn(className, "placeholder:text-muted-foreground placeholder:italic")}
+      value={value ?? ""}
+      placeholder={value === null ? "NULL" : undefined}
+      onChange={event => onChange(event.target.value)}
+      {...rest}
+    />
   );
 }

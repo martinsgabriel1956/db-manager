@@ -246,6 +246,12 @@ impl SqliteAdapter {
                 .into_iter()
                 .map(|(name, data_type, not_null, default, pk)| ColumnInfo {
                     name,
+                    // no BOOLEAN storage class: a column declared so holds 1 and 0
+                    options: if matches!(data_type.to_lowercase().as_str(), "boolean" | "bool") {
+                        vec!["1".into(), "0".into()]
+                    } else {
+                        Vec::new()
+                    },
                     data_type,
                     nullable: not_null == 0 && pk == 0,
                     default,
