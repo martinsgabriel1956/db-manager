@@ -281,13 +281,10 @@ async fn cancel_timeout_and_abandoned_cursor_stop_the_query_server_side() {
     let err = run(&short, "SELECT pg_sleep(30)").await.err().unwrap();
     assert!(matches!(err, AppError::Timeout(_)), "{err}");
     assert!(started.elapsed() < Duration::from_secs(10));
-    let still_sleeping: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM pg_stat_activity WHERE query = 'SELECT pg_sleep(30)' AND state = 'active'",
-    )
-    .fetch_one(&db.pool)
-    .await
-    .unwrap();
-    assert_eq!(still_sleeping, 0);
+    assert_eq!(
+        active_after_cancel(&db, "query = 'SELECT pg_sleep(30)'").await,
+        0
+    );
 
     // dropping a cursor mid-stream cancels instead of draining millions of rows
     let mut pid = 0_i64;
@@ -301,25 +298,28 @@ async fn cancel_timeout_and_abandoned_cursor_stop_the_query_server_side() {
         .unwrap();
     assert!(huge.cursor.is_some());
     drop(huge);
-    let mut active = true;
+    assert_eq!(
+        active_after_cancel(&db, &format!("pid = {pid}")).await,
+        0,
+        "backend {pid} still running after cursor was dropped"
+    );
+}
+
+/// The backend handles a cancel signal on its own time: poll for up to 5s.
+async fn active_after_cancel(db: &PostgresAdapter, filter: &str) -> i64 {
+    let sql = format!("SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND {filter}");
+    let mut active = 0;
     for _ in 0..50 {
-        let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM pg_stat_activity WHERE pid = $1")
-                .bind(pid)
-                .fetch_optional(&db.pool)
-                .await
-                .unwrap()
-                .flatten();
-        if state.as_deref() != Some("active") {
-            active = false;
+        active = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        if active == 0 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert!(
-        !active,
-        "backend {pid} still running after cursor was dropped"
-    );
+    active
 }
 
 #[tokio::test]
