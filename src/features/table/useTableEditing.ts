@@ -126,7 +126,9 @@ export function useTableEditing({
   }
 
   const editing: GridEditing = {
-    canEdit: (row, column) => canEdit && columns[column].editable && !staged.deletes.includes(row),
+    // a selection can outlive its row (a new row dropped while selected): nothing to edit there
+    canEdit: (row, column) =>
+      canEdit && row < rows.length && columns[column].editable && !staged.deletes.includes(row),
     textFor: (row, column) => {
       const name = columns[column].name;
       const inserted = newRowAt(row);
