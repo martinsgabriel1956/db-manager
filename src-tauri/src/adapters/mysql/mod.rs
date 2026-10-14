@@ -307,6 +307,7 @@ impl MysqlAdapter {
                 .into_iter()
                 .map(|(name, data_type, nullable, default, primary)| ColumnInfo {
                     name,
+                    options: cell::options(&data_type),
                     data_type,
                     nullable: nullable != 0,
                     default,

@@ -25,6 +25,8 @@ type Params = {
   readOnly: boolean;
   batch: RowBatch | undefined;
   primaryKey: string[];
+  /** per column name: the values it accepts (enum, boolean) */
+  options: Record<string, string[]>;
 };
 
 /**
@@ -37,7 +39,8 @@ export function useTableEditing({
   table,
   readOnly,
   batch,
-  primaryKey
+  primaryKey,
+  options
 }: Params) {
   const [staged, setStaged] = useState<Staged>(EMPTY_STAGED);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -125,6 +128,7 @@ export function useTableEditing({
       return inserted ? "" : editText(pageRows[row][column]);
     },
     onCommit: (row, column, value) => setValue(row, column, value),
+    optionsFor: column => options[columns[column].name] ?? [],
     rowStatus: row => (newRowAt(row) ? "new" : staged.deletes.includes(row) ? "deleted" : null),
     isEdited: (row, column) => {
       const name = columns[column].name;
