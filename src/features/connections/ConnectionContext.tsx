@@ -14,10 +14,11 @@ export function ConnectionContext({ connectionId, className }: ConnectionContext
   if (!connection) {
     return null;
   }
+  // a span, not a <p>: it also sits inside the receipt's status line, itself a paragraph
   return (
-    <p className={cn("flex min-w-0 items-center gap-1.5 text-xs", className)}>
+    <span className={cn("flex min-w-0 items-center gap-1.5 text-xs", className)}>
       <span className="min-w-0 truncate font-semibold">{connection.name}</span>
       <EnvTag environment={connection.environment} />
-    </p>
+    </span>
   );
 }

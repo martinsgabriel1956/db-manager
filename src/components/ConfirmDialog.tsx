@@ -76,7 +76,7 @@ export function ConfirmDialog({
           <div className="px-4 py-2.5">
             <dt className="legend text-muted-foreground">Ambiente</dt>
             <dd className="mt-1.5">
-              {connection ? <EnvTag environment={connection.environment} /> : "—"}
+              {connection ? <EnvTag environment={connection.environment} labelled /> : "—"}
             </dd>
           </div>
         </dl>

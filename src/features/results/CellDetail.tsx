@@ -186,14 +186,21 @@ function ValueEditor({ label, initial, indentJson, onCommit }: ValueEditorProps)
   }
 
   return (
-    <>
+    <div className="flex flex-1 flex-col gap-1.5 p-2">
+      {/* NULL is a marker, not text in the field: said above it, so the empty box reads as
+          "type to replace", never as a value on display */}
+      {draft === null && (
+        <p className="text-xs text-muted-foreground">
+          Gravado como <span className="font-mono italic">NULL</span>
+        </p>
+      )}
       <textarea
         aria-label={label}
         aria-describedby="value-editor-keys"
         aria-keyshortcuts="Control+Enter"
         spellCheck={false}
         value={draft ?? ""}
-        placeholder={draft === null ? "NULL" : undefined}
+        placeholder={draft === null ? "Digite para substituir NULL" : undefined}
         onChange={event => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={event => {
@@ -206,13 +213,13 @@ function ValueEditor({ label, initial, indentJson, onCommit }: ValueEditorProps)
             setDraft(start);
           }
         }}
-        className="flex-1 resize-none bg-background p-3 font-mono text-xs break-all outline-none placeholder:text-muted-foreground placeholder:italic focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+        // boxed like every other field: without the edge it reads as a display
+        className="min-h-24 flex-1 resize-none border border-input bg-background p-2.5 font-mono text-xs break-all outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:border-ring focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
       />
-      {/* without a box the field reads as a display: the keys say it is one to write in */}
-      <p id="value-editor-keys" className="border-t px-3 py-1.5 text-xs text-muted-foreground">
-        Editável · Ctrl+Enter ou sair do campo põe em stage · Esc descarta
+      <p id="value-editor-keys" className="text-xs text-muted-foreground">
+        Ctrl+Enter ou sair do campo deixa como alteração pendente · Esc desfaz o rascunho
       </p>
-    </>
+    </div>
   );
 }
 

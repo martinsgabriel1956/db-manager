@@ -127,11 +127,13 @@ test("the value panel edits long values and stages only what changed", async () 
   await user.click(cell("NULL"));
   await user.keyboard(" ");
   const editor = screen.getByRole("textbox", { name: "Valor de profile" });
-  expect(editor).toHaveAttribute("placeholder", "NULL");
+  expect(editor).toHaveAttribute("placeholder", "Digite para substituir NULL");
+  expect(screen.getByText(/^Gravado como/)).toHaveTextContent("Gravado como NULL");
   // leaving an untouched NULL stages nothing
   await user.click(editor);
   await user.tab();
-  expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/^\d+ alteraç(ão|ões) pendentes?$/)).not.toBeInTheDocument();
+  expect(cell("NULL")).not.toHaveAttribute("data-edited");
 
   await user.click(screen.getByRole("textbox", { name: "Valor de profile" }));
   await user.keyboard('{{"a": 1}');

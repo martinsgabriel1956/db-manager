@@ -140,11 +140,22 @@ test("filters add up as ANDed chips, each one removable, and reset the page", as
     ])
   );
 
+  // the applied value went to its chip: the next condition starts empty
+  expect(screen.queryByLabelText("Valor do filtro")).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "eq");
+  expect(screen.getByLabelText("Valor do filtro")).toHaveValue("");
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "isNull");
+
   await user.click(screen.getByRole("button", { name: "Remover filtro id >= 42" }));
   await waitFor(() =>
     expect(lastBrowse(calls).filters).toEqual([{ column: "profile", op: "isNull", value: null }])
   );
-  await user.click(screen.getByRole("button", { name: "Remover filtro profile IS NULL" }));
+  // one condition left: nothing to clear all at once
+  expect(screen.queryByRole("button", { name: "Limpar tudo" })).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Coluna do filtro"), "id");
+  await user.selectOptions(screen.getByLabelText("Operador do filtro"), "isNotNull");
+  await user.click(screen.getByRole("button", { name: "Aplicar" }));
+  await user.click(await screen.findByRole("button", { name: "Limpar tudo" }));
   await waitFor(() => expect(lastBrowse(calls).filters).toEqual([]));
 });
 

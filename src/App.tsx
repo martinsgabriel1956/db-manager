@@ -319,7 +319,18 @@ export function App() {
           </span>
         </p>
       ) : (
-        <p className="flex h-7 shrink-0 items-center gap-3 border-b bg-muted px-4 text-xs text-muted-foreground">
+        <p
+          className={cn(
+            "flex h-7 shrink-0 items-center gap-3 border-b bg-muted px-4 text-xs",
+            // in use, the band speaks in ink; with nothing in use it steps back
+            active ? "text-foreground" : "text-muted-foreground",
+            // staging is a copy of production: half a safelight, the hatch its tag already wears
+            active?.environment === "staging" && "border-b-foreground pl-0"
+          )}
+        >
+          {active?.environment === "staging" && (
+            <span aria-hidden className="h-full w-8 shrink-0 border-r border-foreground hatch" />
+          )}
           {active ? (
             <>
               <EnvTag environment={active.environment} />
@@ -327,7 +338,9 @@ export function App() {
                 {active.name} ·{" "}
                 {active.readOnly
                   ? "somente leitura, imposta pelo banco"
-                  : "comandos destrutivos pedem confirmação; o resto vai direto ao banco"}
+                  : active.environment === "staging"
+                    ? "cópia de produção; comandos destrutivos pedem confirmação"
+                    : "comandos destrutivos pedem confirmação; o resto vai direto ao banco"}
               </span>
             </>
           ) : (

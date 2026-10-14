@@ -21,6 +21,8 @@ type BrowseToolbarProps = {
 
 type FilterChipProps = {
   label: string;
+  /** the whole condition on hover, should the chip ever be cut */
+  title: string;
   removeLabel: string;
   disabled: boolean;
   onRemove: () => void;
@@ -86,89 +88,117 @@ export function BrowseToolbar({
       ...active.filter(filter => filter.column !== draft.column || filter.op !== draft.op),
       draft
     ]);
+    // the applied value lives in its chip now: the next condition starts empty, not as "1" + "1, 2"
+    setValue("");
   }
 
+  // what scopes the rows, counted: two or more earn one way to clear them all
+  const scopes = active.length + (sort ? 1 : 0);
+
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2 border-b bg-muted px-3 py-2">
-      <span className="legend text-muted-foreground">Filtro</span>
-      <NativeSelect
-        aria-label="Coluna do filtro"
-        className="h-7 max-w-40"
-        value={selectedColumn}
-        onChange={event => setColumn(event.target.value)}
-      >
-        {columns.map(name => (
-          <option key={name} value={name}>
-            {name}
-          </option>
-        ))}
-      </NativeSelect>
-      <NativeSelect
-        aria-label="Operador do filtro"
-        // as wide as the chosen operator where the engine supports it ("=" needs no 115px)
-        className="h-7 [field-sizing:content]"
-        value={op}
-        onChange={event => setOp(event.target.value as FilterOp)}
-      >
-        {OPS.map(option => (
-          <option key={option} value={option}>
-            {OP_LABEL[option]}
-          </option>
-        ))}
-      </NativeSelect>
-      {needsValue(op) && (
-        <Input
-          aria-label="Valor do filtro"
-          className="h-7 w-44 min-w-0 shrink"
-          placeholder={PLACEHOLDER[op] ?? "valor"}
-          value={value}
-          onChange={event => setValue(event.target.value)}
-        />
-      )}
-      {/* inputs that no longer match the applied filter make Aplicar the next step */}
-      <Button
-        type="submit"
-        size="sm"
-        variant={unapplied ? "default" : "outline"}
-        disabled={!selectedColumn || disabled}
-        aria-describedby={disabled ? lockedBy : undefined}
-      >
-        Aplicar
-      </Button>
-      {/* filtration is the only magenta: the chips say exactly what scopes the rows */}
-      <div className="ml-auto flex min-w-0 items-center gap-1.5">
-        {active.map((filter, index) => (
-          <FilterChip
-            key={filterText(filter)}
-            // every condition is ANDed: the second chip on says so
-            label={index === 0 ? "Filtro" : "E"}
-            removeLabel={`Remover filtro ${filterText(filter)}`}
-            disabled={disabled}
-            onRemove={() => onChange(active.filter(other => other !== filter))}
-          >
-            {filterText(filter)}
-          </FilterChip>
-        ))}
-        {sort && (
-          <FilterChip
-            label="Ordenado"
-            removeLabel="Remover ordenação"
-            disabled={disabled}
-            onRemove={onClearSort}
-          >
-            {sort.column}
-            {sort.direction === "asc" ? (
-              <ArrowUp aria-hidden className="ml-0.5 inline size-3" />
-            ) : (
-              <ArrowDown aria-hidden className="ml-0.5 inline size-3" />
-            )}
-            <span className="sr-only">
-              {sort.direction === "asc" ? " crescente" : " decrescente"}
-            </span>
-          </FilterChip>
+    <div className="border-b bg-muted">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2 px-3 py-2">
+        <span className="legend text-muted-foreground">Filtro</span>
+        <NativeSelect
+          aria-label="Coluna do filtro"
+          className="h-7 max-w-40"
+          value={selectedColumn}
+          onChange={event => setColumn(event.target.value)}
+        >
+          {columns.map(name => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect
+          aria-label="Operador do filtro"
+          // as wide as the chosen operator where the engine supports it ("=" needs no 115px)
+          className="h-7 [field-sizing:content]"
+          value={op}
+          onChange={event => setOp(event.target.value as FilterOp)}
+        >
+          {OPS.map(option => (
+            <option key={option} value={option}>
+              {OP_LABEL[option]}
+            </option>
+          ))}
+        </NativeSelect>
+        {needsValue(op) && (
+          <Input
+            aria-label="Valor do filtro"
+            className="h-7 w-44 min-w-0 shrink"
+            placeholder={PLACEHOLDER[op] ?? "valor"}
+            value={value}
+            onChange={event => setValue(event.target.value)}
+          />
         )}
-      </div>
-    </form>
+        {/* inputs that no longer match the applied filter make Aplicar the next step */}
+        <Button
+          type="submit"
+          size="sm"
+          variant={unapplied ? "default" : "outline"}
+          disabled={!selectedColumn || disabled}
+          aria-describedby={disabled ? lockedBy : undefined}
+        >
+          Aplicar
+        </Button>
+      </form>
+      {/* filtration is the only magenta: the chips say exactly what scopes the rows, on a line
+          of their own that wraps, so no condition is ever cut to "FILTRO" at the minimum width */}
+      {scopes > 0 && (
+        <div className="-mt-1 flex flex-wrap items-center gap-1.5 px-3 pb-2">
+          {active.map((filter, index) => (
+            <FilterChip
+              key={filterText(filter)}
+              // every condition is ANDed: the second chip on says so
+              label={index === 0 ? "Filtro" : "E"}
+              title={filterText(filter)}
+              removeLabel={`Remover filtro ${filterText(filter)}`}
+              disabled={disabled}
+              onRemove={() => onChange(active.filter(other => other !== filter))}
+            >
+              {filterText(filter)}
+            </FilterChip>
+          ))}
+          {sort && (
+            <FilterChip
+              label="Ordenado"
+              title={`${sort.column} ${sort.direction === "asc" ? "crescente" : "decrescente"}`}
+              removeLabel="Remover ordenação"
+              disabled={disabled}
+              onRemove={onClearSort}
+            >
+              {sort.column}
+              {sort.direction === "asc" ? (
+                <ArrowUp aria-hidden className="ml-0.5 inline size-3" />
+              ) : (
+                <ArrowDown aria-hidden className="ml-0.5 inline size-3" />
+              )}
+              <span className="sr-only">
+                {sort.direction === "asc" ? " crescente" : " decrescente"}
+              </span>
+            </FilterChip>
+          )}
+          {scopes > 1 && (
+            <Button
+              type="button"
+              size="xs"
+              variant="link"
+              className="h-auto px-0"
+              disabled={disabled}
+              aria-describedby={disabled ? lockedBy : undefined}
+              onClick={() => {
+                onChange([]);
+                onClearSort();
+              }}
+            >
+              Limpar tudo
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -183,9 +213,12 @@ export function filterText(filter: Filter): string {
     : `${filter.column} ${op} ${filter.value ?? ""}`;
 }
 
-function FilterChip({ label, removeLabel, disabled, onRemove, children }: FilterChipProps) {
+function FilterChip({ label, title, removeLabel, disabled, onRemove, children }: FilterChipProps) {
   return (
-    <span className="inline-flex h-[18px] min-w-0 items-center gap-1 bg-filter pl-1.5 text-background">
+    <span
+      title={title}
+      className="inline-flex h-[18px] max-w-full min-w-0 items-center gap-1 bg-filter pl-1.5 text-background"
+    >
       <span className="legend">{label}</span>
       <span className="min-w-0 truncate font-mono text-[11px]">{children}</span>
       <button

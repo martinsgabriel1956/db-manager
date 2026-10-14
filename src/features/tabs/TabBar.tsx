@@ -250,13 +250,14 @@ export function TabBar({ connections, form = null }: TabBarProps) {
           }
         }}
         style={cutMask ? { maskImage: cutMask, WebkitMaskImage: cutMask } : undefined}
-        className="relative flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // the strip rests on a tab's edge, never on half a word ("· 1 PROD")
+        className="relative flex min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {form && (
           <div
             role="presentation"
             className={cn(
-              "flex shrink-0 items-center border-r text-sm",
+              "flex shrink-0 snap-start items-center border-r text-sm",
               form.shown
                 ? "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
                 : "text-muted-foreground hover:bg-background hover:text-foreground"
@@ -325,7 +326,7 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                 <div
                   role="presentation"
                   className={cn(
-                    "group flex shrink-0 items-center border-r text-sm",
+                    "group flex shrink-0 snap-start items-center border-r text-sm",
                     // the tab a right click acts on stays marked while its menu is open
                     !isActive &&
                       "data-[state=open]:bg-background data-[state=open]:text-foreground data-[state=open]:shadow-[inset_0_0_0_1px_var(--foreground)]",
@@ -367,7 +368,7 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     className={cn(
                       "flex min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                       // two names need the room of two: "Postgres prod · ER public" fits whole
-                      showConnection && runStart ? "max-w-72" : "max-w-48",
+                      showConnection && runStart ? "max-w-64" : "max-w-48",
                       engine && !showConnection ? "pl-1.5" : "pl-3"
                     )}
                   >
@@ -375,8 +376,8 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     {/* the connection gives way first and alone: the table name is cut only
                         past 11rem, so the two never truncate together */}
                     {connection && showConnection && runStart && (
-                      // room for "Postgres prod": two names that share a prefix still part
-                      <span className="max-w-32 min-w-0 truncate font-normal">
+                      // 96px: "Postgres pr…" and "Postgres de…" still part; whole on hover
+                      <span className="max-w-24 min-w-0 truncate font-normal">
                         {connection.name} ·
                       </span>
                     )}
