@@ -346,3 +346,26 @@ test("Ctrl+Q quits at once when nothing is staged", async () => {
   await user.keyboard("{Control>}q{/Control}");
   await waitFor(() => expect(callsTo(calls, "quit_app")).toHaveLength(1));
 });
+
+test("the theme button cycles system, light and dark, and remembers the pick", async () => {
+  fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+  await screen.findByText("Nenhuma conexão cadastrada.");
+
+  const button = () => screen.getByRole("button", { name: /^Tema:/ });
+  expect(button()).toHaveAccessibleName("Tema: Sistema (mudar para claro)");
+  expect(document.documentElement.dataset.theme).toBeUndefined();
+
+  await user.click(button());
+  expect(document.documentElement.dataset.theme).toBe("light");
+  expect(localStorage.getItem("theme")).toBe("light");
+
+  await user.click(button());
+  expect(document.documentElement.dataset.theme).toBe("dark");
+
+  // back to the OS: nothing pinned
+  await user.click(button());
+  expect(document.documentElement.dataset.theme).toBeUndefined();
+  expect(localStorage.getItem("theme")).toBeNull();
+});

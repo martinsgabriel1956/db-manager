@@ -5,8 +5,17 @@
 @import "@fontsource-variable/hanken-grotesk";
 @import "@fontsource-variable/spline-sans-mono";
 
-/* follows the OS theme; there is no in-app toggle */
-@custom-variant dark (@media (prefers-color-scheme: dark));
+/* the OS theme by default; data-theme on <html> pins light or dark (see lib/theme.ts) */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
 
 @theme inline {
   --font-heading: "Saira Variable", sans-serif;
@@ -63,7 +72,7 @@
  * works under the safelight. Staged changes are extra exposure: hatched.
  */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --radius: 0px;
   /* zone ramp, Z0 (deepest) to Z10 (paper white) */
   --z0: #0f1011;
@@ -115,9 +124,10 @@
   --syntax-type: var(--z5);
 }
 
-@media (prefers-color-scheme: dark) {
-  /* the darkroom: the same ramp read from the other end */
-  :root {
+/* the darkroom: the same ramp read from the other end */
+:root {
+  @variant dark {
+    color-scheme: dark;
     --z0: #f1f3f5;
     --z1: #e2e5e9;
     --z2: #c9cdd3;

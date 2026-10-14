@@ -3,10 +3,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   History,
+  Monitor,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Search,
+  Sun,
   TriangleAlert
 } from "lucide-react";
 import { commands, type ConnectionConfig } from "@/bindings";
@@ -32,6 +35,7 @@ import { focusActiveTab } from "@/features/tabs/focus";
 import { useTabs, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { SIDEBAR_SHORTCUT } from "@/lib/platform";
+import { applyTheme, NEXT_THEME, storedTheme, THEME_LABEL, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 // React Flow and elk are only loaded when a diagram is opened
@@ -80,6 +84,13 @@ export function App() {
   );
 
   const toggleSidebar = () => setCollapsed(value => !value);
+
+  const [theme, setTheme] = useState(storedTheme);
+  const themeLabel = `Tema: ${THEME_LABEL[theme]} (mudar para ${THEME_LABEL[NEXT_THEME[theme]].toLowerCase()})`;
+  const cycleTheme = () => {
+    applyTheme(NEXT_THEME[theme]);
+    setTheme(NEXT_THEME[theme]);
+  };
 
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", collapsed ? "1" : "0");
@@ -360,6 +371,9 @@ export function App() {
               <RailButton label="Legenda" onClick={() => setLegendOpen(true)}>
                 <BookOpen />
               </RailButton>
+              <RailButton label={themeLabel} onClick={cycleTheme}>
+                <ThemeIcon theme={theme} />
+              </RailButton>
             </nav>
           )}
           {/* hidden, not unmounted, so the tree keeps its expanded nodes; the attribute keeps F6 out */}
@@ -444,6 +458,17 @@ export function App() {
                   <BookOpen /> Legenda
                 </Button>
               </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="justify-start"
+                aria-label={themeLabel}
+                title={themeLabel}
+                onClick={cycleTheme}
+              >
+                <ThemeIcon theme={theme} /> Tema
+                <span className="ml-auto legend text-muted-foreground">{THEME_LABEL[theme]}</span>
+              </Button>
             </nav>
           </div>
         </aside>
@@ -611,6 +636,10 @@ type RailButtonProps = {
 };
 
 /** An icon-only tool of the collapsed sidebar: the name is spoken and shown on hover. */
+function ThemeIcon({ theme }: { theme: Theme }) {
+  return theme === "light" ? <Sun /> : theme === "dark" ? <Moon /> : <Monitor />;
+}
+
 function RailButton({ label, keys, onClick, children }: RailButtonProps) {
   return (
     <Button
