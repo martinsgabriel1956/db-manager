@@ -1,5 +1,7 @@
 import { expect, test } from "vitest";
 import {
+  browseSections,
+  GROUP_LIMIT,
   paletteEntries,
   searchEntries,
   MAX_RESULTS,
@@ -120,4 +122,28 @@ test("connections become explicit actions: open the closed ones, edit any, diagr
   ]);
   expect(labels(searchEntries(all, "abrir"))).toEqual(["Postgres dev (Postgres dev)"]);
   expect(all.find(entry => entry.target.kind === "connect")?.kind).toBe("abrir conexão");
+});
+
+test("before a query, the palette shows short sections by kind without per-connection repeats", () => {
+  const sections = browseSections(entries(), devPostgres.id);
+  expect(sections.map(section => section.group)).toEqual([
+    "Tabelas e coleções",
+    "Bancos Redis",
+    "Conexões",
+    "Ações"
+  ]);
+  const actions = sections.find(section => section.group === "Ações")!.entries;
+  // one "Nova query SQL", for the connection you are in
+  expect(labels(actions)).toEqual([
+    "Nova query SQL (Postgres dev)",
+    "Nova conexão (-)",
+    "Histórico (-)",
+    "Legenda e atalhos (-)"
+  ]);
+  const all = sections.flatMap(section => section.entries);
+  expect(all.some(entry => entry.kind === "editar conexão")).toBe(false);
+  expect(sections.every(section => section.entries.length <= GROUP_LIMIT)).toBe(true);
+  // the cap says what it hides
+  const tables = sections[0];
+  expect(tables.total).toBeGreaterThanOrEqual(tables.entries.length);
 });

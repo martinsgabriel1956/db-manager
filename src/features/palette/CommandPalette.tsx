@@ -5,6 +5,7 @@ import type { ConnectionConfig, RedisDatabase, SchemaInfo } from "@/bindings";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
 import {
+  browseSections,
   paletteEntries,
   searchEntries,
   type PaletteEntry,
@@ -95,7 +96,11 @@ function PaletteBody({
     };
   }, [queryClient, connections]);
 
-  const results = searchEntries(all.entries, query, activeConnectionId);
+  // before a word is typed the palette is a short launcher by kind; after, one ranked list
+  const sections = query.trim() === "" ? browseSections(all.entries, activeConnectionId) : null;
+  const results = sections
+    ? sections.flatMap(section => section.entries)
+    : searchEntries(all.entries, query, activeConnectionId);
   const current = Math.min(active, results.length - 1);
   const optionId = (index: number) => `${listId}-${index}`;
 
@@ -133,7 +138,7 @@ function PaletteBody({
           onKeyDown={handleKeyDown}
           className="h-11 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
-        <kbd className="shrink-0 font-mono text-[11px] text-muted-foreground">Esc</kbd>
+        <kbd className="shrink-0 legend text-muted-foreground">Esc</kbd>
       </div>
       <ul
         id={listId}
@@ -141,16 +146,49 @@ function PaletteBody({
         aria-label="Resultados"
         className="max-h-[min(24rem,55vh)] overflow-y-auto py-1"
       >
-        {results.map((entry, index) => (
-          <PaletteOption
-            key={entry.id}
-            id={optionId(index)}
-            entry={entry}
-            selected={index === current}
-            onHover={() => setActive(index)}
-            onPick={() => onSelect(entry.target)}
-          />
-        ))}
+        {sections
+          ? sections.map(section => {
+              const offset = results.indexOf(section.entries[0]);
+              const headingId = `${listId}-${section.group}`;
+              return (
+                <li key={section.group} role="presentation">
+                  <div
+                    id={headingId}
+                    className="flex items-baseline justify-between px-3 pt-2.5 pb-1"
+                  >
+                    <span className="legend text-muted-foreground">{section.group}</span>
+                    {/* the rest is one word away: say how much is behind the cap */}
+                    {section.total > section.entries.length && (
+                      <span className="text-xs text-muted-foreground">
+                        {section.entries.length} de {section.total} · digite para ver todas
+                      </span>
+                    )}
+                  </div>
+                  <ul role="group" aria-labelledby={headingId}>
+                    {section.entries.map((entry, index) => (
+                      <PaletteOption
+                        key={entry.id}
+                        id={optionId(offset + index)}
+                        entry={entry}
+                        selected={offset + index === current}
+                        onHover={() => setActive(offset + index)}
+                        onPick={() => onSelect(entry.target)}
+                      />
+                    ))}
+                  </ul>
+                </li>
+              );
+            })
+          : results.map((entry, index) => (
+              <PaletteOption
+                key={entry.id}
+                id={optionId(index)}
+                entry={entry}
+                selected={index === current}
+                onHover={() => setActive(index)}
+                onPick={() => onSelect(entry.target)}
+              />
+            ))}
       </ul>
       {results.length === 0 && (
         <p className="px-3 pb-3 text-sm text-muted-foreground">Nada encontrado para “{query}”.</p>

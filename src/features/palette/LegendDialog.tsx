@@ -50,6 +50,7 @@ const SHORTCUTS = [
   [RUN_SHORTCUT, "Executar a seleção ou o editor inteiro"],
   ["↑ ↓ ← →", "Andar pela lateral e pela grade"],
   ["Enter / F2", "Editar a célula selecionada"],
+  ["Ctrl+Shift+N", "Definir a célula selecionada como NULL"],
   ["Espaço", "Mostrar o valor inteiro da célula selecionada"],
   ["Alt+← →", "Estreitar ou alargar a coluna da célula selecionada"],
   ["Delete", "Fechar a aba focada"],
@@ -198,7 +199,7 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
           </div>
           <Section title="Atalhos">
             {SHORTCUTS.map(([keys, action]) => (
-              <Row key={keys} mark={<kbd className="font-mono text-xs">{keys}</kbd>}>
+              <Row key={keys} mark={<kbd className="legend">{keys}</kbd>}>
                 {action}
               </Row>
             ))}

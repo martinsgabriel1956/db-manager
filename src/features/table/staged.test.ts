@@ -29,10 +29,10 @@ const rows: Cell[][] = [
   ]
 ];
 
-test("edit text is the rendered value, empty for NULL", () => {
+test("edit text is the rendered value, null for NULL", () => {
   expect(editText({ t: "int", v: "42" })).toBe("42");
   expect(editText({ t: "bool", v: true })).toBe("true");
-  expect(editText({ t: "null" })).toBe("");
+  expect(editText({ t: "null" })).toBeNull();
 });
 
 test("typing the original value back unstages the edit", () => {

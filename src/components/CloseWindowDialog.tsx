@@ -54,8 +54,7 @@ export function CloseWindowDialog({ onQuit }: CloseWindowDialogProps) {
         </DialogDescription>
         <p className="text-sm text-muted-foreground">
           Para sair de vez: <span className="text-foreground">Sair</span>, no menu da bandeja, ou{" "}
-          <kbd className="font-mono text-[11px] text-foreground">Ctrl Q</kbd>. Este aviso aparece só
-          desta vez.
+          <kbd className="legend text-foreground">Ctrl Q</kbd>. Este aviso aparece só desta vez.
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={() => answer(onQuit)}>

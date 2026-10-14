@@ -15,8 +15,13 @@ export type PaletteTarget =
   | { kind: "history" }
   | { kind: "legend" };
 
+/** The headings of the palette before anything is typed, in this order. */
+export const PALETTE_GROUPS = ["Tabelas e coleções", "Bancos Redis", "Conexões", "Ações"] as const;
+export type PaletteGroup = (typeof PALETTE_GROUPS)[number];
+
 export type PaletteEntry = {
   id: string;
+  group: PaletteGroup;
   /** the searched and displayed name: `schema.table`, `db3`, or the action */
   label: string;
   /** what kind of thing it is, in words: "tabela", "coleção", "ação"… */
@@ -54,6 +59,7 @@ export function paletteEntries(
           connection.engine === "mongo" ? "coleção" : relation.kind === "table" ? "tabela" : "view";
         entries.push({
           id: `table/${connectionId}/${schema.name}/${relation.name}`,
+          group: "Tabelas e coleções",
           label: `${schema.name}.${relation.name}`,
           kind,
           connection,
@@ -74,6 +80,7 @@ export function paletteEntries(
     for (const database of list) {
       entries.push({
         id: `redis/${connectionId}/${database.index}`,
+        group: "Bancos Redis",
         label: `db${database.index}`,
         kind: database.keys === 1 ? "1 chave" : `${database.keys} chaves`,
         connection,
@@ -91,6 +98,7 @@ export function paletteEntries(
     for (const schema of list) {
       entries.push({
         id: `diagram/${connectionId}/${schema.name}`,
+        group: "Tabelas e coleções",
         label: schema.name,
         kind: "diagrama ER",
         connection,
@@ -103,6 +111,7 @@ export function paletteEntries(
   for (const connection of connections.filter(c => !loaded.has(c.id))) {
     entries.push({
       id: `connect/${connection.id}`,
+      group: "Conexões",
       // the name leads: six rows of "Abrir conexão" would make you read the right edge
       label: connection.name,
       kind: "abrir conexão",
@@ -114,6 +123,7 @@ export function paletteEntries(
   for (const connection of connections.filter(c => isSqlEngine(c.engine))) {
     entries.push({
       id: `editor/${connection.id}`,
+      group: "Ações",
       label: "Nova query SQL",
       kind: "ação",
       connection,
@@ -124,6 +134,7 @@ export function paletteEntries(
   for (const connection of connections) {
     entries.push({
       id: `edit/${connection.id}`,
+      group: "Conexões",
       label: connection.name,
       kind: "editar conexão",
       connection,
@@ -134,6 +145,7 @@ export function paletteEntries(
   entries.push(
     {
       id: "new-connection",
+      group: "Ações",
       label: "Nova conexão",
       kind: "ação",
       connection: null,
@@ -141,6 +153,7 @@ export function paletteEntries(
     },
     {
       id: "history",
+      group: "Ações",
       label: "Histórico",
       kind: "ação",
       connection: null,
@@ -148,6 +161,7 @@ export function paletteEntries(
     },
     {
       id: "legend",
+      group: "Ações",
       label: "Legenda e atalhos",
       kind: "ação",
       connection: null,
@@ -199,4 +213,33 @@ export function searchEntries(
     )
     .slice(0, MAX_RESULTS)
     .map(({ entry }) => entry);
+}
+
+/** Rows per heading before anything is typed: the rest is one word away. */
+export const GROUP_LIMIT = 5;
+
+export type PaletteSection = { group: PaletteGroup; entries: PaletteEntry[]; total: number };
+
+/**
+ * The palette before a query: one short section per kind, ranked like a search (the
+ * connection you are in first, production last). Per-connection repeats wait for a word:
+ * "Nova query SQL" shows only for the active connection, and "editar conexão" not at all.
+ */
+export function browseSections(
+  entries: PaletteEntry[],
+  activeConnectionId: string | null = null
+): PaletteSection[] {
+  const shown = entries.filter(({ target }) =>
+    target.kind === "editor"
+      ? target.connectionId === activeConnectionId
+      : target.kind !== "editConnection"
+  );
+  return PALETTE_GROUPS.flatMap(group => {
+    const members = shown.filter(entry => entry.group === group);
+    // ranked per heading: a long table list never pushes the actions past the result cap
+    const inGroup = searchEntries(members, "", activeConnectionId);
+    return inGroup.length === 0
+      ? []
+      : [{ group, entries: inGroup.slice(0, GROUP_LIMIT), total: members.length }];
+  });
 }

@@ -25,9 +25,9 @@ export function stagedCount(staged: Staged): number {
   return updatedRows + staged.deletes.length + staged.inserts.length;
 }
 
-/** Text shown when the user starts editing: the value as PostgreSQL renders it. */
-export function editText(cell: Cell): string {
-  return cell.t === "null" ? "" : formatCell(cell);
+/** Value the inline editor starts from: the text PostgreSQL renders, or null for NULL. */
+export function editText(cell: Cell): EditValue {
+  return cell.t === "null" ? null : formatCell(cell);
 }
 
 /** Stages an edit on an existing row; typing the original value back removes it. */
@@ -38,8 +38,7 @@ export function stageUpdate(
   value: EditValue,
   original: Cell
 ): Staged {
-  const unchanged =
-    value === null ? original.t === "null" : original.t !== "null" && value === editText(original);
+  const unchanged = value === editText(original);
   const rowEdits = { ...staged.updates[rowIndex] };
   if (unchanged) {
     delete rowEdits[column];

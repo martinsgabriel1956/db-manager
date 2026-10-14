@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, Plus, Trash2, Undo2 } from "lucide-re
 import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DiscardDialog } from "@/components/DiscardDialog";
+import { Receipt } from "@/components/Receipt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -291,8 +292,25 @@ function TableData({
         {dirty && (
           // the one fact while edits are staged gets its own line, read whole at any width:
           // the disabled pager, Aplicar and the sort headers point here for their reason
-          <p id={lockedId} className="border-b px-3 py-1 text-xs text-foreground">
-            Salve ou descarte as alterações para paginar, filtrar ou ordenar.
+          <div className="flex flex-wrap items-baseline gap-x-2 border-b px-3 py-1 text-xs">
+            {edit.cancelled && (
+              // a cancelled save says so, as the editor does: nothing reached the database
+              <span role="status">
+                <span className="legend">Salvamento cancelado</span> · nada rodou no banco.
+              </span>
+            )}
+            <p id={lockedId} className="text-foreground">
+              Salve ou descarte as alterações para paginar, filtrar ou ordenar.
+            </p>
+          </div>
+        )}
+        {edit.notice?.confirmed && !dirty && (
+          // a confirmed save closes its ritual with the editor's receipt, on a line of its own
+          <p
+            role="status"
+            className="flex min-w-0 items-center gap-2 border-b px-3 py-1 text-xs developed"
+          >
+            <Receipt connectionId={connectionId} confirmed text={edit.notice.text} verb="salvo" />
           </p>
         )}
         <div className="flex items-center gap-3 px-3 py-1.5 text-sm">
@@ -446,13 +464,13 @@ function TableData({
                 </>
               )}
               {/* the save develops: the hatch clears in the grid and the notice comes up the same way */}
-              {edit.notice && !dirty && (
+              {edit.notice && !edit.notice.confirmed && !dirty && (
                 <span
                   role="status"
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-success developed"
                 >
                   <Check aria-hidden className="size-4" />
-                  {edit.notice}
+                  {edit.notice.text}
                 </span>
               )}
             </div>

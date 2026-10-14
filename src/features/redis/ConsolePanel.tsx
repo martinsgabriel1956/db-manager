@@ -105,8 +105,24 @@ export function ConsolePanel({ connectionId, db, promptRef }: ConsolePanelProps)
       <div
         role="log"
         aria-label="Saída do console"
-        className="min-h-0 flex-1 overflow-auto p-3 font-mono text-xs"
+        className={cn(
+          "min-h-0 flex-1 overflow-auto",
+          lines.length === 0
+            ? // nothing run yet: the same construction grid as every other empty area
+              "grid content-center justify-items-start gap-2 px-8 grid-paper"
+            : "p-3 font-mono text-xs"
+        )}
       >
+        {lines.length === 0 && (
+          <>
+            <p aria-hidden className="display-caps text-3xl">
+              Console vazio
+            </p>
+            <p className="max-w-[52ch] text-sm text-muted-foreground">
+              Digite um comando no prompt abaixo e tecle Enter. ↑ e ↓ trazem os comandos anteriores.
+            </p>
+          </>
+        )}
         {lines.map(line => (
           <div key={line.id} className="mb-2">
             <div className="text-muted-foreground">

@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { commands, type Engine } from "@/bindings";
+import { Receipt } from "@/components/Receipt";
 import { Button } from "@/components/ui/button";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
@@ -12,7 +13,6 @@ import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
-import { useTabs } from "@/features/tabs/store";
 import { RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
@@ -36,8 +36,6 @@ type ResultsPanelProps = {
 };
 
 type WaitingPaneProps = { title: string; children: ReactNode };
-
-type ReceiptProps = { connectionId: string; confirmed: boolean; text: string | null };
 
 export function summary(state: RunState): string | null {
   if (state.status !== "rows" && state.status !== "command") {
@@ -150,41 +148,6 @@ function WaitingPane({ title, children }: WaitingPaneProps) {
       <p className="display-caps text-3xl">{title}</p>
       <p className="max-w-[52ch] text-sm text-muted-foreground">{children}</p>
     </div>
-  );
-}
-
-/**
- * The receipt of a confirmed run: where it ran, then the result, then where it was recorded.
- * The confirmation was the ritual; this closes it.
- */
-function Receipt({ connectionId, confirmed, text }: ReceiptProps) {
-  const openHistory = useTabs(state => state.openHistory);
-  if (!confirmed) {
-    return <span>{text}</span>;
-  }
-  return (
-    <>
-      {/* the same legend that marks a cancelled run: the ritual ends in a mark, not in fine print */}
-      <span className="shrink-0">
-        <span className="legend text-[0.75rem]">Confirmado</span>
-        {/* a narrow bar keeps the mark and where it ran */}
-        <span className="hidden @min-[52rem]:inline"> e executado</span> em
-      </span>{" "}
-      {/* never narrower than its environment tag: the name truncates, PROD stays whole */}
-      <ConnectionContext connectionId={connectionId} className="min-w-min" />{" "}
-      {/* the count never wraps: in a narrow bar the connection name truncates first */}
-      <span className="shrink-0 whitespace-nowrap text-muted-foreground">· {text} ·</span>{" "}
-      {/* one text for the live region either way; a narrow bar shows only "histórico" */}
-      <Button
-        size="xs"
-        variant="link"
-        aria-label="Ver no histórico"
-        className="h-auto px-0 underline"
-        onClick={openHistory}
-      >
-        <span className="hidden @min-[52rem]:inline">Ver no </span>histórico
-      </Button>
-    </>
   );
 }
 

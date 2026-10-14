@@ -10,16 +10,18 @@ export type SelectedCell = { row: number; column: number };
 /** Inline editing hooks; without them the grid is read-only. */
 export type GridEditing = {
   canEdit: (row: number, column: number) => boolean;
-  /** initial text of the inline input */
-  textFor: (row: number, column: number) => string;
-  onCommit: (row: number, column: number, value: string) => void;
+  /** value the inline input starts from; null is NULL, shown as a placeholder */
+  textFor: (row: number, column: number) => string | null;
+  /** null writes NULL */
+  onCommit: (row: number, column: number, value: string | null) => void;
   rowStatus: (row: number) => "new" | "deleted" | null;
   isEdited: (row: number, column: number) => boolean;
   /** just saved: the hatch develops away */
   isDeveloping?: (row: number, column: number) => boolean;
 };
 
-type CellEditor = SelectedCell & { text: string };
+/** `value` is null while the cell holds NULL; `initial` is what editing started from. */
+type CellEditor = SelectedCell & { value: string | null; initial: string | null };
 
 type ResultGridProps = {
   columns: ResultColumn[];
@@ -99,6 +101,11 @@ export function fitColumnWidths(columns: ResultColumn[], rows: Cell[][]): number
 }
 
 /** Where a navigation key moves the selection; null = the key is not a grid move. */
+/** Ctrl+Shift+N: the cell becomes NULL, from the grid or inside the inline input. */
+function isSetNull(event: KeyboardEvent<HTMLElement>): boolean {
+  return (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "n";
+}
+
 function moveSelection(
   key: string,
   ctrlKey: boolean,
@@ -187,7 +194,7 @@ export function ResultGrid({
   // what the keys do here, read with the grid's name: otherwise only the Legenda says it
   const keysId = `${cellIdPrefix}-keys`;
   const keys = [
-    editing ? "Enter ou F2 edita a célula" : null,
+    editing ? "Enter ou F2 edita a célula, Ctrl+Shift+N define NULL" : null,
     onToggleDetail ? "Espaço mostra o valor inteiro" : null,
     "Alt+← → ajusta a largura da coluna"
   ].filter(Boolean);
@@ -202,7 +209,8 @@ export function ResultGrid({
   function startEditing(row: number, column: number) {
     if (editing?.canEdit(row, column)) {
       setRefusal("");
-      setEditor({ row, column, text: editing.textFor(row, column) });
+      const initial = editing.textFor(row, column);
+      setEditor({ row, column, value: initial, initial });
     } else {
       // an edit attempt that does nothing must still say why, every time: a repeat
       // changes the text by a space so the live region speaks again
@@ -210,11 +218,21 @@ export function ResultGrid({
     }
   }
 
+  /** NULL straight from the keyboard, without opening the value panel. */
+  function setNull(row: number, column: number) {
+    if (editing?.canEdit(row, column)) {
+      editing.onCommit(row, column, null);
+    } else {
+      startEditing(row, column);
+    }
+  }
+
   function commit() {
     if (cancelEdit.current) {
       cancelEdit.current = false;
-    } else if (editor && editing) {
-      editing.onCommit(editor.row, editor.column, editor.text);
+    } else if (editor && editing && editor.value !== editor.initial) {
+      // Enter on an untouched cell stages nothing: opening a NULL must not write ''
+      editing.onCommit(editor.row, editor.column, editor.value);
     }
     setEditor(null);
   }
@@ -250,6 +268,11 @@ export function ResultGrid({
     if (selected && (event.key === "Enter" || event.key === "F2")) {
       event.preventDefault();
       startEditing(selected.row, selected.column);
+      return;
+    }
+    if (selected && isSetNull(event)) {
+      event.preventDefault();
+      setNull(selected.row, selected.column);
       return;
     }
     if (selected && event.key === " " && onToggleDetail) {
@@ -541,15 +564,19 @@ export function ResultGrid({
                           <input
                             autoFocus
                             aria-label={`Editar ${columns[columnIndex]?.name}`}
-                            className="h-full w-full bg-background font-mono outline-none"
-                            value={editor.text}
-                            onChange={event => setEditor({ ...editor, text: event.target.value })}
+                            className="h-full w-full bg-background font-mono outline-none placeholder:text-muted-foreground placeholder:italic"
+                            value={editor.value ?? ""}
+                            placeholder={editor.value === null ? "NULL" : undefined}
+                            onChange={event => setEditor({ ...editor, value: event.target.value })}
                             onBlur={commit}
                             onKeyDown={event => {
                               // handing focus back to the grid blurs the input, which commits
                               if (event.key === "Enter") {
                                 event.preventDefault();
                                 scrollRef.current?.focus();
+                              } else if (isSetNull(event)) {
+                                event.preventDefault();
+                                setEditor({ ...editor, value: null });
                               } else if (event.key === "Escape") {
                                 event.preventDefault();
                                 cancelEdit.current = true;

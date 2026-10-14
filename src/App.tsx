@@ -106,7 +106,7 @@ export function App() {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       // a dialog owns the keyboard while it is open
-      if (document.querySelector("[role='dialog']")) {
+      if (document.querySelector("[role='dialog'], [role='alertdialog']")) {
         return;
       }
       if (event.key === "F6") {
@@ -421,7 +421,7 @@ export function App() {
                 onClick={() => openPalette()}
               >
                 <Search /> Ir para…
-                <kbd className="ml-auto font-mono text-[11px] text-muted-foreground">Ctrl K</kbd>
+                <kbd className="ml-auto legend text-muted-foreground">Ctrl K</kbd>
               </Button>
               <div className="grid grid-cols-2 gap-px">
                 <Button
@@ -577,7 +577,7 @@ function EmptyWorkspace({
         {hasConnections && anyConnectionOpen && (
           <Button onClick={() => onSearch()}>
             <Search /> Ir para…
-            <kbd className="ml-1 font-mono text-[11px] opacity-70">Ctrl K</kbd>
+            <kbd className="ml-1 legend opacity-70">Ctrl K</kbd>
           </Button>
         )}
         {hasConnections && !anyConnectionOpen && (

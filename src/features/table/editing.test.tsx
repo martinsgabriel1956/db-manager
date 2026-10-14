@@ -168,6 +168,23 @@ test("a new row can be dropped and discard clears everything", async () => {
   expect(applied(calls)).toHaveLength(0);
 });
 
+test("opening a NULL cell and leaving it untouched stages nothing; Ctrl+Shift+N sets NULL", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.dblClick(cell("NULL"));
+  const input = screen.getByRole("textbox", { name: /^Editar / });
+  expect(input).toHaveValue("");
+  expect(input).toHaveAttribute("placeholder", "NULL");
+  await user.keyboard("{Enter}");
+  expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
+
+  // from the selected cell, without opening the editor
+  await user.click(cell("1"));
+  await user.keyboard("{ArrowRight}{Control>}{Shift>}N{/Shift}{/Control}");
+  expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();
+});
+
 test("on prod, saving shows the generated SQL and applies only after confirming", async () => {
   const prodWritable = { ...prodPostgres, readOnly: false };
   const calls = fakeBackend([prodWritable], {
@@ -190,10 +207,26 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
 
   const dialog = await screen.findByRole("alertdialog");
   expect(dialog).toHaveTextContent(`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2';`);
-  await user.click(screen.getByRole("button", { name: "Executar em produção" }));
+  // app shortcuts stay quiet while the confirmation owns the keyboard
+  await user.keyboard("{Control>}w{/Control}");
+  expect(screen.queryByRole("dialog", { name: "Descartar alterações?" })).not.toBeInTheDocument();
+  // cancelling says nothing ran and keeps the edits
+  await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  expect(await screen.findByText(/nada rodou no banco/)).toBeInTheDocument();
+  expect(cell("20")).toHaveAttribute("data-edited", "true");
 
-  expect(await screen.findByText("1 alteração salva")).toBeInTheDocument();
-  expect(applied(calls).map(call => call.confirmed)).toEqual([false, true]);
+  await user.click(screen.getByRole("button", { name: /^Salvar \(/ }));
+  await user.click(await screen.findByRole("button", { name: "Executar em produção" }));
+
+  // the confirmed save ends in the same receipt as the editor: where it ran, then the count
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole("status").find(element => /Confirmado/.test(element.textContent ?? ""))
+    ).toHaveTextContent(
+      /^Confirmado e salvo em Postgres prod.* · 1 alteração salva · Ver no histórico$/
+    )
+  );
+  expect(applied(calls).map(call => call.confirmed)).toEqual([false, false, true]);
 });
 
 test("a failed save keeps the staged edits and shows why", async () => {
