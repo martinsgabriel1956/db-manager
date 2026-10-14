@@ -54,6 +54,33 @@ export function stageUpdate(
   return { ...staged, updates };
 }
 
+/** One staged cell edit as the confirmation shows it: the row's key, then before → after; null is NULL. */
+export type CellDiff = { key: string; column: string; before: EditValue; after: EditValue };
+
+/** Staged updates of rows not marked for deletion, with the value each one replaces. */
+export function stagedDiff(
+  rows: Cell[][],
+  columns: ResultColumn[],
+  primaryKey: string[],
+  staged: Staged
+): CellDiff[] {
+  const indexOf = (column: string) => columns.findIndex(c => c.name === column);
+  return Object.entries(staged.updates)
+    .map(([row, values]) => [Number(row), values] as const)
+    .filter(([rowIndex]) => !staged.deletes.includes(rowIndex))
+    .flatMap(([rowIndex, values]) => {
+      const key = primaryKey
+        .map(column => `${column} = ${formatCell(rows[rowIndex][indexOf(column)])}`)
+        .join(", ");
+      return Object.entries(values).map(([column, value]) => ({
+        key,
+        column,
+        before: editText(rows[rowIndex][indexOf(column)]),
+        after: value
+      }));
+    });
+}
+
 export function stageInsertValue(
   staged: Staged,
   rowId: string,

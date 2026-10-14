@@ -10,6 +10,7 @@ import {
   EMPTY_STAGED,
   removeNewRow,
   stagedCount,
+  stagedDiff,
   stageInsertValue,
   stageUpdate,
   toggleDelete,
@@ -116,6 +117,14 @@ export function useTableEditing({
     );
   }
 
+  /** an edited existing cell goes back to what is stored: the edit leaves the stage */
+  function revert(row: number, column: number) {
+    if (newRowAt(row) || !(columns[column].name in (staged.updates[row] ?? {}))) {
+      return;
+    }
+    setValue(row, column, editText(pageRows[row][column]));
+  }
+
   const editing: GridEditing = {
     canEdit: (row, column) => canEdit && columns[column].editable && !staged.deletes.includes(row),
     textFor: (row, column) => {
@@ -135,7 +144,12 @@ export function useTableEditing({
       const inserted = newRowAt(row);
       return name in (inserted ? inserted.values : (staged.updates[row] ?? {}));
     },
-    isDeveloping: (row, column) => developed?.[row]?.includes(columns[column].name) ?? false
+    isDeveloping: (row, column) => developed?.[row]?.includes(columns[column].name) ?? false,
+    originalFor: (row, column) =>
+      !newRowAt(row) && columns[column].name in (staged.updates[row] ?? {})
+        ? pageRows[row][column]
+        : null,
+    revert
   };
 
   return {
@@ -174,6 +188,8 @@ export function useTableEditing({
     /** the notice speaks of the rows on screen: gone once another page, filter or order shows */
     clearNotice: () => setNotice(null),
     confirmation,
+    /** what each staged update replaces, read on the confirmation before signing it */
+    diff: confirmation ? stagedDiff(pageRows, columns, primaryKey, staged) : [],
     confirm: () => save.mutate(true),
     cancelled,
     dismiss: () => {

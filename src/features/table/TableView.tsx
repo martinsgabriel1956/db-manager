@@ -25,9 +25,9 @@ type TableViewProps = { connectionId: string; schema: string; table: string; rea
 
 type TableDataProps = TableViewProps & {
   sort: Sort | null;
-  filter: Filter | null;
+  filters: Filter[];
   onSortChange: (update: (prev: Sort | null) => Sort | null) => void;
-  onFilterChange: (filter: Filter | null) => void;
+  onFiltersChange: (filters: Filter[]) => void;
 };
 
 export const PAGE_SIZE = 100;
@@ -44,7 +44,7 @@ export function TableView(props: TableViewProps) {
   const [tab, setTab] = useState("data");
   // owned here so the export matches what the grid shows
   const [sort, setSort] = useState<Sort | null>(null);
-  const [filter, setFilter] = useState<Filter | null>(null);
+  const [filters, setFilters] = useState<Filter[]>([]);
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
@@ -78,7 +78,7 @@ export function TableView(props: TableViewProps) {
                       {
                         schema: props.schema,
                         table: props.table,
-                        filters: filter ? [filter] : [],
+                        filters,
                         sort,
                         page: 0,
                         pageSize: PAGE_SIZE
@@ -96,9 +96,9 @@ export function TableView(props: TableViewProps) {
         <TableData
           {...props}
           sort={sort}
-          filter={filter}
+          filters={filters}
           onSortChange={setSort}
-          onFilterChange={setFilter}
+          onFiltersChange={setFilters}
         />
       </TabsContent>
       <TabsContent value="structure" className="min-h-0 flex-1 overflow-auto">
@@ -118,9 +118,9 @@ function TableData({
   table,
   readOnly,
   sort,
-  filter,
+  filters,
   onSortChange,
-  onFilterChange
+  onFiltersChange
 }: TableDataProps) {
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
@@ -132,7 +132,7 @@ function TableData({
   const request: BrowseRequest = {
     schema,
     table,
-    filters: filter ? [filter] : [],
+    filters,
     sort,
     page,
     pageSize: PAGE_SIZE
@@ -228,12 +228,11 @@ function TableData({
     >
       <BrowseToolbar
         columns={structure.data?.columns.map(column => column.name) ?? []}
-        active={filter}
+        active={filters}
         sort={sort}
         disabled={dirty}
         lockedBy={lockedId}
-        onApply={next => restart(() => onFilterChange(next))}
-        onClear={() => restart(() => onFilterChange(null))}
+        onChange={next => restart(() => onFiltersChange(next))}
         onClearSort={() => restart(() => onSortChange(() => null))}
       />
       {edit.saveError && (
@@ -292,6 +291,12 @@ function TableData({
               selected && selectedEditable
                 ? () => edit.setValue(selected.row, selected.column, null)
                 : undefined
+            }
+            original={
+              selected ? (edit.editing.originalFor?.(selected.row, selected.column) ?? null) : null
+            }
+            onRevert={
+              selected ? () => edit.editing.revert?.(selected.row, selected.column) : undefined
             }
           />
         )}
@@ -492,6 +497,7 @@ function TableData({
         connectionId={connectionId}
         confirmation={edit.confirmation}
         confirmLabel="Salvar"
+        changes={edit.diff}
         pending={edit.saving}
         onConfirm={edit.confirm}
         onCancel={edit.dismiss}

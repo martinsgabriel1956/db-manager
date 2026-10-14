@@ -432,14 +432,15 @@ function ConnectionNode({
                 Confira host, porta e senha em Editar conexão e use Testar conexão, que tenta sem
                 salvar. Banco atrás de bastion: abra um túnel antes (ssh -L).
               </p>
-              <Button
-                size="xs"
-                variant="outline"
-                className="w-fit"
-                onClick={() => listing.refetch()}
-              >
-                Tentar de novo
-              </Button>
+              {/* both ways out the text names, within reach of Tab */}
+              <div className="flex gap-1.5">
+                <Button size="xs" variant="outline" onClick={() => listing.refetch()}>
+                  Tentar de novo
+                </Button>
+                <Button size="xs" variant="outline" onClick={() => onEdit(connection.id)}>
+                  Editar conexão
+                </Button>
+              </div>
             </li>
           )}
           {databases.data?.map(database => {

@@ -11,9 +11,19 @@ type CellDetailProps = {
   onClose: () => void;
   /** present when the cell is editable */
   onSetNull?: () => void;
+  /** the stored value a staged edit replaces */
+  original?: Cell | null;
+  onRevert?: () => void;
 };
 
-export function CellDetail({ column, cell, onClose, onSetNull }: CellDetailProps) {
+export function CellDetail({
+  column,
+  cell,
+  onClose,
+  onSetNull,
+  original = null,
+  onRevert
+}: CellDetailProps) {
   return (
     <aside
       aria-label="Valor da célula"
@@ -36,17 +46,52 @@ export function CellDetail({ column, cell, onClose, onSetNull }: CellDetailProps
           Selecione uma célula na grade para ver o valor inteiro, como está gravado.
         </p>
       ) : (
-        <CellValue column={column} cell={cell} onSetNull={onSetNull} />
+        <CellValue
+          column={column}
+          cell={cell}
+          onSetNull={onSetNull}
+          original={original}
+          onRevert={onRevert}
+        />
       )}
     </aside>
   );
 }
 
-type CellValueProps = Pick<CellDetailProps, "onSetNull"> & { column: ResultColumn; cell: Cell };
+type CellValueProps = Pick<CellDetailProps, "onSetNull" | "original" | "onRevert"> & {
+  column: ResultColumn;
+  cell: Cell;
+};
 
-function CellValue({ column, cell, onSetNull }: CellValueProps) {
+function CellValue({ column, cell, onSetNull, original, onRevert }: CellValueProps) {
   return (
     <>
+      {original && (
+        // the stored value stays in sight under a staged edit; the hatch belongs to the edit
+        <div className="border-b bg-muted px-3 py-2">
+          <p className="legend text-muted-foreground">Antes</p>
+          <pre
+            className={cn(
+              "mt-1 max-h-24 overflow-auto font-mono text-xs break-all whitespace-pre-wrap",
+              original.t === "null" && "text-muted-foreground italic"
+            )}
+          >
+            {detailText(original)}
+          </pre>
+          {onRevert && (
+            <Button
+              size="xs"
+              variant="outline"
+              className="mt-2"
+              aria-keyshortcuts="Control+Z"
+              title="Volta ao valor gravado (Ctrl+Z)"
+              onClick={onRevert}
+            >
+              Desfazer alteração
+            </Button>
+          )}
+        </div>
+      )}
       {/* focusable so a long value scrolls from the keyboard */}
       <pre
         tabIndex={0}

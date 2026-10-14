@@ -45,13 +45,31 @@ pub fn select_sql(
     for filter in &request.filters {
         let column = dialect.quote_ident(&filter.column);
         let value = filter.value.as_deref().unwrap_or_default();
+        let compare = |operator: &str| -> Result<String, AppError> {
+            Ok(format!(
+                "{column} {operator} {}",
+                dialect.quote_literal(value)?
+            ))
+        };
         conditions.push(match filter.op {
-            FilterOp::Eq => format!("{column} = {}", dialect.quote_literal(value)?),
+            FilterOp::Eq => compare("=")?,
+            FilterOp::Ne => compare("<>")?,
+            FilterOp::Lt => compare("<")?,
+            FilterOp::Lte => compare("<=")?,
+            FilterOp::Gt => compare(">")?,
+            FilterOp::Gte => compare(">=")?,
             FilterOp::Like => format!(
                 "{} LIKE {}",
                 dialect.text_cast(&column),
                 dialect.quote_literal(value)?
             ),
+            // ponytail: split on commas, so a value holding a comma cannot be listed; the SQL editor can
+            FilterOp::In => {
+                let items = in_items(value)
+                    .map(|item| dialect.quote_literal(item))
+                    .collect::<Result<Vec<_>, _>>()?;
+                format!("{column} IN ({})", items.join(", "))
+            }
             FilterOp::IsNull => format!("{column} IS NULL"),
             FilterOp::IsNotNull => format!("{column} IS NOT NULL"),
         });
@@ -74,6 +92,14 @@ pub fn select_sql(
         sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     Ok(sql)
+}
+
+/// The values of an IN filter: comma-separated, trimmed, blanks dropped.
+pub fn in_items(value: &str) -> impl Iterator<Item = &str> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
 }
 
 /// One staged change. Rows are identified by their full primary key.
@@ -309,6 +335,21 @@ mod tests {
                 op: FilterOp::IsNotNull,
                 value: None,
             },
+            Filter {
+                column: "created_at".into(),
+                op: FilterOp::Gte,
+                value: Some("2026-01-01".into()),
+            },
+            Filter {
+                column: "id".into(),
+                op: FilterOp::In,
+                value: Some("1, 2,,3 ".into()),
+            },
+            Filter {
+                column: "role".into(),
+                op: FilterOp::Ne,
+                value: Some("it's".into()),
+            },
         ];
 
         assert_eq!(
@@ -316,6 +357,7 @@ mod tests {
             concat!(
                 r#"SELECT * FROM "public"."users" WHERE "email"::text LIKE '%@x.com' AND "age" = '30' "#,
                 r#"AND "deleted_at" IS NULL AND "verified_at" IS NOT NULL "#,
+                r#"AND "created_at" >= '2026-01-01' AND "id" IN ('1', '2', '3') AND "role" <> 'it''s' "#,
                 r#"ORDER BY "name" DESC LIMIT 51 OFFSET 150"#
             )
         );

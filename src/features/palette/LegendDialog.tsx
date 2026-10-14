@@ -33,28 +33,45 @@ const ENVIRONMENT_MEANING = [
   ]
 ] as const;
 
-const SHORTCUTS = [
-  ["Ctrl+K ou Ctrl+P", "Ir para tabela, coleção ou ação"],
-  ["Ctrl+T", "Nova query SQL na conexão da aba ativa"],
-  ["Ctrl+W", "Fechar a aba ativa"],
-  ["Ctrl+Shift+T", "Reabrir a última aba fechada, com o texto do editor"],
-  ["Ctrl+Tab", "Próxima aba (com Shift, a anterior)"],
-  ["Ctrl+S", "Salvar as alterações da tabela"],
-  [SIDEBAR_SHORTCUT, "Recolher ou expandir a lateral"],
+/** Grouped by where the keys work: twenty in one list read as a wall. */
+const SHORTCUT_GROUPS = [
   [
-    "Ctrl+Q",
-    "Sair do Ordo. Fechar a janela deixa o app na bandeja e encerra as conexões de produção"
+    "Janela e abas",
+    [
+      ["Ctrl+K ou Ctrl+P", "Ir para tabela, coleção ou ação"],
+      ["Ctrl+T", "Nova query SQL na conexão da aba ativa"],
+      ["Ctrl+W", "Fechar a aba ativa"],
+      ["Ctrl+Shift+T", "Reabrir a última aba fechada, com o texto do editor"],
+      ["Ctrl+Tab", "Próxima aba (com Shift, a anterior)"],
+      ["Delete", "Fechar a aba focada"],
+      ["F6", "Pular entre lateral, abas e área de trabalho"],
+      [SIDEBAR_SHORTCUT, "Recolher ou expandir a lateral"],
+      ["Shift+F10", "Ações da linha na lateral"],
+      [
+        "Ctrl+Q",
+        "Sair do Ordo. Fechar a janela deixa o app na bandeja e encerra as conexões de produção"
+      ]
+    ]
   ],
-  ["F6", "Pular entre lateral, abas e área de trabalho"],
-  ["Shift+F10", "Ações da linha na lateral"],
-  [RUN_SHORTCUT, "Executar a seleção ou o editor inteiro"],
-  ["↑ ↓ ← →", "Andar pela lateral e pela grade"],
-  ["Enter / F2", "Editar a célula selecionada"],
-  ["Ctrl+Shift+N", "Definir a célula selecionada como NULL"],
-  ["Espaço", "Mostrar o valor inteiro da célula selecionada"],
-  ["Alt+← →", "Estreitar ou alargar a coluna da célula selecionada"],
-  ["Delete", "Fechar a aba focada"],
-  ["Esc", "Fechar painel, diálogo ou edição"]
+  [
+    "Na grade",
+    [
+      ["↑ ↓ ← →", "Andar pela lateral e pela grade"],
+      ["Enter / F2", "Editar a célula selecionada"],
+      ["Ctrl+Shift+N", "Definir a célula como NULL"],
+      ["Ctrl+Z", "Desfazer a alteração da célula"],
+      ["Ctrl+S", "Salvar as alterações da tabela"],
+      ["Espaço", "Mostrar o valor inteiro da célula"],
+      ["Alt+← →", "Estreitar ou alargar a coluna"]
+    ]
+  ],
+  [
+    "No editor",
+    [
+      [RUN_SHORTCUT, "Executar a seleção ou o editor inteiro"],
+      ["Esc", "Fechar painel, diálogo ou edição"]
+    ]
+  ]
 ] as const;
 
 function Row({ mark, children }: RowProps) {
@@ -88,8 +105,9 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
         <DialogDescription>
           Estado nunca depende só de cor: cada marca tem textura ou palavra.
         </DialogDescription>
-        {/* three columns where the window allows: the whole card reads without scrolling at 800px */}
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {/* three columns where the window allows, the shortcuts widest so their lines do not wrap:
+            the whole card reads without scrolling at 800px */}
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[1fr_0.85fr_1.35fr]">
           <div className="grid content-start gap-6">
             <Section title="Na grade">
               <Row mark={<span aria-hidden className="h-5 w-16 bg-select" />}>
@@ -197,13 +215,27 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
               ))}
             </Section>
           </div>
-          <Section title="Atalhos">
-            {SHORTCUTS.map(([keys, action]) => (
-              <Row key={keys} mark={<kbd className="legend">{keys}</kbd>}>
-                {action}
-              </Row>
+          <section className="grid content-start gap-2">
+            <h3 className="border-b border-foreground pb-1.5 legend text-muted-foreground">
+              Atalhos
+            </h3>
+            {SHORTCUT_GROUPS.map(([group, shortcuts]) => (
+              <div key={group} className="grid gap-0.5">
+                <h4 className="pt-1 text-xs font-semibold">{group}</h4>
+                <ul className="grid">
+                  {shortcuts.map(([keys, action]) => (
+                    <li
+                      key={keys}
+                      className="grid min-h-6 grid-cols-[8rem_1fr] items-center gap-3 text-[13px]"
+                    >
+                      <kbd className="legend">{keys}</kbd>
+                      <span className="text-muted-foreground">{action}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </Section>
+          </section>
         </div>
         {/* plain text, selectable: a link would open inside the app's own window */}
         <p className="border-t pt-3 text-xs text-muted-foreground">

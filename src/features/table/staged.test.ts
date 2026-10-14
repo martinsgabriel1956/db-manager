@@ -10,6 +10,7 @@ import {
   removeNewRow,
   stageInsertValue,
   stagedCount,
+  stagedDiff,
   stageUpdate,
   toggleDelete
 } from "@/features/table/staged";
@@ -98,4 +99,14 @@ test("delete toggles and new rows can be dropped", () => {
   staged = removeNewRow(staged, staged.inserts[0].id);
   expect(staged).toEqual(EMPTY_STAGED);
   expect(stagedCount(staged)).toBe(0);
+});
+
+test("the diff pairs each staged update with the value it replaces, skipping deleted rows", () => {
+  let staged = stageUpdate(EMPTY_STAGED, 0, "note", "nova", rows[0][2]);
+  staged = stageUpdate(staged, 1, "name", null, rows[1][1]);
+  expect(stagedDiff(rows, columns, ["id"], staged)).toEqual([
+    { key: "id = 1", column: "note", before: null, after: "nova" },
+    { key: "id = 2", column: "name", before: "Bia", after: null }
+  ]);
+  expect(stagedDiff(rows, columns, ["id"], toggleDelete(staged, 1))).toHaveLength(1);
 });

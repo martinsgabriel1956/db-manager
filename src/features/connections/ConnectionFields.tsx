@@ -1,10 +1,15 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import type { Engine } from "@/bindings";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import type { ConnectionFormValues, FormErrors } from "@/features/connections/form";
+import { cn } from "@/lib/utils";
+import {
+  parseConnectionUrl,
+  type ConnectionFormValues,
+  type FormErrors
+} from "@/features/connections/form";
 import {
   ENGINE_LABEL,
   ENGINES,
@@ -129,6 +134,8 @@ export function ConnectionFields({
           {textInput("name", { placeholder: `ex.: ${ENGINE_LABEL[values.engine]} prod` })}
         </Field>
       </div>
+
+      {!isSqlite && !isMongo && <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />}
 
       {isMongo && (
         <fieldset className="flex gap-4 text-sm">
@@ -328,6 +335,83 @@ export function ConnectionFields({
           </div>
         </div>
       </details>
+    </div>
+  );
+}
+
+type UrlPasteProps = Pick<ConnectionFieldsProps, "onChange" | "onEngineChange">;
+
+/**
+ * Most connections arrive as a URL from a .env or a dashboard: pasted here, it fills the
+ * fields below and leaves the input empty, so the password is kept only where the form
+ * keeps it (the keychain, on save).
+ */
+function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState<"filled" | "invalid" | null>(null);
+
+  // applied whole: on paste, on Enter or on leaving the field, never on a typed prefix
+  // ("postgres://a" already parses)
+  function apply(candidate: string) {
+    if (candidate.trim() === "") {
+      setStatus(null);
+      return;
+    }
+    const parsed = parseConnectionUrl(candidate);
+    if (!parsed) {
+      setText(candidate);
+      setStatus("invalid");
+      return;
+    }
+    onEngineChange(parsed.engine);
+    onChange(parsed.patch);
+    setText("");
+    setStatus("filled");
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor="connection-url">Colar URL de conexão (opcional)</Label>
+      <Input
+        id="connection-url"
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        value={text}
+        placeholder="postgres://usuário:senha@host:5432/banco"
+        aria-describedby="connection-url-status"
+        aria-invalid={status === "invalid" ? true : undefined}
+        onChange={event => {
+          setText(event.target.value);
+          setStatus(null);
+        }}
+        onPaste={event => {
+          event.preventDefault();
+          apply(event.clipboardData.getData("text"));
+        }}
+        onBlur={() => apply(text)}
+        onKeyDown={event => {
+          if (event.key === "Enter") {
+            // Enter here fills the fields; it must not submit the form
+            event.preventDefault();
+            apply(text);
+          }
+        }}
+      />
+      <p
+        id="connection-url-status"
+        aria-live="polite"
+        className={cn(
+          "text-xs",
+          status === "invalid" ? "text-destructive" : "text-muted-foreground"
+        )}
+      >
+        {status === "filled"
+          ? "Campos preenchidos a partir da URL. Confira abaixo; a senha vai para o keychain ao salvar."
+          : status === "invalid"
+            ? "Não reconheci a URL. Use postgres://, mysql:// ou redis://."
+            : "Preenche tipo, host, porta, banco, usuário, senha e TLS de uma vez."}
+      </p>
     </div>
   );
 }

@@ -147,3 +147,23 @@ test("before a query, the palette shows short sections by kind without per-conne
   const tables = sections[0];
   expect(tables.total).toBeGreaterThanOrEqual(tables.entries.length);
 });
+
+test("letters typed in order find a name, after every exact match", () => {
+  expect(labels(searchEntries(entries(), "usr"))[0]).toBe("public.users (Postgres prod)");
+  // an exact match of the same word still ranks first
+  const results = labels(searchEntries(entries(), "ord"));
+  expect(results[0]).toBe("shop.orders (Mongo dev)");
+});
+
+test("before a query, where you were comes first and leaves its own group", () => {
+  const all = entries();
+  const sections = browseSections(all, null, [
+    "table/mongo-1/shop/orders",
+    "table/gone/x/y",
+    "redis/redis-1/1"
+  ]);
+  expect(sections[0].group).toBe("Recentes");
+  expect(labels(sections[0].entries)).toEqual(["shop.orders (Mongo dev)", "db1 (Cache)"]);
+  const tables = sections.find(section => section.group === "Tabelas e coleções")!;
+  expect(labels(tables.entries)).not.toContain("shop.orders (Mongo dev)");
+});

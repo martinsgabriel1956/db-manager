@@ -244,3 +244,73 @@ export function changeEngine(values: ConnectionFormValues, engine: Engine): Conn
   const mongoMode = engine === "mongo" ? values.mongoMode : "network";
   return { ...values, engine, port, tlsMode, database, mongoMode };
 }
+
+const URL_ENGINE: Record<string, Engine> = {
+  "postgres:": "postgres",
+  "postgresql:": "postgres",
+  "mysql:": "mysql",
+  "redis:": "redis",
+  "rediss:": "redis"
+};
+
+/** libpq's sslmode and MySQL's ssl-mode; verify-ca reads as the stricter verifyFull */
+const URL_TLS: Record<string, TlsMode> = {
+  disable: "disable",
+  disabled: "disable",
+  allow: "prefer",
+  prefer: "prefer",
+  preferred: "prefer",
+  require: "require",
+  required: "require",
+  "verify-ca": "verifyFull",
+  verify_ca: "verifyFull",
+  "verify-full": "verifyFull",
+  verify_identity: "verifyFull"
+};
+
+export type ConnectionUrl = { engine: Engine; patch: Partial<ConnectionFormValues> };
+
+/**
+ * A pasted `postgres://`, `mysql://` or `redis://` URL split into the form's fields;
+ * null when it is not one. Only what the URL states is filled in: a URL without a port
+ * keeps the engine's default.
+ */
+export function parseConnectionUrl(text: string): ConnectionUrl | null {
+  let url: URL;
+  try {
+    url = new URL(text.trim());
+  } catch {
+    return null;
+  }
+  const engine = URL_ENGINE[url.protocol];
+  if (!engine || !url.hostname) {
+    return null;
+  }
+  const decode = (part: string) => {
+    try {
+      return decodeURIComponent(part);
+    } catch {
+      return part;
+    }
+  };
+  const patch: Partial<ConnectionFormValues> = {
+    // IPv6 hosts come bracketed: the host field takes the bare address
+    host: url.hostname.replace(/^\[(.*)\]$/, "$1"),
+    database: decode(url.pathname.replace(/^\//, "")),
+    username: decode(url.username),
+    password: decode(url.password)
+  };
+  if (url.port) {
+    patch.port = url.port;
+  }
+  const tls =
+    url.protocol === "rediss:"
+      ? "require"
+      : URL_TLS[
+          (url.searchParams.get("sslmode") ?? url.searchParams.get("ssl-mode") ?? "").toLowerCase()
+        ];
+  if (tls) {
+    patch.tlsMode = tls;
+  }
+  return { engine, patch };
+}

@@ -4,6 +4,7 @@ import {
   changeEngine,
   EMPTY_FORM,
   fromConfig,
+  parseConnectionUrl,
   parseForm,
   type ConnectionFormValues
 } from "@/features/connections/form";
@@ -236,4 +237,40 @@ describe("mongo connection string", () => {
     expect(changeEngine(values, "postgres").mongoMode).toBe("network");
     expect(changeEngine(values, "mongo").mongoMode).toBe("uri");
   });
+});
+
+test("a pasted connection URL fills the fields it states", () => {
+  expect(
+    parseConnectionUrl("postgresql://ana:p%40ss@db.example.com:6543/app?sslmode=require")
+  ).toEqual({
+    engine: "postgres",
+    patch: {
+      host: "db.example.com",
+      port: "6543",
+      database: "app",
+      username: "ana",
+      password: "p@ss",
+      tlsMode: "require"
+    }
+  });
+  // no port: the engine's default stays
+  expect(parseConnectionUrl(" mysql://root@localhost/shop ")?.patch).toEqual({
+    host: "localhost",
+    database: "shop",
+    username: "root",
+    password: ""
+  });
+  expect(parseConnectionUrl("rediss://:secret@[::1]:6380/2")).toEqual({
+    engine: "redis",
+    patch: {
+      host: "::1",
+      port: "6380",
+      database: "2",
+      username: "",
+      password: "secret",
+      tlsMode: "require"
+    }
+  });
+  expect(parseConnectionUrl("mongodb://x")).toBeNull();
+  expect(parseConnectionUrl("not a url")).toBeNull();
 });

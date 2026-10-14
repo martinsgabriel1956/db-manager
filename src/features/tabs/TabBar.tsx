@@ -298,6 +298,14 @@ export function TabBar({ connections, form = null }: TabBarProps) {
           const { connection, title } = tabParts(tab, connections);
           const Icon = tabIcon(tab, connection);
           const engine = connection?.engine ?? null;
+          // tabs of one connection side by side read as one run: its first tab carries the
+          // connection's name and PROD tag, the rest only their own table under the same rule
+          const previous = tabs[index - 1];
+          const runStart =
+            !previous ||
+            previous.kind === "history" ||
+            tab.kind === "history" ||
+            previous.connectionId !== tab.connectionId;
           const isActive = !away && tab.id === activeId;
           const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
           const isProd = connection?.environment === "prod";
@@ -324,7 +332,12 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     isActive
                       ? // the system's one diagonal: the active tab's corner is cut in blue
                         "relative -mb-px bg-background font-semibold shadow-[inset_0_3px_0_var(--select)] after:absolute after:top-0 after:right-0 after:size-2.5 after:bg-select after:[clip-path:polygon(0_0,100%_0,100%_100%)]"
-                      : "text-muted-foreground hover:bg-background hover:text-foreground"
+                      : "text-muted-foreground hover:bg-background hover:text-foreground",
+                    // production works under the safelight along the whole run, PROD tag or not
+                    isProd &&
+                      (isActive
+                        ? "shadow-[inset_0_3px_0_var(--select),inset_0_-2px_0_var(--safelight)]"
+                        : "shadow-[inset_0_-2px_0_var(--safelight)]")
                   )}
                 >
                   {/* the engine code names a lone connection's tabs; with several, the name does */}
@@ -354,24 +367,29 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     className={cn(
                       "flex min-w-0 items-center gap-1.5 py-1.5 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                       // two names need the room of two: "Postgres prod · ER public" fits whole
-                      showConnection ? "max-w-80" : "max-w-60",
+                      showConnection && runStart ? "max-w-72" : "max-w-48",
                       engine && !showConnection ? "pl-1.5" : "pl-3"
                     )}
                   >
                     <Icon className="size-3.5 shrink-0" />
                     {/* the connection gives way first and alone: the table name is cut only
                         past 11rem, so the two never truncate together */}
-                    {connection && showConnection && (
+                    {connection && showConnection && runStart && (
                       // room for "Postgres prod": two names that share a prefix still part
                       <span className="max-w-32 min-w-0 truncate font-normal">
                         {connection.name} ·
                       </span>
                     )}
-                    <span className={cn("min-w-0 truncate", showConnection && "max-w-44 shrink-0")}>
+                    <span
+                      className={cn(
+                        "min-w-0 truncate",
+                        showConnection && runStart && "max-w-36 shrink-0"
+                      )}
+                    >
                       {title}
                     </span>
-                    {/* production is printed on the tab itself, not only once the tab is active */}
-                    {isProd && <EnvTag environment="prod" />}
+                    {/* production is printed in words once per run, not only once the tab is active */}
+                    {isProd && runStart && <EnvTag environment="prod" />}
                   </button>
                   {/* staged exposure on this table: the same Δ the save button carries */}
                   {staged > 0 && (

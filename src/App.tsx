@@ -116,8 +116,12 @@ export function App() {
   // app-wide accelerators; each one is also reachable from a visible control
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      // a dialog owns the keyboard while it is open
-      if (document.querySelector("[role='dialog'], [role='alertdialog']")) {
+      // a dialog owns the keyboard while it is open; one still fading out no longer does
+      if (
+        document.querySelector(
+          "[role='dialog']:not([data-state='closed']), [role='alertdialog']:not([data-state='closed'])"
+        )
+      ) {
         return;
       }
       if (event.key === "F6") {

@@ -20,6 +20,10 @@ export type GridEditing = {
   isEdited: (row: number, column: number) => boolean;
   /** just saved: the hatch develops away */
   isDeveloping?: (row: number, column: number) => boolean;
+  /** the stored value an edited cell replaces; null when the cell is not an edit */
+  originalFor?: (row: number, column: number) => Cell | null;
+  /** Ctrl+Z on an edited cell: back to the stored value */
+  revert?: (row: number, column: number) => void;
 };
 
 /** `value` is null while the cell holds NULL; `initial` is what editing started from. */
@@ -197,6 +201,7 @@ export function ResultGrid({
   const keysId = `${cellIdPrefix}-keys`;
   const keys = [
     editing ? "Enter ou F2 edita a célula, Ctrl+Shift+N define NULL" : null,
+    editing?.revert ? "Ctrl+Z desfaz a alteração da célula" : null,
     onToggleDetail ? "Espaço mostra o valor inteiro" : null,
     "Alt+← → ajusta a largura da coluna"
   ].filter(Boolean);
@@ -275,6 +280,11 @@ export function ResultGrid({
     if (selected && isSetNull(event)) {
       event.preventDefault();
       setNull(selected.row, selected.column);
+      return;
+    }
+    if (selected && editing?.revert && (event.ctrlKey || event.metaKey) && event.key === "z") {
+      event.preventDefault();
+      editing.revert(selected.row, selected.column);
       return;
     }
     if (selected && event.key === " " && onToggleDetail) {
@@ -540,6 +550,9 @@ export function ResultGrid({
                       selected?.row === item.index && selected.column === columnIndex;
                     const isEditing = editor?.row === item.index && editor.column === columnIndex;
                     const isEdited = editing?.isEdited(item.index, columnIndex) ?? false;
+                    const original = isEdited
+                      ? (editing?.originalFor?.(item.index, columnIndex) ?? null)
+                      : null;
                     const isDeveloping = editing?.isDeveloping?.(item.index, columnIndex) ?? false;
                     return (
                       <div
@@ -549,6 +562,7 @@ export function ResultGrid({
                         aria-colindex={columnIndex + 1}
                         aria-selected={isSelected}
                         data-edited={isEdited || undefined}
+                        title={original ? `Antes: ${gridText(original)}` : undefined}
                         onClick={() => onSelect({ row: item.index, column: columnIndex })}
                         onDoubleClick={() => startEditing(item.index, columnIndex)}
                         style={{ width: size, left: start }}
@@ -594,7 +608,13 @@ export function ResultGrid({
                             {columnIndex === firstColumn && status === "deleted" && (
                               <span className="sr-only"> (linha marcada para exclusão)</span>
                             )}
-                            {isEdited && <span className="sr-only"> (alteração pendente)</span>}
+                            {isEdited && (
+                              <span className="sr-only">
+                                {original
+                                  ? ` (alteração pendente, era ${gridText(original)})`
+                                  : " (alteração pendente)"}
+                              </span>
+                            )}
                           </>
                         )}
                       </div>
