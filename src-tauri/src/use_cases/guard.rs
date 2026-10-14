@@ -83,6 +83,7 @@ pub fn confirmation_for(
         return Some(Confirmation {
             reason: format!("Comando destrutivo: {}", reasons.join(", ")),
             statements: destructive.iter().map(|(s, _)| (*s).clone()).collect(),
+            destructive: true,
         });
     }
 
@@ -94,6 +95,7 @@ pub fn confirmation_for(
     (environment == Environment::Prod && !writes.is_empty()).then(|| Confirmation {
         reason: "Conexão de produção: confirme antes de escrever".to_string(),
         statements: writes,
+        destructive: false,
     })
 }
 
@@ -348,6 +350,7 @@ mod tests {
             Some(Confirmation {
                 reason: "Conexão de produção: confirme antes de escrever".into(),
                 statements: script(&["UPDATE t SET a = 1 WHERE id = 1"]),
+                destructive: false,
             })
         );
         assert_eq!(
@@ -355,6 +358,7 @@ mod tests {
             Some(Confirmation {
                 reason: "Comando destrutivo: DELETE sem WHERE, DROP".into(),
                 statements: script(&["DELETE FROM t", "DROP TABLE x"]),
+                destructive: true,
             })
         );
         // read-only sessions reject writes in the database itself

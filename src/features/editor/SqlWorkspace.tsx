@@ -21,6 +21,7 @@ type SqlWorkspaceProps = {
   defaultSchema: string;
   sql: string;
   onSqlChange: (sql: string) => void;
+  autoFocus?: boolean;
 };
 
 type ResultsPanelProps = {
@@ -50,7 +51,8 @@ export function summary(state: RunState): string | null {
     return `Comando executado · ${state.rowsAffected} ${noun} · ${durationMs} ms${statements}`;
   }
   const more = state.hasMore ? "+" : "";
-  const noun = state.rows.length === 1 && !state.hasMore ? "linha" : "linhas";
+  // "retornada", not a bare "linha": after a confirmed write, rows read back must not pass for rows written
+  const noun = state.rows.length === 1 && !state.hasMore ? "linha retornada" : "linhas retornadas";
   return `${state.rows.length}${more} ${noun} · ${durationMs} ms${statements}`;
 }
 
@@ -59,7 +61,8 @@ export function SqlWorkspace({
   engine,
   defaultSchema,
   sql,
-  onSqlChange
+  onSqlChange,
+  autoFocus = false
 }: SqlWorkspaceProps) {
   const completion = useCompletion(connectionId);
   const runner = useScriptRunner(connectionId);
@@ -109,6 +112,7 @@ export function SqlWorkspace({
             engine={engine}
             defaultSchema={defaultSchema}
             apiRef={editorApi}
+            autoFocus={autoFocus}
           />
         </Panel>
         {/* 1px line with a 9px grab area; focused it thickens to 3px without moving the panels */}
@@ -160,12 +164,25 @@ function Receipt({ connectionId, confirmed, text }: ReceiptProps) {
   }
   return (
     <>
-      <span className="shrink-0">Confirmado e executado em</span>{" "}
-      <ConnectionContext connectionId={connectionId} />{" "}
+      {/* the same legend that marks a cancelled run: the ritual ends in a mark, not in fine print */}
+      <span className="shrink-0">
+        <span className="legend text-[0.75rem]">Confirmado</span>
+        {/* a narrow bar keeps the mark and where it ran */}
+        <span className="hidden @min-[52rem]:inline"> e executado</span> em
+      </span>{" "}
+      {/* never narrower than its environment tag: the name truncates, PROD stays whole */}
+      <ConnectionContext connectionId={connectionId} className="min-w-min" />{" "}
       {/* the count never wraps: in a narrow bar the connection name truncates first */}
       <span className="shrink-0 whitespace-nowrap text-muted-foreground">· {text} ·</span>{" "}
-      <Button size="xs" variant="link" className="h-auto px-0 underline" onClick={openHistory}>
-        Ver no histórico
+      {/* one text for the live region either way; a narrow bar shows only "histórico" */}
+      <Button
+        size="xs"
+        variant="link"
+        aria-label="Ver no histórico"
+        className="h-auto px-0 underline"
+        onClick={openHistory}
+      >
+        <span className="hidden @min-[52rem]:inline">Ver no </span>histórico
       </Button>
     </>
   );
@@ -254,7 +271,10 @@ function ResultsPanel({
   }
   if (state.status === "command") {
     return (
-      <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 p-3 text-sm">
+      <div
+        role="status"
+        className="@container flex flex-wrap items-center gap-x-2 gap-y-1 p-3 text-sm"
+      >
         <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
       </div>
     );

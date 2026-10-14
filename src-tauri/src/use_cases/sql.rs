@@ -302,6 +302,7 @@ pub async fn apply_changes(
             confirmation: Confirmation {
                 reason: "Conexão de produção: confira as alterações antes de salvar".to_string(),
                 statements,
+                destructive: false,
             },
         });
     }

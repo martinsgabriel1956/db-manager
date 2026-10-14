@@ -708,6 +708,7 @@ function Wordmark() {
 
 function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const setSql = useTabs(state => state.setSql);
+  const freshEditorId = useTabs(state => state.freshEditorId);
   const openTable = useTabs(state => state.openTable);
 
   if (tab.kind === "history") {
@@ -749,6 +750,8 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   }
   return (
     <SqlWorkspace
+      // a new editor is for typing: what opened it (tree, palette, Ctrl+T) leaves focus there
+      autoFocus={tab.id === freshEditorId}
       connectionId={tab.connectionId}
       engine={connection.engine}
       defaultSchema={defaultSchemaFor(connection)}

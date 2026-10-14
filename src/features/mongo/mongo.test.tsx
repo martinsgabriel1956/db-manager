@@ -173,6 +173,7 @@ test("delete asks first; on prod the statement is confirmed", async () => {
         : {
             status: "needsConfirmation",
             confirmation: {
+              destructive: false,
               reason: "Conexão de produção: confirme antes de escrever",
               statements: ['shop.customers.deleteOne({"_id": {"$oid":"65a1b2c3d4e5f60718293a4c"}})']
             }
@@ -221,6 +222,7 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
         return {
           status: "needsConfirmation",
           confirmation: {
+            destructive: true,
             reason: "Comando destrutivo: $out substitui a coleção de destino",
             statements: [`shop.customers.aggregate(${pipeline})`]
           }

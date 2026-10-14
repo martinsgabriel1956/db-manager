@@ -172,6 +172,9 @@ pub struct ScriptOutcome {
 pub struct Confirmation {
     pub reason: String,
     pub statements: Vec<String>,
+    /// DROP, TRUNCATE, a DELETE without WHERE, `$out`, FLUSHDB…: on `prod` the UI
+    /// asks for more than a click before these run
+    pub destructive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]

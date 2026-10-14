@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   ChevronDown,
+  Braces,
   ChevronRight,
   Database,
   Ellipsis,
@@ -149,9 +150,12 @@ function isMenuKey(event: KeyboardEvent) {
 /**
  * Roving tab stop: exactly one row is tabbable, the last one focused, else the
  * row of the open tab, else the first. Set on the DOM so re-renders keep it.
+ * A newly opened tab moves the stop to its row (F6 lands where you are) and scrolls it
+ * into the sidebar's view.
  */
 function useRovingTabStop(treeRef: RefObject<HTMLUListElement | null>) {
   const lastFocused = useRef<HTMLElement | null>(null);
+  const lastSelected = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const tree = treeRef.current;
@@ -159,10 +163,13 @@ function useRovingTabStop(treeRef: RefObject<HTMLUListElement | null>) {
       return;
     }
     const items = treeItems(tree);
-    const current =
-      items.find(item => item === lastFocused.current) ??
-      items.find(item => item.getAttribute("aria-selected") === "true") ??
-      items[0];
+    const selected = items.find(item => item.getAttribute("aria-selected") === "true") ?? null;
+    if (selected && selected !== lastSelected.current) {
+      lastFocused.current = selected;
+      selected.scrollIntoView?.({ block: "nearest" });
+    }
+    lastSelected.current = selected;
+    const current = items.find(item => item === lastFocused.current) ?? selected ?? items[0];
     for (const item of items) {
       item.tabIndex = item === current ? 0 : -1;
     }
@@ -239,7 +246,10 @@ function RowMenu({ label, actions, open, onOpenChange, rowRef, className }: RowM
         aria-label={label}
         onCloseAutoFocus={event => {
           event.preventDefault();
-          rowRef.current?.focus();
+          // an action that took focus elsewhere (a new SQL editor) keeps it
+          if (!document.activeElement || document.activeElement === document.body) {
+            rowRef.current?.focus();
+          }
         }}
       >
         {actions.map(action => (
@@ -356,7 +366,7 @@ function ConnectionNode({
             <span className="min-w-0 truncate">{targetSummary(connection)}</span>
             {connection.readOnly && (
               <span
-                title="Somente leitura"
+                title="Somente leitura: o próprio banco recusa escritas"
                 className="ml-auto shrink-0 border border-dotted border-current p-px"
               >
                 <Lock aria-hidden className="size-3" />
@@ -565,7 +575,7 @@ function SchemaNode({
         <ul role="group" className="grid grid-cols-1 pl-4">
           {schema.relations.length === 0 && (
             <li role="none" className="px-1.5 py-1 text-xs text-muted-foreground">
-              Sem tabelas
+              {isMongo ? "Sem coleções" : "Sem tabelas"}
             </li>
           )}
           {schema.relations.map(relation => {
@@ -573,7 +583,8 @@ function SchemaNode({
               activeTable?.connectionId === connectionId &&
               activeTable.schema === schema.name &&
               activeTable.table === relation.name;
-            const Icon = relation.kind === "table" ? Table2 : Eye;
+            // a collection holds documents, not rows: it does not wear the table's grid
+            const Icon = isMongo ? Braces : relation.kind === "table" ? Table2 : Eye;
             return (
               <li role="none" key={relation.name}>
                 <button

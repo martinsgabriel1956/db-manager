@@ -17,7 +17,7 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   connections: ConnectionConfig[];
-  /** the active tab's connection: its matches rank first, production's last */
+  /** the active tab's connection: its matches rank first, production's always last */
   activeConnectionId: string | null;
   /** typed in when it opens, e.g. "abrir" from "Abrir uma conexão" */
   initialQuery?: string;

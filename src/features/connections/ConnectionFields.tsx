@@ -67,6 +67,15 @@ function Field({ id, label, error, hint, children }: FieldProps) {
   );
 }
 
+/** How "somente leitura" is enforced, said for the engine being set up. */
+const READ_ONLY_HINT: Record<Engine, string> = {
+  postgres: "O próprio Postgres recusa escritas: a sessão abre em somente leitura.",
+  mysql: "O próprio MySQL recusa escritas: a sessão abre com SESSION TRANSACTION READ ONLY.",
+  sqlite: "O arquivo abre só para leitura (mode=ro): o próprio SQLite recusa escritas.",
+  mongo: "Só comandos de leitura vão ao MongoDB: o app recusa escritas antes de enviá-las.",
+  redis: "Só comandos de leitura vão ao Redis: o app recusa escritas antes de enviá-las."
+};
+
 export function ConnectionFields({
   values,
   errors,
@@ -117,7 +126,7 @@ export function ConnectionFields({
           </NativeSelect>
         </Field>
         <Field id="name" label="Nome" error={errors.name}>
-          {textInput("name", { placeholder: "ex.: Postgres prod" })}
+          {textInput("name", { placeholder: `ex.: ${ENGINE_LABEL[values.engine]} prod` })}
         </Field>
       </div>
 
@@ -193,7 +202,7 @@ export function ConnectionFields({
             id="password"
             label="Senha"
             error={errors.password}
-            hint="Guardada no keychain do sistema, não no arquivo de conexões."
+            hint="Guardada no keychain do sistema (no Linux, o Secret Service: GNOME Keyring ou KWallet), não no arquivo de conexões."
           >
             <Input
               id="password"
@@ -273,9 +282,7 @@ export function ConnectionFields({
               Somente leitura
             </label>
             <p id="readOnly-hint" className="pl-6 text-xs text-muted-foreground">
-              O próprio banco recusa escritas: sessão somente leitura no Postgres e no MySQL,
-              arquivo aberto só para leitura no SQLite, só comandos de leitura no MongoDB e no
-              Redis.
+              {READ_ONLY_HINT[values.engine]}
             </p>
           </div>
         </div>

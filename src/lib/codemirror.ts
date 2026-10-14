@@ -29,6 +29,8 @@ const theme = EditorView.theme({
   },
   ".cm-scroller": { fontFamily: "var(--font-mono)" },
   ".cm-content": { caretColor: "var(--select)" },
+  // CodeMirror's own #888 is off the zone scale
+  ".cm-placeholder": { color: "var(--muted-foreground)" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--select)", borderLeftWidth: "2px" },
   ".cm-gutters": {
     backgroundColor: "var(--muted)",

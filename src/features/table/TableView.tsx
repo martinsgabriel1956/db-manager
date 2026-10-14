@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
+import { useConnections } from "@/features/connections/queries";
 import { ExportButton } from "@/features/export/ExportButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
@@ -17,6 +18,7 @@ import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
 import { tableKey, useTabs } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 
 type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
 
@@ -141,6 +143,25 @@ function TableData({
   const edit = useTableEditing({ connectionId, schema, table, readOnly, batch, primaryKey });
   const dirty = edit.count > 0;
   const setPending = useTabs(state => state.setPending);
+  const connections = useConnections();
+  // production keeps the words on its write buttons at any width: an icon alone is not enough there
+  const isProd =
+    connections.data?.find(candidate => candidate.id === connectionId)?.environment === "prod";
+  const rowLabelClass = isProd ? "inline" : "hidden @min-[52rem]:inline";
+  // with edits staged in a narrow window, Descartar and Salvar need the room: the add
+  // button gives its word first, Excluir keeps it
+  const addLabelClass = isProd && dirty ? "hidden @min-[52rem]:inline" : rowLabelClass;
+  // the panel stays mounted behind other tabs: the saved notice belongs to the visit that saved
+  const isActiveTab = useTabs(state => {
+    const tab = state.tabs.find(open => open.id === state.activeId);
+    return tab?.kind === "table" && tableKey(tab) === tableKey({ connectionId, schema, table });
+  });
+  const { clearNotice } = edit;
+  useEffect(() => {
+    if (!isActiveTab) {
+      clearNotice();
+    }
+  }, [isActiveTab, clearNotice]);
 
   // the tab shows the same Δ as the save button; closing the view clears it
   useEffect(() => {
@@ -335,7 +356,13 @@ function TableData({
                   {/* gone while edits are staged or the saved notice speaks; the short form
                       keeps the hint in the 960px window with the sidebar open */}
                   {!dirty && !edit.notice && (
-                    <span className="hidden text-xs text-muted-foreground @min-[40rem]:inline">
+                    <span
+                      className={cn(
+                        "hidden text-xs text-muted-foreground",
+                        // in production the button words take this room first
+                        isProd ? "@min-[60rem]:inline" : "@min-[40rem]:inline"
+                      )}
+                    >
                       <span className="@min-[56rem]:hidden">Enter edita a célula</span>
                       <span className="hidden @min-[56rem]:inline">
                         Duplo clique ou Enter edita a célula
@@ -351,7 +378,7 @@ function TableData({
                     onClick={edit.addRow}
                   >
                     <Plus />
-                    <span className="hidden @min-[52rem]:inline">Adicionar linha</span>
+                    <span className={addLabelClass}>Adicionar linha</span>
                   </Button>
                   <Button
                     size="sm"
@@ -368,12 +395,12 @@ function TableData({
                     {selected && edit.isDeleted(selected.row) ? (
                       <>
                         <Undo2 />
-                        <span className="hidden @min-[52rem]:inline">Restaurar linha</span>
+                        <span className={rowLabelClass}>Restaurar linha</span>
                       </>
                     ) : (
                       <>
                         <Trash2 />
-                        <span className="hidden @min-[52rem]:inline">Excluir linha</span>
+                        <span className={rowLabelClass}>Excluir linha</span>
                       </>
                     )}
                   </Button>
@@ -403,6 +430,8 @@ function TableData({
                     size="sm"
                     disabled={edit.saving}
                     aria-keyshortcuts="Control+S"
+                    // the Δ is drawn, not read: the name says what the save will write
+                    aria-label={`Salvar (${pending})`}
                     onClick={edit.save}
                     className="pr-0"
                   >

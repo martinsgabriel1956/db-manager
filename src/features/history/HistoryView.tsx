@@ -60,8 +60,9 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b bg-muted px-3 py-2">
-        <h2 className="mr-2 display-caps text-xl">Histórico</h2>
+      {/* the same view header as SQL, tables and collections: the title at the same size, on paper */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-foreground bg-background px-4 py-2">
+        <h2 className="display-caps text-[1.75rem] leading-[1.15]">Histórico</h2>
         <Input
           aria-label="Buscar no histórico"
           placeholder="Buscar no SQL…"

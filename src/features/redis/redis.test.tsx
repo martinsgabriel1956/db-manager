@@ -195,7 +195,7 @@ test("a string is saved, its TTL set, then renamed and deleted", async () => {
   await user.click(screen.getByRole("button", { name: "Excluir chave" }));
   // the exact command shows before the click, and describes the confirmation
   expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toHaveAccessibleDescription(
-    "DEL events"
+    "DEL events Esc cancela."
   );
   await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   await waitFor(() => expect(edits(calls)[3]?.request.edits).toEqual([{ op: "delete" }]));
@@ -224,6 +224,7 @@ test("on prod an edit shows the Redis command and waits for confirmation", async
         return {
           status: "needsConfirmation",
           confirmation: {
+            destructive: false,
             reason: "Conexão de produção: confirme antes de escrever",
             statements: ["HSET user:1 name Bia"]
           }
@@ -310,6 +311,7 @@ test("the console runs commands, prints errors, confirms and recalls history", a
         return {
           status: "needsConfirmation",
           confirmation: {
+            destructive: true,
             reason: "Comando destrutivo: apaga todas as chaves do database",
             statements: ["FLUSHDB"]
           }

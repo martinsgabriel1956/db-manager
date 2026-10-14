@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
+  Braces,
   ChevronDown,
   Database,
   History,
@@ -79,6 +80,11 @@ const ICON = {
   history: History
 };
 
+/** A Mongo collection opens as a table tab, but it holds documents: its own glyph, as in the tree. */
+function tabIcon(tab: Tab, connection: ConnectionConfig | null) {
+  return tab.kind === "table" && connection?.engine === "mongo" ? Braces : ICON[tab.kind];
+}
+
 /** Ids that tie each open tab to its panel in App. */
 export function tabElementId(tabId: string): string {
   return `open-tab-${tabId}`;
@@ -86,6 +92,19 @@ export function tabElementId(tabId: string): string {
 
 export function tabPanelId(tabId: string): string {
   return `open-tab-panel-${tabId}`;
+}
+
+/** Visible width of a tab the left edge cuts through; 0 when a tab starts right at the edge. */
+function leftFragment(strip: HTMLElement): number {
+  const left = strip.scrollLeft;
+  for (const child of Array.from(strip.children)) {
+    const tab = child as HTMLElement;
+    const end = tab.offsetLeft + tab.offsetWidth;
+    if (end > left) {
+      return tab.offsetLeft < left - 1 ? end - left : 0;
+    }
+  }
+  return 0;
 }
 
 export function TabBar({ connections, form = null }: TabBarProps) {
@@ -107,8 +126,11 @@ export function TabBar({ connections, form = null }: TabBarProps) {
 
   const stripRef = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
-  /** tabs hidden past the left edge: the first visible one fades out instead of cutting mid-word */
-  const [clippedStart, setClippedStart] = useState(false);
+  /**
+   * Width of the tab cut by the strip's left edge. That fragment is masked out whole:
+   * a stray "PROD ×" with no name in front of it reads as a tag of the tab beside it.
+   */
+  const [cutStart, setCutStart] = useState(0);
 
   // the strip clips tabs past its edge: measure it whenever the tabs or the window change
   useLayoutEffect(() => {
@@ -116,7 +138,10 @@ export function TabBar({ connections, form = null }: TabBarProps) {
     if (!strip) {
       return;
     }
-    const measure = () => setOverflowing(strip.scrollWidth > strip.clientWidth);
+    const measure = () => {
+      setOverflowing(strip.scrollWidth > strip.clientWidth);
+      setCutStart(leftFragment(strip));
+    };
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
@@ -127,16 +152,40 @@ export function TabBar({ connections, form = null }: TabBarProps) {
   // The whole tab comes into view, its Δ and × included, not only the button that names it.
   const activeTab = tabs.find(tab => tab.id === activeId);
   const activeStaged = activeTab?.kind === "table" ? (pending[tableKey(activeTab)] ?? 0) : 0;
-  useEffect(() => {
-    if (activeId) {
-      document
-        .getElementById(tabElementId(activeId))
-        ?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-    }
-  }, [activeId, overflowing, activeStaged]);
-
   /** with the form shown, no regular tab is the current one */
   const away = form?.shown ?? false;
+  // the form tab is the current one while shown: it scrolls into view the same way
+  const currentId = away ? FORM_TAB_ID : activeId ? tabElementId(activeId) : null;
+  useEffect(() => {
+    if (currentId) {
+      document
+        .getElementById(currentId)
+        ?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    }
+  }, [currentId, overflowing, activeStaged]);
+
+  // a short fragment (a lone "PROD ×") goes whole; a wide one keeps its name and only fades in
+  const cutMask =
+    cutStart === 0
+      ? null
+      : cutStart <= 96
+        ? `linear-gradient(to right, transparent ${cutStart}px, black ${cutStart + 12}px)`
+        : "linear-gradient(to right, transparent, black 32px)";
+
+  // what the overflow menu holds, summed on its trigger: staged work and production
+  // must not hide past the edge just because the tab that carries them did
+  const stagedTotal = tabs.reduce(
+    (sum, tab) => sum + (tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0),
+    0
+  );
+  const anyProd = tabs.some(tab => tabParts(tab, connections).connection?.environment === "prod");
+  const overflowName = [
+    `Todas as abas (${tabs.length})`,
+    stagedTotal > 0
+      ? `, ${stagedTotal} ${stagedTotal === 1 ? "alteração pendente" : "alterações pendentes"}`
+      : "",
+    anyProd ? ", inclui produção" : ""
+  ].join("");
 
   function select(id: string) {
     activate(id);
@@ -193,11 +242,15 @@ export function TabBar({ connections, form = null }: TabBarProps) {
         ref={stripRef}
         role="tablist"
         aria-label="Abas abertas"
-        onScroll={event => setClippedStart(event.currentTarget.scrollLeft > 0)}
-        className={cn(
-          "flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]",
-          clippedStart && "[mask-image:linear-gradient(to_right,transparent,black_32px)]"
-        )}
+        onScroll={event => setCutStart(leftFragment(event.currentTarget))}
+        // no scrollbar stealing height from the tabs: the wheel scrolls the strip sideways
+        onWheel={event => {
+          if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+            event.currentTarget.scrollLeft += event.deltaY;
+          }
+        }}
+        style={cutMask ? { maskImage: cutMask, WebkitMaskImage: cutMask } : undefined}
+        className="relative flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {form && (
           <div
@@ -243,7 +296,7 @@ export function TabBar({ connections, form = null }: TabBarProps) {
         {tabs.map((tab, index) => {
           const label = tabLabel(tab, connections);
           const { connection, title } = tabParts(tab, connections);
-          const Icon = ICON[tab.kind];
+          const Icon = tabIcon(tab, connection);
           const engine = connection?.engine ?? null;
           const isActive = !away && tab.id === activeId;
           const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
@@ -319,6 +372,7 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                   {staged > 0 && (
                     <span
                       aria-hidden
+                      title={`${staged === 1 ? "1 alteração pendente" : `${staged} alterações pendentes`}: salve ou descarte na tabela`}
                       className="mr-0.5 h-[18px] bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background"
                     >
                       Δ {staged}
@@ -383,16 +437,22 @@ export function TabBar({ connections, form = null }: TabBarProps) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex shrink-0 items-center gap-1 border-l border-foreground px-2.5 text-xs text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              aria-label={overflowName}
+              className="flex shrink-0 items-center gap-1.5 border-l border-foreground px-2.5 text-xs text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
-              Todas as abas ({tabs.length})
+              Todas as abas ({tabs.length}){anyProd && <EnvTag environment="prod" />}
+              {stagedTotal > 0 && (
+                <span className="h-[18px] bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background">
+                  Δ {stagedTotal}
+                </span>
+              )}
               <ChevronDown className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-80 max-w-96 overflow-y-auto">
             {tabs.map(tab => {
               const { connection, title } = tabParts(tab, connections);
-              const Icon = ICON[tab.kind];
+              const Icon = tabIcon(tab, connection);
               const isActive = !away && tab.id === activeId;
               const staged = tab.kind === "table" ? (pending[tableKey(tab)] ?? 0) : 0;
               return (

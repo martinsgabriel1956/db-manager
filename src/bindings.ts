@@ -152,6 +152,11 @@ export type CompletionTable = {
 export type Confirmation = {
 	reason: string,
 	statements: string[],
+	/**
+	 *  DROP, TRUNCATE, a DELETE without WHERE, `$out`, FLUSHDB…: on `prod` the UI
+	 *  asks for more than a click before these run
+	 */
+	destructive: boolean,
 };
 
 /**

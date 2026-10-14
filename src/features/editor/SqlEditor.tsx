@@ -14,9 +14,10 @@ import {
   type SQLNamespace
 } from "@codemirror/lang-sql";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, placeholder } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
 import { editorLabel, editorTheme } from "@/lib/codemirror";
+import { RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlEditorProps = {
   value: string;
@@ -28,6 +29,8 @@ type SqlEditorProps = {
   defaultSchema: string;
   /** lets the Run button apply the same selection-or-all rule as Ctrl+Enter */
   apiRef: RefObject<SqlEditorApi | null>;
+  /** read once, at creation */
+  autoFocus?: boolean;
 };
 
 /** `prepareRun` closes a completion left open and returns what to run, as Mod-Enter does. */
@@ -97,7 +100,8 @@ export function SqlEditor({
   completion,
   engine,
   defaultSchema,
-  apiRef
+  apiRef,
+  autoFocus = false
 }: SqlEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -138,11 +142,16 @@ export function SqlEditor({
             }
           }),
           editorTheme,
-          editorLabel("Editor SQL")
+          editorLabel("Editor SQL"),
+          // an empty editor says what goes there and how it runs, instead of a blank pane
+          placeholder(`Escreva SQL aqui. ${RUN_SHORTCUT} executa a seleção ou o editor inteiro.`)
         ]
       })
     });
     viewRef.current = view;
+    // a frame later: the menu or palette that opened this editor still traps focus while it
+    // unmounts, and would pull an immediate focus back into itself
+    const focusFrame = autoFocus ? requestAnimationFrame(() => view.focus()) : 0;
     apiRef.current = {
       prepareRun: () => {
         closeCompletion(view);
@@ -150,6 +159,7 @@ export function SqlEditor({
       }
     };
     return () => {
+      cancelAnimationFrame(focusFrame);
       apiRef.current = null;
       view.destroy();
     };

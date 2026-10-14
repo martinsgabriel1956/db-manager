@@ -26,6 +26,8 @@ type TabsState = {
   openTable: (target: TableTarget) => void;
   /** always a new tab: several editors per connection are allowed */
   openEditor: (connectionId: string, sql?: string) => void;
+  /** the editor openEditor just created: it takes focus when it mounts (not persisted) */
+  freshEditorId: string | null;
   /** focuses the database's tab if already open */
   openRedis: (target: RedisTarget) => void;
   /** focuses the schema's diagram if already open */
@@ -70,7 +72,12 @@ export function tableKey(target: TableTarget): string {
   return `${target.connectionId}/${target.schema}/${target.table}`;
 }
 
-export const INITIAL_TABS = { tabs: [] as Tab[], activeId: null, closed: [] as Tab[] };
+export const INITIAL_TABS = {
+  tabs: [] as Tab[],
+  activeId: null,
+  closed: [] as Tab[],
+  freshEditorId: null
+};
 
 /** How many closed tabs Ctrl+Shift+T can bring back. */
 const CLOSED_LIMIT = 20;
@@ -125,7 +132,7 @@ export const useTabs = create<TabsState>()(
             title: nextEditorTitle(state.tabs, connectionId),
             sql
           };
-          return { tabs: [...state.tabs, tab], activeId: tab.id };
+          return { tabs: [...state.tabs, tab], activeId: tab.id, freshEditorId: tab.id };
         }),
       openRedis: target =>
         set(state => {

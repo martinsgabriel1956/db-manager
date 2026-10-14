@@ -90,10 +90,10 @@ test("the same table in prod and dev: the active connection first, production la
     labels(searchEntries(both, "users", active).filter(entry => entry.kind === "tabela"));
 
   expect(tables(null)).toEqual(["public.users (Postgres dev)", "public.users (Postgres prod)"]);
-  // working in prod already, prod's own table is the expected pick
+  // working in prod already, Enter still does not land in prod: getting there takes a step
   expect(tables(prodPostgres.id)).toEqual([
-    "public.users (Postgres prod)",
-    "public.users (Postgres dev)"
+    "public.users (Postgres dev)",
+    "public.users (Postgres prod)"
   ]);
 });
 
