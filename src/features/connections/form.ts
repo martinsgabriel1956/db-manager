@@ -231,7 +231,16 @@ export function changeEngine(values: ConnectionFormValues, engine: Engine): Conn
   const port = engine === "sqlite" || !portUntouched ? values.port : String(DEFAULT_PORT[engine]);
   const tlsMode =
     engine === "sqlite" ? "disable" : values.tlsMode === "disable" ? "prefer" : values.tlsMode;
-  const database = engine === "redis" && values.database === "" ? "0" : values.database;
+  // Redis's "0" is a default too: it does not follow the form into a database name
+  const leavingRedisDefault = values.engine === "redis" && values.database === "0";
+  const database =
+    engine === "redis"
+      ? values.database === ""
+        ? "0"
+        : values.database
+      : leavingRedisDefault
+        ? ""
+        : values.database;
   const mongoMode = engine === "mongo" ? values.mongoMode : "network";
   return { ...values, engine, port, tlsMode, database, mongoMode };
 }

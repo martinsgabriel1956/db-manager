@@ -27,7 +27,10 @@ const ENVIRONMENT_MEANING = [
   ["local", "Banco na sua máquina."],
   ["dev", "Banco de desenvolvimento compartilhado."],
   ["staging", "Cópia de produção para testes."],
-  ["prod", "Faixa vermelha na janela; toda escrita mostra o comando exato e pede confirmação."]
+  [
+    "prod",
+    "Faixa vermelha na janela; toda escrita mostra o comando exato e pede confirmação. Comando destrutivo pede também o nome da conexão."
+  ]
 ] as const;
 
 const SHORTCUTS = [
@@ -140,6 +143,15 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
               </Row>
               <Row
                 mark={
+                  <span aria-hidden className="text-[13px] text-muted-foreground">
+                    public <span className="font-mono text-[11px]">2</span>
+                  </span>
+                }
+              >
+                Na lateral, quantas tabelas e views (ou coleções) o schema tem
+              </Row>
+              <Row
+                mark={
                   <span className="inline-flex h-[18px] items-center gap-1 bg-filter px-1.5 text-background">
                     <span className="legend">Filtro</span>
                     <span className="font-mono text-[11px]">id = 42</span>
@@ -192,6 +204,13 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
             ))}
           </Section>
         </div>
+        {/* plain text, selectable: a link would open inside the app's own window */}
+        <p className="border-t pt-3 text-xs text-muted-foreground">
+          Instalação, keychain e bancos de demonstração no README:{" "}
+          <span className="font-mono text-foreground select-all">
+            github.com/martinsgabriel1956/db-manager
+          </span>
+        </p>
       </DialogContent>
     </Dialog>
   );

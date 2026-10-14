@@ -103,6 +103,7 @@ pub async fn run_aggregation(
                 confirmation: Confirmation {
                     reason: reason.to_string(),
                     statements: vec![statement],
+                    destructive: risk.replaces,
                 },
             });
         }
@@ -183,6 +184,7 @@ pub async fn write_document(
             confirmation: Confirmation {
                 reason: PROD_REASON.to_string(),
                 statements: vec![statement],
+                destructive: false,
             },
         });
     }

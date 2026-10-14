@@ -168,8 +168,9 @@ function fold(text: string): string {
 /**
  * Every word of the query must appear in the name or the connection name.
  * Names that start with the last word typed come first; then the connection you are
- * working in, then the rest, production last: with two `users`, Enter on the first
- * match never lands in production by accident. The order is otherwise kept.
+ * working in, then the rest, production last, even when it is the one you are in: with
+ * two `users`, Enter on the first match never lands in production by accident. The order
+ * is otherwise kept.
  */
 export function searchEntries(
   entries: PaletteEntry[],
@@ -187,7 +188,7 @@ export function searchEntries(
     return name.startsWith(last) ? 0 : 1;
   };
   const place = ({ connection }: PaletteEntry) =>
-    connection?.id === activeConnectionId ? 0 : connection?.environment === "prod" ? 2 : 1;
+    connection?.environment === "prod" ? 2 : connection?.id === activeConnectionId ? 0 : 1;
   return matches
     .map((entry, index) => ({ entry, index }))
     .sort(

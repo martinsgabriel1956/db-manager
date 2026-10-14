@@ -50,8 +50,11 @@ export function ConnectionForm({
   );
   const [values, setValues] = useState(initial);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
-  // typed but not saved: cancelling asks once instead of dropping it
-  const edited = JSON.stringify(values) !== JSON.stringify(initial);
+  // typed but not saved: cancelling asks once instead of dropping it. On a new connection,
+  // picking an engine alone types nothing: compared on the starting engine, the defaults it
+  // swapped in (port, TLS, database) fall away
+  const compared = isEditing ? values : changeEngine(values, initial.engine);
+  const edited = JSON.stringify(compared) !== JSON.stringify(initial);
   useEffect(() => onEditedChange?.(edited), [edited, onEditedChange]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);

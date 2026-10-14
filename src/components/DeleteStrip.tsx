@@ -26,6 +26,7 @@ export function DeleteStrip({
   className
 }: DeleteStripProps) {
   const commandId = useId();
+  const hintId = useId();
   return (
     // reversed: the command comes first in reading order, the button first on screen
     <div className={`flex flex-row-reverse items-center justify-end gap-2 ${className ?? ""}`}>
@@ -35,12 +36,15 @@ export function DeleteStrip({
       >
         {command}
       </code>
+      <span id={hintId} className="sr-only">
+        Esc cancela.
+      </span>
       {/* focused so Enter confirms; leaving it or Escape disarms the delete */}
       <Button
         size="xs"
         variant="destructive"
         autoFocus
-        aria-describedby={commandId}
+        aria-describedby={`${commandId} ${hintId}`}
         disabled={pending}
         onClick={onConfirm}
         onBlur={onDisarm}
@@ -52,6 +56,20 @@ export function DeleteStrip({
         }}
       >
         Confirmar exclusão
+      </Button>
+      {/* for the mouse; the keyboard has Esc. Pressed without taking focus, so the
+          confirmation's blur is what disarms, the same path as every other way out */}
+      <Button
+        size="xs"
+        variant="outline"
+        tabIndex={-1}
+        onMouseDown={event => event.preventDefault()}
+        onClick={() => {
+          triggerRef.current?.focus();
+          onDisarm();
+        }}
+      >
+        Cancelar
       </Button>
     </div>
   );

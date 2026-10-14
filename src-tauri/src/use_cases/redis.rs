@@ -381,6 +381,7 @@ pub async fn edit_key(
             confirmation: Confirmation {
                 reason: PROD_REASON.to_string(),
                 statements,
+                destructive: false,
             },
         });
     }
@@ -440,6 +441,7 @@ pub async fn run_command(
     if connection.read_only && verdict != Verdict::Read {
         return Err(AppError::read_only(&connection.name));
     }
+    let destructive = matches!(verdict, Verdict::Destructive(_));
     let reason = match verdict {
         Verdict::Destructive(reason) => Some(format!("Comando destrutivo: {reason}")),
         Verdict::Write if connection.environment == Environment::Prod => {
@@ -455,6 +457,7 @@ pub async fn run_command(
             confirmation: Confirmation {
                 reason,
                 statements: vec![statement],
+                destructive,
             },
         });
     }

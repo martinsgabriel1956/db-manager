@@ -1,6 +1,8 @@
+import { useEffect, useId, useState } from "react";
 import type { Confirmation } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { EnvTag } from "@/features/connections/EnvTag";
 import { useConnections } from "@/features/connections/queries";
 import { useFocusReturn } from "@/features/tabs/focus";
@@ -34,6 +36,13 @@ export function ConfirmDialog({
   // in production, confirming always names where it runs, whichever screen asked
   const isProd = connection?.environment === "prod";
   const label = isProd ? "Executar em produção" : confirmLabel;
+  // a destructive command on production asks for the connection's name, not one more click:
+  // the same click every write gets would turn into a reflex by the tenth time
+  const mustType = isProd && (confirmation?.destructive ?? false) && connection !== undefined;
+  const [typed, setTyped] = useState("");
+  const armed = !mustType || typed.trim() === connection?.name;
+  const typeId = useId();
+  useEffect(() => setTyped(""), [confirmation]);
   // opened by a shortcut or a save, not a trigger: give focus back to the editor or grid that asked
   const focusReturn = useFocusReturn();
 
@@ -87,6 +96,28 @@ export function ConfirmDialog({
             <span>este comando roda no banco de produção</span>
           </p>
         )}
+        {mustType && (
+          <div className="px-5 pt-3 pb-4">
+            <label htmlFor={typeId} className="text-sm">
+              Para executar, digite o nome da conexão:{" "}
+              <span className="font-mono font-semibold select-all">{connection?.name}</span>
+            </label>
+            <Input
+              id={typeId}
+              value={typed}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={event => setTyped(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === "Enter" && armed && !pending) {
+                  event.preventDefault();
+                  onConfirm();
+                }
+              }}
+              className="mt-2 font-mono"
+            />
+          </div>
+        )}
         <div className="flex flex-col-reverse gap-2 border-t border-foreground bg-muted px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
             Confira o comando exato antes de confirmar.
@@ -95,7 +126,7 @@ export function ConfirmDialog({
             <Button variant="outline" onClick={onCancel}>
               Cancelar
             </Button>
-            <Button variant="destructive" disabled={pending} onClick={onConfirm}>
+            <Button variant="destructive" disabled={pending || !armed} onClick={onConfirm}>
               {pending ? "Executando…" : label}
             </Button>
           </div>

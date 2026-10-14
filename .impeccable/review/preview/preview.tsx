@@ -22,6 +22,20 @@ fakeBackend([
   devMongo,
   localRedis
 ], {
+  // saving on prod asks first, as the Rust side does, so the ficha shows for table edits too
+  apply_changes: args => {
+    const { connectionId, confirmed } = args as { connectionId: string; confirmed: boolean };
+    return connectionId !== prodPostgres.id || confirmed
+      ? { status: "applied", rowsChanged: 1 }
+      : {
+          status: "needsConfirmation",
+          confirmation: {
+            destructive: false,
+            reason: "Conexão de produção: confira as alterações antes de salvar",
+            statements: ["UPDATE \"public\".\"users\" SET … WHERE \"id\" = '2'"]
+          }
+        };
+  },
   // the first unconfirmed run asks, so the confirmation can be reviewed
   run_script: args => {
     const { confirmed, sql } = args as { confirmed: boolean; sql: string };
@@ -30,6 +44,7 @@ fakeBackend([
       : {
           status: "needsConfirmation",
           confirmation: {
+            destructive: true,
             reason: "Comando destrutivo: DELETE sem WHERE",
             statements: [sql.trim().replace(/;$/, "")]
           }

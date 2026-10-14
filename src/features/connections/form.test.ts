@@ -188,6 +188,12 @@ describe("changeEngine", () => {
     expect(changeEngine(EMPTY_FORM, "redis").database).toBe("0");
     expect(changeEngine(form({ database: "5" }), "redis").database).toBe("5");
   });
+
+  test("drops the redis default 0 when leaving redis, keeps a typed number", () => {
+    const redis = changeEngine(EMPTY_FORM, "redis");
+    expect(changeEngine(redis, "mongo").database).toBe("");
+    expect(changeEngine({ ...redis, database: "3" }, "postgres").database).toBe("3");
+  });
 });
 
 describe("mongo connection string", () => {

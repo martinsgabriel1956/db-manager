@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures_util::{StreamExt, TryStreamExt, stream};
 
@@ -302,6 +302,7 @@ pub async fn apply_changes(
             confirmation: Confirmation {
                 reason: "Conexão de produção: confira as alterações antes de salvar".to_string(),
                 statements,
+                destructive: false,
             },
         });
     }
@@ -382,6 +383,10 @@ pub async fn search_history(
 
 const HISTORY_PAGE: u32 = 200;
 
+/// A cancel is repeated this many times, this far apart, while the run lasts.
+const CANCEL_ATTEMPTS: u32 = 20;
+const CANCEL_RETRY: Duration = Duration::from_millis(100);
+
 /// Next batch of an open cursor; the cursor is released once exhausted or on error.
 pub async fn fetch_more(registry: &Registry, cursor_id: &str) -> Result<RowBatch, AppError> {
     let cursor = registry.cursor(cursor_id)?;
@@ -401,7 +406,19 @@ pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppErro
     match registry.running(run_id) {
         Some((connection, session)) => match &connection.live {
             Live::Sql(sql) => {
-                sql.cancel(session).await;
+                // the session is registered just before the query reaches the server: a
+                // cancel landing in that gap finds the backend idle and is lost, so it is
+                // sent again until the run ends (bounded; the timeout covers the rest)
+                for _ in 0..CANCEL_ATTEMPTS {
+                    sql.cancel(session).await;
+                    tokio::time::sleep(CANCEL_RETRY).await;
+                    if registry
+                        .running(run_id)
+                        .is_none_or(|(_, current)| current != session)
+                    {
+                        break;
+                    }
+                }
                 Ok(())
             }
             // MongoDB operations are tagged with the run id
@@ -594,12 +611,13 @@ mod integration_tests {
             "SELECT pg_sleep(30)",
             false,
         );
+        // cancelled about the moment the run registers, possibly before pg_sleep reaches
+        // the server: the gap where a single cancel finds the backend idle. The wait is
+        // generous because instrumented CI builds are slow to get there
         let cancel = async {
-            for _ in 0..100 {
-                if registry.running("r5").is_some() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(50)).await;
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while registry.running("r5").is_none() && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(1)).await;
             }
             cancel_run(&registry, "r5").await.unwrap();
         };

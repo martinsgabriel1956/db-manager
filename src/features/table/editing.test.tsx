@@ -68,7 +68,7 @@ test("editing a cell stages it and save sends an update keyed by the primary key
     "Salve ou descarte as alterações para paginar, filtrar ou ordenar."
   );
 
-  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  await user.click(screen.getByRole("button", { name: "Salvar (1 alteração pendente)" }));
 
   await waitFor(() => expect(applied(calls)).toHaveLength(1));
   expect(applied(calls)[0]).toEqual({
@@ -131,7 +131,7 @@ test("rows can be added, deleted, restored and set to NULL", async () => {
   await user.type(screen.getByRole("textbox", { name: "Editar id" }), "3{Enter}");
 
   expect(screen.getByText("3 alterações pendentes")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  await user.click(screen.getByRole("button", { name: /^Salvar \(/ }));
 
   await waitFor(() => expect(applied(calls)).toHaveLength(1));
   expect(applied(calls)[0].changes.changes).toEqual([
@@ -177,6 +177,7 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
         : {
             status: "needsConfirmation",
             confirmation: {
+              destructive: false,
               reason: "Conexão de produção: confira as alterações antes de salvar",
               statements: [`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2'`]
             }
@@ -185,7 +186,7 @@ test("on prod, saving shows the generated SQL and applies only after confirming"
   const user = await openUsers(prodWritable);
 
   await editCell(user, "2", "20");
-  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  await user.click(screen.getByRole("button", { name: /^Salvar \(/ }));
 
   const dialog = await screen.findByRole("alertdialog");
   expect(dialog).toHaveTextContent(`UPDATE "public"."users" SET "id" = '20' WHERE "id" = '2';`);
@@ -204,7 +205,7 @@ test("a failed save keeps the staged edits and shows why", async () => {
   const user = await openUsers(devPostgres);
 
   await editCell(user, "2", "20");
-  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  await user.click(screen.getByRole("button", { name: /^Salvar \(/ }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("nada foi salvo");
   expect(screen.getByText("1 alteração pendente")).toBeInTheDocument();

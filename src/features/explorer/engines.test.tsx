@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
@@ -57,6 +57,10 @@ test("MySQL opens the configured database in the tree and has a SQL editor", asy
 
   await rowAction(user, "Loja MySQL", "Nova query SQL");
   expect(useTabs.getState().tabs).toMatchObject([{ kind: "editor", connectionId: "my-1" }]);
+  // a new editor is for typing: focus lands in it, and the closing menu does not take it back
+  await waitFor(() => expect(document.activeElement).toHaveClass("cm-content"));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(document.activeElement).toHaveClass("cm-content");
 });
 
 test("SQLite opens main", async () => {

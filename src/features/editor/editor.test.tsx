@@ -89,7 +89,7 @@ test("runs the editor content and shows the rows", async () => {
 
   await user.click(screen.getByRole("button", { name: "Executar" }));
 
-  expect(await screen.findByRole("status")).toHaveTextContent("1 linha · 5 ms");
+  expect(await screen.findByRole("status")).toHaveTextContent("1 linha retornada · 5 ms");
   expect(screen.getByRole("gridcell")).toHaveTextContent("1");
   const run = callsTo(calls, "run_script")[0] as { connectionId: string; sql: string };
   expect(run).toMatchObject({ connectionId: "pg-1", sql: "SELECT 1 AS n" });
@@ -251,6 +251,7 @@ test("destructive scripts wait for confirmation and run only after it", async ()
         : {
             status: "needsConfirmation",
             confirmation: {
+              destructive: true,
               reason: "Comando destrutivo: DELETE sem WHERE",
               statements: ["DELETE FROM t"]
             }
@@ -266,7 +267,13 @@ test("destructive scripts wait for confirmation and run only after it", async ()
 
   // the workspace runs on a prod connection, so confirming names production
   expect(dialog).toHaveTextContent("Postgres prod");
-  await user.click(screen.getByRole("button", { name: "Executar em produção" }));
+  // destructive on prod: the click alone does not run it, the connection's name does
+  const execute = screen.getByRole("button", { name: "Executar em produção" });
+  expect(execute).toBeDisabled();
+  await user.type(screen.getByLabelText(/digite o nome da conexão/), "Postgres pro");
+  expect(execute).toBeDisabled();
+  await user.type(screen.getByLabelText(/digite o nome da conexão/), "d");
+  await user.click(execute);
 
   const receipt = await screen.findByRole("status");
   expect(receipt).toHaveTextContent("7 linhas afetadas");
@@ -288,6 +295,7 @@ test("dismissing the confirmation runs nothing and keeps the previous result", a
         : {
             status: "needsConfirmation",
             confirmation: {
+              destructive: false,
               reason: "Conexão de produção: confirme antes de escrever",
               statements: ["UPDATE t SET a = 1 WHERE id = 1"]
             }
