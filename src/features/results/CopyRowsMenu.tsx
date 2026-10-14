@@ -58,9 +58,10 @@ export function CopyRowsMenu({ columns, rows, selectedRow, insert }: CopyRowsMen
   const formats = insert ? (["JSON", "INSERT"] as const) : (["JSON"] as const);
 
   return (
-    <span className="flex min-w-0 items-center gap-2 text-xs">
+    // never shrinks in a crowded bar (it used to collapse under the button); the notice is capped
+    <span className="flex shrink-0 items-center gap-2 text-xs">
       {state.status === "done" && (
-        <span role="status" className="truncate text-success">
+        <span role="status" className="max-w-60 truncate text-success">
           {state.text}
         </span>
       )}

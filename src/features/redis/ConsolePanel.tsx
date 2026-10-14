@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { commands } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -8,7 +15,12 @@ import { useConfirmed } from "@/features/redis/queries";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
-type ConsolePanelProps = { connectionId: string; db: number };
+type ConsolePanelProps = {
+  connectionId: string;
+  db: number;
+  /** the view focuses the prompt when Console is picked */
+  promptRef?: RefObject<HTMLInputElement | null>;
+};
 
 type ConsoleLine = {
   id: string;
@@ -19,7 +31,7 @@ type ConsoleLine = {
 };
 
 /** redis-cli style: one command per line, replies printed below it. */
-export function ConsolePanel({ connectionId, db }: ConsolePanelProps) {
+export function ConsolePanel({ connectionId, db, promptRef }: ConsolePanelProps) {
   const queryClient = useQueryClient();
   const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [input, setInput] = useState("");
@@ -115,6 +127,7 @@ export function ConsolePanel({ connectionId, db }: ConsolePanelProps) {
       >
         <span className="text-muted-foreground">db{db}&gt;</span>
         <input
+          ref={promptRef}
           aria-label="Comando Redis"
           autoComplete="off"
           spellCheck={false}

@@ -177,8 +177,27 @@ export function ResultGrid({
   const cellId = (cell: SelectedCell) => `${cellIdPrefix}-${cell.row}-${cell.column}`;
 
   const [refusal, setRefusal] = useState("");
+  /** said aloud only: the value panel opening or closing from the keyboard */
+  const [announcement, setAnnouncement] = useState("");
   // the refusal speaks of the cell it was asked of: moving on clears it
-  useEffect(() => setRefusal(""), [selected?.row, selected?.column]);
+  useEffect(() => {
+    setRefusal("");
+    setAnnouncement("");
+  }, [selected?.row, selected?.column]);
+  // what the keys do here, read with the grid's name: otherwise only the Legenda says it
+  const keysId = `${cellIdPrefix}-keys`;
+  const keys = [
+    editing ? "Enter ou F2 edita a célula" : null,
+    onToggleDetail ? "Espaço mostra o valor inteiro" : null,
+    "Alt+← → ajusta a largura da coluna"
+  ].filter(Boolean);
+
+  function toggleDetail() {
+    onToggleDetail?.();
+    setAnnouncement(
+      detailOpen ? "Painel do valor fechado" : "Painel do valor aberto ao lado da grade"
+    );
+  }
 
   function startEditing(row: number, column: number) {
     if (editing?.canEdit(row, column)) {
@@ -235,13 +254,13 @@ export function ResultGrid({
     }
     if (selected && event.key === " " && onToggleDetail) {
       event.preventDefault();
-      onToggleDetail();
+      toggleDetail();
       return;
     }
     if (selected && event.key === "Escape") {
       event.preventDefault();
       if (detailOpen && onToggleDetail) {
-        onToggleDetail();
+        toggleDetail();
       } else {
         onSelect(null);
       }
@@ -329,10 +348,24 @@ export function ResultGrid({
       >
         {refusal}
       </p>
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+      <p id={keysId} hidden>
+        {keys.join("; ")}.
+      </p>
       <div
         ref={scrollRef}
         role="grid"
         aria-label={label}
+        aria-describedby={keysId}
+        aria-keyshortcuts={[
+          editing ? "Enter F2" : null,
+          onToggleDetail ? "Space" : null,
+          "Alt+ArrowLeft Alt+ArrowRight"
+        ]
+          .filter(Boolean)
+          .join(" ")}
         // -1: the total is unknown while more rows can still load
         aria-rowcount={hasMore ? -1 : rows.length + 1}
         aria-colcount={columns.length}
@@ -416,7 +449,7 @@ export function ResultGrid({
                 <span
                   aria-hidden
                   title="Arraste para ajustar a largura; duplo clique reajusta ao conteúdo"
-                  className="absolute inset-y-0 -right-[3px] z-10 w-[5px] cursor-col-resize hover:bg-foreground active:bg-foreground"
+                  className="absolute inset-y-0 -right-[3px] z-10 w-[5px] cursor-col-resize touch-none hover:bg-foreground active:bg-foreground"
                   onDoubleClick={() =>
                     setWidth(
                       index,
@@ -437,7 +470,14 @@ export function ResultGrid({
                       setWidth(from.column, from.width + event.clientX - from.x);
                     }
                   }}
+                  // a drag ends however the pointer goes: released, cancelled or captured away
                   onPointerUp={() => {
+                    resizeFrom.current = null;
+                  }}
+                  onPointerCancel={() => {
+                    resizeFrom.current = null;
+                  }}
+                  onLostPointerCapture={() => {
                     resizeFrom.current = null;
                   }}
                 />

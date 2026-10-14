@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { commands, type ConnectionConfig } from "@/bindings";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ type ConnectionFormProps = {
   onSaved: (id: string, keychainWarning: string | null) => void;
   onDeleted: (keychainWarning: string | null) => void;
   onCancel: () => void;
+  /** typed but not saved: the parked form's tab says "rascunho" */
+  onEditedChange?: (edited: boolean) => void;
 };
 
 /** Connects with the draft, saved or not, and closes; the elapsed time is all it reports. */
@@ -33,7 +35,13 @@ async function testDraft({ config, secret }: SaveConnectionInput): Promise<numbe
   return Math.round(performance.now() - started);
 }
 
-export function ConnectionForm({ connection, onSaved, onDeleted, onCancel }: ConnectionFormProps) {
+export function ConnectionForm({
+  connection,
+  onSaved,
+  onDeleted,
+  onCancel,
+  onEditedChange
+}: ConnectionFormProps) {
   const isEditing = connection !== null;
   // lazy init: the id must stay stable across re-renders of a new, unsaved connection
   const [id] = useState(() => connection?.id ?? crypto.randomUUID());
@@ -44,6 +52,7 @@ export function ConnectionForm({ connection, onSaved, onDeleted, onCancel }: Con
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   // typed but not saved: cancelling asks once instead of dropping it
   const edited = JSON.stringify(values) !== JSON.stringify(initial);
+  useEffect(() => onEditedChange?.(edited), [edited, onEditedChange]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
 import { prettyJson } from "@/features/results/format";
 import { DocumentTree } from "@/features/mongo/DocumentTree";
-import { idOf, parseDocument } from "@/features/mongo/ejson";
+import { describeWrapper, idOf, parseDocument } from "@/features/mongo/ejson";
 
 export type DocumentView = "tree" | "json";
 
@@ -16,12 +16,25 @@ type DocumentCardProps = {
   onDelete?: () => void;
 };
 
+/**
+ * `_id ObjectId("…")`, as the tree shows it: every card's actions are told apart by it.
+ * Null when the document has no _id (some aggregation output).
+ */
+export function documentName(document: string): string | null {
+  const id = parseDocument(document)._id;
+  return id === undefined ? null : `_id ${describeWrapper(id) ?? JSON.stringify(id)}`;
+}
+
 export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const name = documentName(document);
 
   return (
-    <article className="group grid gap-3 border border-foreground bg-background p-3">
+    <article
+      aria-label={name ? `Documento ${name}` : undefined}
+      className="group grid gap-3 border border-foreground bg-background p-3"
+    >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           {view === "tree" ? (
@@ -36,7 +49,12 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
         {(onEdit || onDelete) && (
           <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-1 text-muted-foreground">
             {onEdit && (
-              <Button size="icon-xs" variant="ghost" aria-label="Editar documento" onClick={onEdit}>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label={name ? `Editar documento ${name}` : "Editar documento"}
+                onClick={onEdit}
+              >
                 <Pencil />
               </Button>
             )}
@@ -46,7 +64,7 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
                 size="icon-xs"
                 variant="ghost"
                 ref={deleteTriggerRef}
-                aria-label="Excluir documento"
+                aria-label={name ? `Excluir documento ${name}` : "Excluir documento"}
                 aria-expanded={confirmingDelete}
                 onMouseDown={keepArmedFocus(confirmingDelete)}
                 onClick={() => setConfirmingDelete(armed => !armed)}

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
@@ -120,7 +120,7 @@ test("open tabs move with the arrow keys and close with Delete", async () => {
   await waitFor(() => expect(screen.getByRole("tab", { name: /· users ·/ })).toHaveFocus());
 });
 
-test("editing a connection hides the tabs and returns to them", async () => {
+test("the connection form opens as a tab over the open tabs and parks its draft", async () => {
   fakeBackend([prodPostgres]);
   const user = userEvent.setup();
   renderWithClient(<App />);
@@ -129,10 +129,45 @@ test("editing a connection hides the tabs and returns to them", async () => {
   await user.click(await screen.findByRole("treeitem", { name: "users" }));
   await rowAction(user, "Postgres prod", "Editar conexão");
   expect(screen.getByRole("heading", { name: /^Editar conexão/ })).toBeInTheDocument();
-  expect(screen.queryByRole("tablist", { name: "Abas abertas" })).not.toBeInTheDocument();
+  // the open tabs stay in view; the form is the selected one
+  const tablist = screen.getByRole("tablist", { name: "Abas abertas" });
+  expect(within(tablist).getByRole("tab", { name: /Editar Postgres prod/ })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  expect(within(tablist).getByRole("tab", { name: /users/ })).toHaveAttribute(
+    "aria-selected",
+    "false"
+  );
 
+  // typing, leaving for a table and coming back keeps what was typed
+  const name = screen.getByLabelText("Nome");
+  await user.clear(name);
+  await user.type(name, "Rascunho");
   await user.click(screen.getByRole("treeitem", { name: "users" }));
-  expect(screen.getByRole("tablist", { name: "Abas abertas" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /^Editar conexão/ })).not.toBeInTheDocument();
+  expect(within(tablist).getByRole("tab", { name: /users/ })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await user.click(within(tablist).getByRole("tab", { name: "Editar Postgres prod · rascunho" }));
+  expect(screen.getByLabelText("Nome")).toHaveValue("Rascunho");
+});
+
+test("a typed draft is never replaced by another form", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  await user.type(screen.getByLabelText("Nome"), "Rascunho");
+  await rowAction(user, "Postgres prod", "Editar conexão");
+
+  // the draft comes back with the reason, instead of the other form taking its place
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Nova conexão tem um rascunho não salvo: salve ou cancele antes de abrir outro formulário."
+  );
+  expect(screen.getByLabelText("Nome")).toHaveValue("Rascunho");
 });
 
 test("history lists runs, filters them and reopens SQL in an editor", async () => {
