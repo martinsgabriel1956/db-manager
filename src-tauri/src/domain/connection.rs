@@ -98,6 +98,9 @@ pub enum SecretChange {
     Keep,
     Set(String),
     Clear,
+    /// The stored secret of another connection (the id), copied on save when duplicating
+    /// it: the front never reads a stored secret, not even to copy it.
+    CopyFrom(String),
 }
 
 /// Result of an operation that touches the keychain. Metadata is saved even when the

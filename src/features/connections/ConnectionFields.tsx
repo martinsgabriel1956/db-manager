@@ -22,7 +22,8 @@ import {
 type ConnectionFieldsProps = {
   values: ConnectionFormValues;
   errors: FormErrors;
-  isEditing: boolean;
+  /** what an empty secret field keeps: the connection's own, or the original's on a copy */
+  storedSecret: "own" | "copy" | null;
   onChange: (patch: Partial<ConnectionFormValues>) => void;
   onEngineChange: (engine: Engine) => void;
 };
@@ -84,7 +85,7 @@ const READ_ONLY_HINT: Record<Engine, string> = {
 export function ConnectionFields({
   values,
   errors,
-  isEditing,
+  storedSecret,
   onChange,
   onEngineChange
 }: ConnectionFieldsProps) {
@@ -169,9 +170,11 @@ export function ConnectionFields({
               aria-invalid={errors.uri ? true : undefined}
               aria-describedby={errors.uri ? "uri-error" : undefined}
               placeholder={
-                isEditing
+                storedSecret === "own"
                   ? "Deixe vazio para manter a salva"
-                  : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
+                  : storedSecret === "copy"
+                    ? "Deixe vazio para copiar a da conexão original"
+                    : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
               }
               onChange={event => onChange({ uri: event.target.value })}
             />
@@ -218,18 +221,24 @@ export function ConnectionFields({
               disabled={values.clearPassword}
               aria-invalid={errors.password ? true : undefined}
               aria-describedby={errors.password ? "password-hint password-error" : "password-hint"}
-              placeholder={isEditing ? "Deixe vazio para manter a senha salva" : ""}
+              placeholder={
+                storedSecret === "own"
+                  ? "Deixe vazio para manter a senha salva"
+                  : storedSecret === "copy"
+                    ? "Deixe vazio para copiar a senha da conexão original"
+                    : ""
+              }
               onChange={event => onChange({ password: event.target.value })}
             />
           </Field>
-          {isEditing && (
+          {storedSecret && (
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={values.clearPassword}
                 onChange={event => onChange({ clearPassword: event.target.checked, password: "" })}
               />
-              Remover senha salva
+              {storedSecret === "own" ? "Remover senha salva" : "Não copiar a senha salva"}
             </label>
           )}
           <div className="grid gap-1">

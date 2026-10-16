@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Braces,
   ChevronRight,
+  Copy,
   Database,
   Ellipsis,
   Eye,
@@ -44,6 +45,8 @@ type TreeActions = {
   activeTable: TableTarget | null;
   activeRedis: RedisTarget | null;
   onEdit: (connectionId: string) => void;
+  /** opens the form filled from this connection, as a new one */
+  onDuplicate: (connectionId: string) => void;
   onOpenTable: (target: TableTarget) => void;
   onOpenEditor: (connectionId: string) => void;
   onOpenRedis: (target: RedisTarget) => void;
@@ -269,6 +272,7 @@ function ConnectionNode({
   activeTable,
   activeRedis,
   onEdit,
+  onDuplicate,
   onOpenTable,
   onOpenEditor,
   onOpenRedis,
@@ -298,6 +302,7 @@ function ConnectionNode({
         ]
       : []),
     { label: "Editar conexão", icon: <Pencil />, onSelect: () => onEdit(connection.id) },
+    { label: "Duplicar conexão", icon: <Copy />, onSelect: () => onDuplicate(connection.id) },
     ...(listing.isSuccess
       ? [
           {
