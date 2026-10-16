@@ -39,6 +39,7 @@ pub(crate) async fn start() -> (ContainerAsync<Postgres>, ConnectionConfig) {
             ca_cert_path: None,
         },
         key_separator: None,
+        ssh: None,
     };
     (container, config)
 }

@@ -7,10 +7,11 @@ use crate::adapters::SqlConnection;
 use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
 use crate::adapters::sql_builder;
+use crate::adapters::ssh::SshTunnel;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
     DiagramTable, Engine, Environment, FilterOp, RelationKind, RowBatch, RowChange, RunResponse,
-    SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableStructure,
+    SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableStructure, Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
@@ -34,7 +35,7 @@ pub async fn connect(
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let live = open(&config, secret).await?;
+    let (live, tunnel) = open(&config, secret).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -42,19 +43,36 @@ pub async fn connect(
             name: config.name,
             environment: config.environment,
             read_only: config.read_only,
+            tunnel,
         },
     );
     Ok(())
 }
 
 /// Each adapter's connect reaches the server (handshake, ping or first pooled
-/// connection), so a wrong host or password fails here.
-async fn open(config: &ConnectionConfig, secret: Option<String>) -> Result<Live, AppError> {
-    Ok(match config.engine {
+/// connection), so a wrong host or password fails here. With SSH, the adapter
+/// connects to the tunnel's local port instead of the database's host.
+async fn open(
+    config: &ConnectionConfig,
+    secret: Option<String>,
+) -> Result<(Live, Option<SshTunnel>), AppError> {
+    let mut config = config.clone();
+    let tunnel = match (&config.ssh, &mut config.target) {
+        (Some(ssh), Target::Network { host, port, .. }) => {
+            let tunnel = SshTunnel::open(ssh, host, *port).await?;
+            *host = "127.0.0.1".to_string();
+            *port = tunnel.local_port;
+            Some(tunnel)
+        }
+        _ => None,
+    };
+    let config = &config;
+    let live = match config.engine {
         Engine::Mongo => Live::Mongo(MongoAdapter::connect(config, secret).await?),
         Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(config, secret).await?)),
         _ => Live::Sql(SqlConnection::connect(config, secret, config.read_only).await?),
-    })
+    };
+    Ok((live, tunnel))
 }
 
 /// Connects with a configuration that may not be saved and closes at once:
@@ -63,7 +81,8 @@ pub async fn test_connection(
     config: &ConnectionConfig,
     secret: Option<String>,
 ) -> Result<(), AppError> {
-    open(config, secret).await?.close().await;
+    let (live, _tunnel) = open(config, secret).await?;
+    live.close().await;
     Ok(())
 }
 
@@ -1020,6 +1039,7 @@ mod integration_tests {
                 ca_cert_path: None,
             },
             key_separator: None,
+            ssh: None,
         };
         let registry = Registry::default();
         let history = HistoryStore::in_memory().await;

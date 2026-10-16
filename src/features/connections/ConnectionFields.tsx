@@ -94,7 +94,7 @@ export function ConnectionFields({
   const isUri = isMongo && values.mongoMode === "uri";
   // TLS comes from the URI itself, and a file has none
   const hasTls = !isSqlite && !isUri;
-  const advancedError = Boolean(errors.timeoutSecs || errors.caCertPath);
+  const advancedError = Boolean(errors.timeoutSecs || errors.caCertPath || errors.tlsMode);
 
   function textInput(
     id: keyof ConnectionFormValues,
@@ -232,6 +232,41 @@ export function ConnectionFields({
               Remover senha salva
             </label>
           )}
+          <div className="grid gap-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={values.sshEnabled}
+                aria-describedby="sshEnabled-hint"
+                onChange={event => onChange({ sshEnabled: event.target.checked })}
+              />
+              Conectar por túnel SSH
+            </label>
+            <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
+              Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Só chave ou
+              agente, sem senha. Host e porta acima são vistos a partir do servidor SSH.
+            </p>
+          </div>
+          {values.sshEnabled && (
+            <>
+              <div className="grid grid-cols-[1fr_8rem] gap-4">
+                <Field id="sshHost" label="Host SSH" error={errors.sshHost}>
+                  {textInput("sshHost", { placeholder: "bastion ou alias do ~/.ssh/config" })}
+                </Field>
+                <Field id="sshPort" label="Porta SSH" error={errors.sshPort}>
+                  {textInput("sshPort", { type: "number", placeholder: "22" })}
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field id="sshUser" label="Usuário SSH (opcional)" error={errors.sshUser}>
+                  {textInput("sshUser")}
+                </Field>
+                <Field id="sshIdentityFile" label="Chave privada (opcional)">
+                  {textInput("sshIdentityFile", { placeholder: "~/.ssh/id_ed25519" })}
+                </Field>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -307,10 +342,12 @@ export function ConnectionFields({
         <div className="mt-4 grid gap-4">
           {hasTls && (
             <div className="grid grid-cols-2 gap-4">
-              <Field id="tlsMode" label="TLS">
+              <Field id="tlsMode" label="TLS" error={errors.tlsMode}>
                 <NativeSelect
                   id="tlsMode"
                   className="w-full px-2.5"
+                  aria-invalid={errors.tlsMode ? true : undefined}
+                  aria-describedby={describedBy("tlsMode", errors.tlsMode, false)}
                   value={values.tlsMode}
                   onChange={event =>
                     onChange({ tlsMode: event.target.value as ConnectionFormValues["tlsMode"] })

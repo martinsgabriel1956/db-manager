@@ -56,6 +56,7 @@ mod tests {
                 ca_cert_path: None,
             },
             key_separator: None,
+            ssh: None,
         }
     }
 

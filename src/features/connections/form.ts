@@ -37,6 +37,13 @@ export type ConnectionFormValues = {
   mongoMode: "network" | "uri";
   /** the connection string; kept in the keychain like a password */
   uri: string;
+  /** host/port targets only: reach the server through the system ssh */
+  sshEnabled: boolean;
+  sshHost: string;
+  /** empty fields are left to ~/.ssh/config */
+  sshPort: string;
+  sshUser: string;
+  sshIdentityFile: string;
 };
 
 export type FormErrors = Partial<Record<keyof ConnectionFormValues, string>>;
@@ -62,7 +69,12 @@ export const EMPTY_FORM: ConnectionFormValues = {
   caCertPath: "",
   keySeparator: DEFAULT_REDIS_SEPARATOR,
   mongoMode: "network",
-  uri: ""
+  uri: "",
+  sshEnabled: false,
+  sshHost: "",
+  sshPort: "",
+  sshUser: "",
+  sshIdentityFile: ""
 };
 
 const CONNECTION_STRING = /^mongodb(\+srv)?:\/\//;
@@ -92,6 +104,17 @@ const redisSchema = z.object({
     .trim()
     .regex(/^([0-9]|1[0-5])?$/, "Use um número de 0 a 15"),
   keySeparator: z.string().min(1, "Informe o separador")
+});
+
+const sshSchema = z.object({
+  sshHost: z.string().trim().min(1, "Informe o host SSH"),
+  sshPort: z
+    .string()
+    .trim()
+    .regex(/^\d*$/, "Porta inválida")
+    .refine(port => port === "" || (Number(port) >= 1 && Number(port) <= 65535), "Porta inválida"),
+  sshUser: z.string().trim(),
+  sshIdentityFile: z.string().trim()
 });
 
 const fileSchema = z.object({
@@ -159,6 +182,11 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
   const network = isSqlite || isUri ? undefined : collect(networkSchema, values, errors);
   const file = isSqlite ? collect(fileSchema, values, errors) : undefined;
   const redis = isRedis ? collect(redisSchema, values, errors) : undefined;
+  const hasSsh = values.sshEnabled && !isSqlite && !isUri;
+  const ssh = hasSsh ? collect(sshSchema, values, errors) : undefined;
+  if (hasSsh && values.tlsMode === "verifyFull") {
+    errors.tlsMode = 'Pelo túnel SSH o certificado não confere com o host: use "Exigir"';
+  }
   if (isUri) {
     const uri = values.uri.trim();
     if (uri === "" && !isEditing) {
@@ -194,7 +222,15 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
         mode: isSqlite ? "disable" : values.tlsMode,
         caCertPath: isSqlite || caCertPath === "" ? null : caCertPath
       },
-      keySeparator: redis ? redis.keySeparator : null
+      keySeparator: redis ? redis.keySeparator : null,
+      ssh: ssh
+        ? {
+            host: ssh.sshHost,
+            port: ssh.sshPort === "" ? null : Number(ssh.sshPort),
+            user: ssh.sshUser || null,
+            identityFile: ssh.sshIdentityFile || null
+          }
+        : null
     },
     secret: secretChange(values)
   };
@@ -218,7 +254,12 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
     tlsMode: config.tls.mode,
     caCertPath: config.tls.caCertPath ?? "",
     keySeparator: config.keySeparator ?? DEFAULT_REDIS_SEPARATOR,
-    mongoMode: uri ? "uri" : "network"
+    mongoMode: uri ? "uri" : "network",
+    sshEnabled: Boolean(config.ssh),
+    sshHost: config.ssh?.host ?? "",
+    sshPort: config.ssh?.port == null ? "" : String(config.ssh.port),
+    sshUser: config.ssh?.user ?? "",
+    sshIdentityFile: config.ssh?.identityFile ?? ""
   };
 }
 

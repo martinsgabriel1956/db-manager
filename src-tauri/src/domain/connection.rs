@@ -57,6 +57,18 @@ pub enum Target {
     Uri { database: String },
 }
 
+/// SSH tunnel to reach a network target through a bastion. Runs the system `ssh`,
+/// so `~/.ssh/config`, the agent and `known_hosts` apply; empty fields leave it to them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConfig {
+    /// host name or a `Host` alias from `~/.ssh/config`
+    pub host: String,
+    pub port: Option<u16>,
+    pub user: Option<String>,
+    pub identity_file: Option<String>,
+}
+
 /// Connection metadata persisted in connections.json. The password never lives here:
 /// it goes to the OS keychain under the connection id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -73,6 +85,9 @@ pub struct ConnectionConfig {
     pub tls: TlsConfig,
     /// Redis only: separator used to group keys in the tree
     pub key_separator: Option<String>,
+    /// absent in files saved before the tunnel existed
+    #[serde(default)]
+    pub ssh: Option<SshConfig>,
 }
 
 /// What to do with the stored password when saving a connection.

@@ -1,5 +1,5 @@
 use crate::domain::{
-    AppError, ConnectionConfig, Engine, KeychainOutcome, SecretChange, Target, TlsMode,
+    AppError, ConnectionConfig, Engine, KeychainOutcome, SecretChange, SshConfig, Target, TlsMode,
 };
 use crate::storage::connections::ConnectionStore;
 use crate::storage::secrets::SecretStore;
@@ -91,6 +91,12 @@ fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
     config.tls.ca_cert_path = non_empty(config.tls.ca_cert_path);
     // the separator is meaningful with spaces (" | "), so it is not trimmed
     config.key_separator = config.key_separator.filter(|s| !s.is_empty());
+    config.ssh = config.ssh.map(|ssh| SshConfig {
+        host: ssh.host.trim().to_string(),
+        user: non_empty(ssh.user),
+        identity_file: non_empty(ssh.identity_file),
+        ..ssh
+    });
     config
 }
 
@@ -212,6 +218,24 @@ fn validate_target(
         }
     }
 
+    if let Some(ssh) = &config.ssh {
+        if !matches!(config.target, Target::Network { .. }) {
+            return invalid("túnel SSH só se aplica a conexões por host e porta");
+        }
+        if ssh.host.is_empty() {
+            return invalid("informe o host SSH");
+        }
+        if ssh.port == Some(0) {
+            return invalid("porta SSH inválida");
+        }
+        if config.tls.mode == TlsMode::VerifyFull {
+            // the adapter reaches 127.0.0.1, which is not the name on the certificate
+            return invalid(
+                "verificar o certificado não funciona pelo túnel SSH: use TLS \"Exigir\"",
+            );
+        }
+    }
+
     match (&config.engine, &config.key_separator) {
         (Engine::Redis, None) => invalid("informe o separador de chaves do Redis"),
         (Engine::Redis, Some(_)) | (_, None) => Ok(()),
@@ -297,6 +321,7 @@ mod tests {
                 ca_cert_path: None,
             },
             key_separator: None,
+            ssh: None,
         }
     }
 
@@ -324,6 +349,7 @@ mod tests {
                 username: String::new(),
             },
             key_separator: Some(":".into()),
+            ssh: None,
             ..postgres(id, "redis")
         }
     }
@@ -462,6 +488,37 @@ mod tests {
             }
         );
         assert_eq!(saved.tls.ca_cert_path, None);
+        assert_eq!(saved.ssh, None);
+    }
+
+    #[test]
+    fn save_trims_ssh_fields_and_empties_become_none() {
+        let (_dir, store) = store();
+        let mut config = postgres("1", "pg");
+        config.ssh = Some(SshConfig {
+            host: " bastion ".into(),
+            port: Some(2222),
+            user: Some("  ".into()),
+            identity_file: Some(" ~/.ssh/id ".into()),
+        });
+
+        save(
+            &store,
+            &MemorySecrets::default(),
+            config,
+            SecretChange::Keep,
+        )
+        .unwrap();
+
+        assert_eq!(
+            list(&store).unwrap()[0].ssh,
+            Some(SshConfig {
+                host: "bastion".into(),
+                port: Some(2222),
+                user: None,
+                identity_file: Some("~/.ssh/id".into()),
+            })
+        );
     }
 
     #[test]
@@ -526,8 +583,37 @@ mod tests {
         redis_no_separator.key_separator = Some(String::new());
         let mut postgres_with_separator = postgres("1", "pg");
         postgres_with_separator.key_separator = Some(":".into());
+        let ssh = |host: &str, port| {
+            Some(SshConfig {
+                host: host.into(),
+                port,
+                user: None,
+                identity_file: None,
+            })
+        };
+        let mut sqlite_with_ssh = sqlite("1");
+        sqlite_with_ssh.ssh = ssh("bastion", None);
+        let mut ssh_no_host = postgres("1", "pg");
+        ssh_no_host.ssh = ssh(" ", None);
+        let mut ssh_port_zero = postgres("1", "pg");
+        ssh_port_zero.ssh = ssh("bastion", Some(0));
+        let mut ssh_verify_full = postgres("1", "pg");
+        ssh_verify_full.ssh = ssh("bastion", None);
+        ssh_verify_full.tls.mode = TlsMode::VerifyFull;
 
         let cases = [
+            (
+                sqlite_with_ssh,
+                SecretChange::Keep,
+                "túnel SSH só se aplica a conexões por host e porta",
+            ),
+            (ssh_no_host, SecretChange::Keep, "informe o host SSH"),
+            (ssh_port_zero, SecretChange::Keep, "porta SSH inválida"),
+            (
+                ssh_verify_full,
+                SecretChange::Keep,
+                "verificar o certificado não funciona pelo túnel SSH: use TLS \"Exigir\"",
+            ),
             (no_id, SecretChange::Keep, "id da conexão ausente"),
             (postgres("1", "   "), SecretChange::Keep, "informe um nome"),
             (no_host, SecretChange::Keep, "informe o host"),

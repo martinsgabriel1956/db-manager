@@ -21,7 +21,7 @@ Resultado da sessão de grill de 2026-10-10. Uso pessoal, um único usuário.
 
 - Metadados em JSON (diretório de dados do app); senha/URI no keychain do SO (crate `keyring`, chave `db-manager:<id>`).
 - Linux sem Secret Service: fallback com aviso claro na UI, nunca texto puro silencioso.
-- TLS na v1 (modo + CA opcional). **Túnel SSH na v2** (até lá: `ssh -L`).
+- TLS na v1 (modo + CA opcional). Túnel SSH depois da v1 (ver "Depois da v1").
 
 ## UI SQL
 
@@ -112,7 +112,7 @@ src-tauri/src/
 
 ## v2+
 
-Túnel SSH, Redis cluster, edição de schema pela UI, builder de aggregation, pub/sub, assinatura e auto-update.
+Redis cluster, edição de schema pela UI, builder de aggregation, pub/sub, assinatura e auto-update.
 
 ## Notas de implementação
 
@@ -190,3 +190,4 @@ Decisões tomadas durante a implementação, que refinam ou adiam itens acima.
 - **Timeout dos testes do front em 20 s** (`vite.config.ts`): é detector de travamento, não medida de desempenho. Com cobertura e arquivos em paralelo numa máquina ocupada, testes de UI levam de 1 a 6 s e o padrão de 5 s derrubava testes saudáveis ao acaso.
 - **Copiar linhas como INSERT ou JSON**: a linha selecionada ou todas as carregadas, sempre o valor gravado (alterações pendentes não entram; linha adicionada e não salva não é copiável). O INSERT vem do backend (`copy_as_insert`) e não do front, porque os literais dependem do dialeto da conexão aberta (`E''` no Postgres, `NO_BACKSLASH_ESCAPES` detectado no MySQL): usa o mesmo `change_sql` das edições. No editor só há JSON, já que o resultado de uma query qualquer não tem tabela de destino. O JSON é montado como texto (Int64 e decimais exatos, colunas JSON como estão, `NaN`/`Infinity` como string). Binário que a grade só mostra em parte, array e tipo não modelado são recusados com o nome da coluna em vez de copiados com perda (no JSON, array e tipo não modelado saem, porque o texto já é exato). Área de transferência pelo `navigator.clipboard`, sem plugin; se o WebKitGTK recusar, o erro aparece ao lado do botão.
 - **Fechar a janela deixa o Ordo na bandeja**: o X só esconde a janela (`CloseRequested` → `hide`), com conexões, abas e alterações pendentes intactas; "Abrir Ordo" na bandeja a traz de volta. Sair é pela bandeja ("Sair") ou por **Ctrl+Q**, que existe porque nem todo ambiente mostra a bandeja (GNOME sem a extensão de AppIndicator). Ctrl+Q com alterações pendentes pergunta antes, como o Ctrl+W, e não fecha abas: elas são persistidas e voltam na próxima abertura. "Sair" na bandeja encerra sem perguntar. Com o app escondido, abrir o Ordo de novo criaria um segundo processo: o `tauri-plugin-single-instance` faz a segunda abertura só mostrar a janela existente.
+- **Túnel SSH pelo `ssh` do sistema**, não por uma crate SSH: assim valem o `~/.ssh/config` (aliases, `ProxyJump`), o agente e o `known_hosts` sem reimplementar nada. `ssh -N -L 127.0.0.1:<porta livre>:<host>:<porta>` com `BatchMode=yes` (não há terminal para perguntas: só chave ou agente, sem senha SSH), `ExitOnForwardFailure=yes` e `StrictHostKeyChecking=accept-new` (confia no primeiro uso, recusa chave trocada). O `open` sobe o túnel e troca host/porta do alvo por `127.0.0.1:<porta>`; os adapters não sabem do túnel, exceto o Mongo, que liga `directConnection` para não descobrir membros do replica set por endereços inalcançáveis. Pronto = a porta local aceita conexão (o OpenSSH só abre o `-L` depois do login); se o `ssh` sai antes, o stderr dele vira o erro. O túnel vive na sessão aberta (`kill_on_drop`) e morre com o app mesmo em `exit` ou crash (`PR_SET_PDEATHSIG`). Só alvo host/porta: SQLite não tem rede e a URI do Mongo (`+srv`, vários hosts) não cabe num `-L`. TLS "verificar certificado" é recusado com túnel, porque o certificado não é de `127.0.0.1`.

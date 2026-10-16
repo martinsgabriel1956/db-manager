@@ -24,7 +24,8 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 # ponytail: keyring 3.x; 4.x split into keyring-core + store crates, migrate when 3.x stops building
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 sqlx = { version = "0.9", default-features = false, features = ["postgres", "mysql", "sqlite", "runtime-tokio", "tls-rustls-ring-native-roots", "json"] }
-tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros", "process", "net", "io-util"] }
+libc = "0.2"
 futures-util = "0.3"
 sqlparser = "0.63.0"
 tauri-plugin-store = "2"

@@ -24,6 +24,7 @@ fn config(path: &std::path::Path) -> ConnectionConfig {
             ca_cert_path: None,
         },
         key_separator: None,
+        ssh: None,
     }
 }
 

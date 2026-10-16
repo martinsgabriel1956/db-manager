@@ -177,6 +177,8 @@ export type ConnectionConfig = {
 	tls: TlsConfig,
 	/**  Redis only: separator used to group keys in the tree */
 	keySeparator: string | null,
+	/**  absent in files saved before the tunnel existed */
+	ssh?: SshConfig | null,
 };
 
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
@@ -399,6 +401,18 @@ export type Sort = {
 };
 
 export type SortDirection = "asc" | "desc";
+
+/**
+ *  SSH tunnel to reach a network target through a bastion. Runs the system `ssh`,
+ *  so `~/.ssh/config`, the agent and `known_hosts` apply; empty fields leave it to them.
+ */
+export type SshConfig = {
+	/**  host name or a `Host` alias from `~/.ssh/config` */
+	host: string,
+	port: number | null,
+	user: string | null,
+	identityFile: string | null,
+};
 
 /**  Result of the last statement of a script. */
 export type StatementResult = 

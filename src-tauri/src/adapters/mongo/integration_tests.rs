@@ -37,6 +37,7 @@ pub(crate) async fn start() -> (ContainerAsync<Mongo>, ConnectionConfig) {
             ca_cert_path: None,
         },
         key_separator: None,
+        ssh: None,
     };
     (container, config)
 }

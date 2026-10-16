@@ -58,7 +58,8 @@ Dados e credenciais em [dev/demo](dev/demo) (descartáveis, só local).
 
 No formulário, **Testar conexão** conecta com o que está preenchido, sem salvar nada nem tocar no keychain. Os erros mais comuns:
 
-- **Recusou a conexão / timeout:** confira host e porta, e se o banco aceita conexões de fora (`listen_addresses` no Postgres, `bind-address` no MySQL, `bind` no Redis). Para um banco atrás de bastion, abra um túnel antes (`ssh -L 5432:db-interno:5432 bastion`) e use `localhost`.
+- **Recusou a conexão / timeout:** confira host e porta, e se o banco aceita conexões de fora (`listen_addresses` no Postgres, `bind-address` no MySQL, `bind` no Redis). Para um banco atrás de bastion, marque **Conectar por túnel SSH** e informe host e porta como o bastion os vê.
+- **Túnel SSH:** usa o `ssh` do sistema em modo não interativo, então só chave ou agente (`ssh-add`), sem senha nem pergunta de passphrase. Vale o `~/.ssh/config` (aliases, `ProxyJump`, `User`, `IdentityFile`); um host desconhecido entra no `known_hosts` na primeira vez, e uma chave de host trocada é recusada. Se falhar, a mensagem do `ssh` aparece no erro; confira com `ssh -N -L 15432:host:porta bastion` no terminal.
 - **Senha ou usuário recusados:** a senha salva fica no keychain; ao editar, deixe o campo vazio para manter a salva ou digite outra.
 - **TLS:** "Exigir" recusa servidores sem TLS; "Exigir e verificar certificado" precisa do certificado CA quando ele não é público.
 - **MongoDB por URI:** a URI inteira (`mongodb://` ou `mongodb+srv://`) é o segredo; TLS e autenticação vêm dela.
