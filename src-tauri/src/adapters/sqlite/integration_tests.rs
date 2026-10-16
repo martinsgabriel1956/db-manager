@@ -25,6 +25,7 @@ fn config(path: &std::path::Path) -> ConnectionConfig {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     }
 }
 

@@ -285,6 +285,25 @@ test("duplicating opens a new connection that copies the stored password on save
   ).toBeInTheDocument();
 });
 
+test("the group field suggests the groups in use and saves the one typed", async () => {
+  const calls = fakeBackend([{ ...devPostgres, group: "Clientes" }, prodPostgres]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await editConnection(user, "Postgres prod");
+  const field = screen.getByLabelText("Grupo (opcional)");
+  const suggestions = document.getElementById(field.getAttribute("list") ?? "");
+  expect([...(suggestions?.querySelectorAll("option") ?? [])].map(o => o.value)).toEqual([
+    "Clientes"
+  ]);
+  await user.type(field, "Clientes");
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+  await waitFor(() =>
+    expect(callsTo(calls, "save_connection")[0]).toMatchObject({ config: { group: "Clientes" } })
+  );
+});
+
 test("delete asks for confirmation before calling the backend", async () => {
   const calls = fakeBackend([prodPostgres]);
   const user = userEvent.setup();

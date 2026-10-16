@@ -1040,6 +1040,7 @@ mod integration_tests {
             },
             key_separator: None,
             ssh: None,
+            group: None,
         };
         let registry = Registry::default();
         let history = HistoryStore::in_memory().await;

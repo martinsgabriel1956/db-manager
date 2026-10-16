@@ -13,10 +13,12 @@ import {
   type FormErrors
 } from "@/features/connections/form";
 import {
+  useConnections,
   useDeleteConnection,
   useSaveConnection,
   type SaveConnectionInput
 } from "@/features/connections/queries";
+import { byGroup } from "@/features/explorer/treeNav";
 import { errorMessage } from "@/lib/errors";
 
 type ConnectionFormProps = {
@@ -66,6 +68,8 @@ export function ConnectionForm({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const save = useSaveConnection();
+  const connections = useConnections();
+  const groups = byGroup(connections.data ?? []).groups.map(group => group.name);
   const remove = useDeleteConnection();
   const test = useMutation({ mutationFn: testDraft });
   // a result speaks only for the values it tested: editing a field retires it
@@ -159,6 +163,7 @@ export function ConnectionForm({
         values={values}
         errors={errors}
         storedSecret={isEditing ? "own" : copyOfId ? "copy" : null}
+        groups={groups}
         onChange={patch => setValues(prev => ({ ...prev, ...patch }))}
         onEngineChange={engine => setValues(prev => changeEngine(prev, engine))}
       />

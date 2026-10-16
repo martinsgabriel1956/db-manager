@@ -40,6 +40,7 @@ async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     };
     (container, config)
 }

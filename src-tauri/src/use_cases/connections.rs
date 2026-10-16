@@ -78,6 +78,7 @@ fn copy_secret(secrets: &dyn SecretStore, source: &str, id: &str) -> Result<(), 
 /// Trims text fields and turns empty optional strings into None.
 fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
     config.name = config.name.trim().to_string();
+    config.group = non_empty(config.group);
     config.target = match config.target {
         Target::Network {
             host,
@@ -332,6 +333,7 @@ mod tests {
             },
             key_separator: None,
             ssh: None,
+            group: None,
         }
     }
 
@@ -360,6 +362,7 @@ mod tests {
             },
             key_separator: Some(":".into()),
             ssh: None,
+            group: None,
             ..postgres(id, "redis")
         }
     }
@@ -560,6 +563,22 @@ mod tests {
         );
         assert_eq!(saved.tls.ca_cert_path, None);
         assert_eq!(saved.ssh, None);
+    }
+
+    #[test]
+    fn save_trims_the_group_and_an_empty_one_is_none() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        let mut grouped = postgres("1", "a");
+        grouped.group = Some(" Cliente X ".into());
+        let mut blank = postgres("2", "b");
+        blank.group = Some("  ".into());
+
+        save(&store, &secrets, grouped, SecretChange::Keep).unwrap();
+        save(&store, &secrets, blank, SecretChange::Keep).unwrap();
+
+        let groups: Vec<_> = list(&store).unwrap().into_iter().map(|c| c.group).collect();
+        assert_eq!(groups, [Some("Cliente X".to_string()), None]);
     }
 
     #[test]

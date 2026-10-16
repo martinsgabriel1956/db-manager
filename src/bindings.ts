@@ -179,6 +179,8 @@ export type ConnectionConfig = {
 	keySeparator: string | null,
 	/**  absent in files saved before the tunnel existed */
 	ssh?: SshConfig | null,
+	/**  folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups */
+	group?: string | null,
 };
 
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
