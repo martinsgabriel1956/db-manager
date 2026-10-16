@@ -24,6 +24,8 @@ type ConnectionFieldsProps = {
   errors: FormErrors;
   /** what an empty secret field keeps: the connection's own, or the original's on a copy */
   storedSecret: "own" | "copy" | null;
+  /** the groups already in use, offered as the group field's suggestions */
+  groups: string[];
   onChange: (patch: Partial<ConnectionFormValues>) => void;
   onEngineChange: (engine: Engine) => void;
 };
@@ -86,6 +88,7 @@ export function ConnectionFields({
   values,
   errors,
   storedSecret,
+  groups,
   onChange,
   onEngineChange
 }: ConnectionFieldsProps) {
@@ -135,6 +138,25 @@ export function ConnectionFields({
           {textInput("name", { placeholder: `ex.: ${ENGINE_LABEL[values.engine]} prod` })}
         </Field>
       </div>
+      <Field
+        id="group"
+        label="Grupo (opcional)"
+        hint="Pasta na lateral: escolha uma existente ou digite um nome novo. Sem grupo, a conexão fica no topo."
+      >
+        <Input
+          id="group"
+          list="group-suggestions"
+          autoComplete="off"
+          value={values.group}
+          aria-describedby="group-hint"
+          onChange={event => onChange({ group: event.target.value })}
+        />
+        <datalist id="group-suggestions">
+          {groups.map(group => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
+      </Field>
 
       {!isSqlite && !isMongo && <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />}
 

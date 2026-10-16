@@ -24,7 +24,8 @@ const postgresConfig: ConnectionConfig = {
   target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
   tls: { mode: "verifyFull", caCertPath: "/ca.pem" },
   keySeparator: null,
-  ssh: null
+  ssh: null,
+  group: null
 };
 
 test("a new connection has no environment until one is chosen", () => {
@@ -61,7 +62,8 @@ describe("parseForm", () => {
         target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
         tls: { mode: "prefer", caCertPath: null },
         keySeparator: null,
-        ssh: null
+        ssh: null,
+        group: null
       },
       secret: { action: "set", value: "pw" }
     });
@@ -213,6 +215,20 @@ describe("fromConfig", () => {
 
     expect(values).toMatchObject({ filePath: "/a.db", host: "", port: "", caCertPath: "" });
   });
+});
+
+test("the group is trimmed, blank means none, and round-trips through fromConfig", () => {
+  const grouped = { ...postgresConfig, group: "Cliente X" };
+  const group = (value: string) => {
+    const result = parseForm(form({ name: "pg", group: value }), "1");
+    return result.success && result.config.group;
+  };
+
+  expect(group(" Cliente X ")).toBe("Cliente X");
+  expect(group("  ")).toBeNull();
+  expect(parseForm(fromConfig(grouped), "1")).toMatchObject({ success: true, config: grouped });
+  // a copy lands in the same folder
+  expect(duplicateForm(grouped).group).toBe("Cliente X");
 });
 
 describe("duplicateForm", () => {

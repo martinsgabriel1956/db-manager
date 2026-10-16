@@ -30,7 +30,7 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 ## Operating Context
 
 - App desktop Tauri; a interface roda num webview (WebKitGTK no Linux). Janela padrão 1200×800, mínimo 960×600. Tema claro/escuro segue o sistema operacional.
-- Layout de trabalho: árvore de conexões na lateral (conexão → schema/database → tabelas/coleções, ou databases 0–15 no Redis) e abas persistidas na área principal (tabelas, editores SQL, coleções, databases Redis, diagramas ER, histórico).
+- Layout de trabalho: árvore de conexões na lateral, com grupos opcionais como pastas (conexão → schema/database → tabelas/coleções, ou databases 0–15 no Redis) e abas persistidas na área principal (tabelas, editores SQL, coleções, databases Redis, diagramas ER, histórico).
 - Fluxos centrais: cadastrar ou duplicar conexão (senha/URI no keychain do SO, túnel SSH opcional); navegar tabela paginada com filtro e ordenação; editar células em stage e salvar numa transação; rodar SQL com autocomplete, cancelamento real e timeout; CRUD de documentos e pipeline de agregação no Mongo; navegar chaves por `SCAN`, editar por tipo, TTL, renomear, console e pub/sub no Redis; histórico pesquisável; export em streaming (CSV, NDJSON, JSON); diagrama ER somente leitura.
 - Ritual de segurança: a conexão `prod` marca a janela inteira (borda e faixa "Produção") e toda escrita passa pelo diálogo que mostra o comando.
 - Bancos de demonstração locais em `dev/demo` (Docker Compose + SQLite gerado) para desenvolver e demonstrar.

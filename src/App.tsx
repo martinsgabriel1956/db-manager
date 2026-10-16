@@ -73,6 +73,7 @@ export function App() {
   } = useTabs();
   const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
   const setExpanded = useExplorer(state => state.setExpanded);
+  const setGroupOpen = useExplorer(state => state.setGroupOpen);
   // the open connection form: shown, or parked behind the tabs with its draft intact
   const [form, setForm] = useState<FormState | null>(null);
   const [formShown, setFormShown] = useState(false);
@@ -266,6 +267,11 @@ export function App() {
       // connecting is the user's pick here; the tree lists it and takes focus
       showTabs();
       setExpanded(target.connectionId, true);
+      // a folded group would hide the row that takes focus
+      const group = list.find(connection => connection.id === target.connectionId)?.group;
+      if (group) {
+        setGroupOpen(group, true);
+      }
       requestAnimationFrame(() =>
         document.getElementById(connectionRowId(target.connectionId))?.focus()
       );

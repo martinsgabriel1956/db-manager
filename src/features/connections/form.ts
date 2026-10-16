@@ -18,6 +18,8 @@ import {
 
 export type ConnectionFormValues = {
   name: string;
+  /** folder in the sidebar; empty = ungrouped */
+  group: string;
   engine: Engine;
   /** empty until chosen: the protection regime is never a silent default */
   environment: Environment | "";
@@ -54,6 +56,7 @@ export type ParsedForm =
 
 export const EMPTY_FORM: ConnectionFormValues = {
   name: "",
+  group: "",
   engine: "postgres",
   environment: "",
   readOnly: false,
@@ -223,6 +226,7 @@ export function parseForm(
     config: {
       id,
       name: common.name,
+      group: values.group.trim() || null,
       engine: values.engine,
       environment,
       readOnly: values.readOnly,
@@ -252,6 +256,7 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
   return {
     ...EMPTY_FORM,
     name: config.name,
+    group: config.group ?? "",
     engine: config.engine,
     environment: config.environment,
     readOnly: config.readOnly,
