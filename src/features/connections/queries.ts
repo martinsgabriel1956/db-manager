@@ -6,6 +6,7 @@ const CONNECTIONS_KEY = ["connections"] as const;
 export type SaveConnectionInput = {
   config: ConnectionConfig;
   secret: SecretChange;
+  sshSecret: SecretChange;
   sentinelSecret: SecretChange;
 };
 
@@ -16,8 +17,8 @@ export function useConnections() {
 export function useSaveConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ config, secret, sentinelSecret }: SaveConnectionInput) =>
-      commands.saveConnection(config, secret, sentinelSecret),
+    mutationFn: ({ config, secret, sshSecret, sentinelSecret }: SaveConnectionInput) =>
+      commands.saveConnection(config, secret, sshSecret, sentinelSecret),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: CONNECTIONS_KEY })
   });
 }

@@ -1,9 +1,10 @@
 use tauri::State;
+use tauri::ipc::Channel;
 
 use crate::AppState;
 use crate::domain::{
     AppError, CommandResponse, InfoSection, KeyDetail, KeyEditRequest, KeyEditResponse, KeyPage,
-    RedisDatabase,
+    PubSubEvent, RedisDatabase,
 };
 use crate::use_cases::redis;
 
@@ -84,6 +85,57 @@ pub async fn server_info(
     connection_id: String,
 ) -> Result<Vec<InfoSection>, AppError> {
     redis::server_info(&state.registry, &connection_id).await
+}
+
+/// Subscribes on a dedicated connection; messages arrive on `on_event` until
+/// `stop_redis_session`.
+#[tauri::command]
+#[specta::specta]
+pub async fn redis_subscribe(
+    state: State<'_, AppState>,
+    connection_id: String,
+    session_id: String,
+    channels: Vec<String>,
+    patterns: Vec<String>,
+    on_event: Channel<PubSubEvent>,
+) -> Result<(), AppError> {
+    redis::subscribe(
+        &state.registry,
+        &connection_id,
+        &session_id,
+        &channels,
+        &patterns,
+        move |event| on_event.send(event).is_ok(),
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn stop_redis_session(state: State<'_, AppState>, connection_id: String, session_id: String) {
+    redis::stop_session(&state.registry, &connection_id, &session_id);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn redis_publish(
+    state: State<'_, AppState>,
+    connection_id: String,
+    db: u8,
+    channel: String,
+    message: String,
+    confirmed: bool,
+) -> Result<CommandResponse, AppError> {
+    redis::publish(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        db,
+        &channel,
+        &message,
+        confirmed,
+    )
+    .await
 }
 
 /// The master address the sentinels resolved; null when not behind Sentinel.

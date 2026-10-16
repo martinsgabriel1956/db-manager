@@ -113,6 +113,9 @@ pub struct ConnectionConfig {
     /// absent in files saved before the tunnel existed
     #[serde(default)]
     pub ssh: Option<SshConfig>,
+    /// folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// What to do with the stored password when saving a connection.
@@ -123,6 +126,18 @@ pub enum SecretChange {
     Keep,
     Set(String),
     Clear,
+    /// The stored secret of another connection (the id), copied on save when duplicating
+    /// it: the front never reads a stored secret, not even to copy it.
+    CopyFrom(String),
+}
+
+/// The keychain secrets one connection attempt uses.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Secrets {
+    /// the database's password (MongoDB: possibly a whole connection string)
+    pub password: Option<String>,
+    pub ssh_password: Option<String>,
+    pub sentinel_password: Option<String>,
 }
 
 /// Result of an operation that touches the keychain. Metadata is saved even when the

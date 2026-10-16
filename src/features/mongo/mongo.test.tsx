@@ -3,9 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
 import { expect, test } from "vitest";
 import { App } from "@/App";
-import type { ConnectionConfig, FindRequest, WriteRequest } from "@/bindings";
+import type { Channel } from "@tauri-apps/api/core";
+import type { ConnectionConfig, FindRequest, WatchMessage, WriteRequest } from "@/bindings";
 import { aggregationSummary } from "@/features/mongo/AggregationPanel";
+import { liveSummary, MAX_LIVE_EVENTS } from "@/features/mongo/LivePanel";
 import { invalidQueryFields } from "@/features/mongo/DocumentsPanel";
+import { presence, sampleSummary } from "@/features/mongo/SchemaPanel";
 import { callsTo, devMongo, fakeBackend } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
@@ -243,7 +246,7 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
   await user.click(screen.getByRole("tab", { name: "Agregação" }));
   const panel = screen.getByLabelText("Pipeline").closest("div.flex.h-full") as HTMLElement;
   const setPipeline = (text: string) => {
-    const view = editorIn(panel);
+    const view = EditorView.findFromDOM(within(panel).getByLabelText("Pipeline"))!;
     act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }));
   };
 
@@ -273,14 +276,276 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
   );
 });
 
-test("indexes are listed", async () => {
-  fakeBackend([devMongo], { list_schemas: () => schemas });
+test("the stage builder writes the pipeline text and previews up to a stage", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Agregação" }));
+  const panel = screen.getByLabelText("Pipeline").closest("div.flex.h-full") as HTMLElement;
+  const editor = (label: string) => EditorView.findFromDOM(within(panel).getByLabelText(label))!;
+  const type = (label: string, text: string) => {
+    const view = editor(label);
+    act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }));
+  };
+  const pipeline = () => editor("Pipeline").state.doc.toString();
+  const stages = () => within(panel).getAllByRole("listitem");
+  expect(stages()).toHaveLength(2);
+
+  // the JSON drives the blocks, values exactly as typed
+  type("Pipeline", '[{"$match": {"n": 9007199254740993}}, {"$set": {"d": 1.0}}, {"$limit": 5}]');
+  expect(stages().map(stage => within(stage).getByText(/^\$/).textContent)).toEqual([
+    "$match",
+    "$set",
+    "$limit"
+  ]);
+  expect(editor("Estágio 2").state.doc.toString()).toBe('{"$set": {"d": 1.0}}');
+
+  // off = out of the JSON, still in the builder
+  await user.click(within(panel).getByRole("checkbox", { name: "Estágio 2 ligado" }));
+  expect(pipeline()).toBe('[\n  {"$match": {"n": 9007199254740993}},\n  {"$limit": 5}\n]');
+  expect(within(stages()[1]).getByText("Desligado")).toBeInTheDocument();
+
+  // reordering by keyboard keeps the focus on the moved stage
+  within(panel).getByRole("button", { name: "Mover estágio 3 para cima" }).focus();
+  await user.keyboard("{Enter}");
+  expect(within(panel).getByRole("button", { name: "Mover estágio 2 para cima" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(pipeline()).toBe('[\n  {"$limit": 5},\n  {"$match": {"n": 9007199254740993}}\n]');
+
+  await user.selectOptions(within(panel).getByLabelText("Operador do novo estágio"), "$count");
+  await user.click(within(panel).getByRole("button", { name: "Adicionar estágio" }));
+  await user.click(within(panel).getByRole("button", { name: "Remover estágio 1" }));
+  expect(pipeline()).toBe('[\n  {"$match": {"n": 9007199254740993}},\n  { "$count": "total" }\n]');
+
+  // a stage that is not valid JSON leaves the pipeline as it was and blocks the run
+  type("Estágio 1", '{"$match": ');
+  expect(within(panel).getByText(/Estágio inválido/)).toBeInTheDocument();
+  expect(pipeline()).toContain("9007199254740993");
+  await user.click(within(panel).getByRole("button", { name: "Executar" }));
+  expect(within(panel).getByText("Estágio 1: JSON inválido")).toBeInTheDocument();
+  type("Estágio 1", '{"$match": {"d": 2.0}}');
+
+  await user.click(within(panel).getByRole("button", { name: "Prévia até o estágio 3" }));
+  expect(await within(panel).findByRole("status")).toHaveTextContent(
+    'Prévia até o estágio 3 ($count), com { "$limit": 20 } no fim'
+  );
+  expect((callsTo(calls, "run_aggregation").at(-1) as { pipeline: string }).pipeline).toBe(
+    '[\n  {"$match": {"d": 2.0}},\n  { "$count": "total" },\n  { "$limit": 20 }\n]'
+  );
+  expect(stages()[2]).toHaveAttribute("aria-current", "step");
+
+  // a preview never writes; the stage turned off keeps its place, so $out is the 3rd
+  type("Pipeline", '[{"$match": {}}, {"$out": "copy"}]');
+  expect(within(panel).getByRole("button", { name: "Prévia até o estágio 2" })).toBeDisabled();
+  const runs = callsTo(calls, "run_aggregation").length;
+  await user.click(within(panel).getByRole("button", { name: "Prévia até o estágio 3" }));
+  expect(within(panel).getByRole("alert")).toHaveTextContent(
+    "A prévia não executa $out nem $merge"
+  );
+  expect(callsTo(calls, "run_aggregation")).toHaveLength(runs);
+});
+
+test("the schema tab samples documents and says it is only a sample", async () => {
+  let release: (value: unknown) => void = () => undefined;
+  const calls = fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    sample_schema: args =>
+      (args as { size: number }).size === 7
+        ? new Promise(resolve => {
+            release = resolve;
+          })
+        : {
+            sampled: 2,
+            durationMs: 3,
+            fields: [
+              {
+                path: "_id",
+                documents: 2,
+                types: [{ name: "objectId", count: 2 }],
+                example: '{"$oid":"65a1b2c3d4e5f60718293a4b"}',
+                exampleTruncated: false
+              },
+              {
+                path: "tags",
+                documents: 1,
+                types: [{ name: "array", count: 1 }],
+                example: null,
+                exampleTruncated: false
+              },
+              {
+                path: "tags[]",
+                documents: 1,
+                types: [
+                  { name: "string", count: 2 },
+                  { name: "null", count: 1 }
+                ],
+                example: '"a"',
+                exampleTruncated: true
+              }
+            ]
+          }
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Schema" }));
+
+  expect(screen.getByText(/não o schema da coleção/)).toBeInTheDocument();
+  const size = screen.getByRole("spinbutton", { name: "Documentos na amostra" });
+  await user.clear(size);
+  await user.type(size, "50");
+  expect(
+    screen.getByText('shop.customers.aggregate([{ "$sample": { "size": 50 } }])')
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Amostrar" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "2 documentos amostrados · 3 caminhos · 3 ms"
+  );
+  expect(callsTo(calls, "sample_schema")).toEqual([
+    {
+      connectionId: "mongo-1",
+      runId: expect.any(String),
+      database: "shop",
+      collection: "customers",
+      size: 50
+    }
+  ]);
+  const tags = screen.getByText("tags[]").closest("tr") as HTMLElement;
+  expect(tags).toHaveTextContent("string 2 · null 1");
+  expect(tags).toHaveTextContent("1 de 2 (50%)");
+  expect(tags).toHaveTextContent('"a" … (cortado)');
+  expect(screen.getByText('{"$oid":"65a1b2c3d4e5f60718293a4b"}')).toBeInTheDocument();
+
+  await user.clear(size);
+  await user.type(size, "0");
+  expect(screen.getByRole("button", { name: "Amostrar" })).toBeDisabled();
+
+  await user.clear(size);
+  await user.type(size, "7{Enter}");
+  await user.click(await screen.findByRole("button", { name: "Cancelar" }));
+  const runId = (callsTo(calls, "sample_schema").at(-1) as { runId: string }).runId;
+  expect(callsTo(calls, "cancel_run")).toEqual([{ runId }]);
+  act(() => release({ sampled: 0, durationMs: 1, fields: [] }));
+  expect(await screen.findByRole("status")).toHaveTextContent("0 documentos amostrados");
+});
+
+test("schema sample wording", () => {
+  expect(sampleSummary(1, 1, 2)).toBe("1 documento amostrado · 1 caminho · 2 ms");
+  expect(presence(1, 3)).toBe("1 de 3 (33%)");
+});
+
+const twoIndexes = () => [
+  { name: "_id_", definition: '{"_id":1}' },
+  { name: "email_1", definition: '{"email":1} UNIQUE' }
+];
+
+test("indexes are listed; _id_ cannot be removed", async () => {
+  fakeBackend([devMongo], { list_schemas: () => schemas, collection_indexes: twoIndexes });
   const user = await openCustomers();
 
   await user.click(screen.getByRole("tab", { name: "Índices" }));
 
   expect(await screen.findByText("_id_")).toBeInTheDocument();
-  expect(screen.getByText('{"_id":1}')).toBeInTheDocument();
+  expect(screen.getByText('{"email":1} UNIQUE')).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remover índice email_1" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Remover índice _id_" })).not.toBeInTheDocument();
+});
+
+test("a new index shows the backend's command while it is filled, then is created", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Índices" }));
+  await user.click(await screen.findByRole("button", { name: "Novo índice" }));
+  const dialog = screen.getByRole("dialog");
+
+  await user.type(within(dialog).getByLabelText("Campo da chave 1"), "email");
+  await user.click(within(dialog).getByRole("button", { name: "Adicionar chave" }));
+  await user.type(within(dialog).getByLabelText("Campo da chave 2"), "at");
+  await user.selectOptions(within(dialog).getByLabelText("Tipo da chave 2"), "desc");
+  await user.click(within(dialog).getByLabelText("unique"));
+  expect(
+    await within(dialog).findByText(
+      'shop.runCommand({"createIndexes":"customers","keys":"email,at"})'
+    )
+  ).toBeInTheDocument();
+
+  // a TTL that is not a whole number never reaches the backend
+  const ttl = within(dialog).getByLabelText(/expireAfterSeconds/);
+  await user.type(ttl, "1.5");
+  expect(within(dialog).getByRole("button", { name: "Criar índice" })).toBeDisabled();
+  await user.clear(ttl);
+  await user.type(ttl, "3600");
+
+  await user.click(await within(dialog).findByRole("button", { name: "Criar índice" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(callsTo(calls, "create_index")).toEqual([
+    {
+      connectionId: devMongo.id,
+      confirmed: false,
+      index: {
+        database: "shop",
+        collection: "customers",
+        keys: [
+          { field: "email", kind: "asc" },
+          { field: "at", kind: "desc" }
+        ],
+        name: "",
+        unique: true,
+        sparse: false,
+        expireAfterSeconds: 3600,
+        partialFilter: ""
+      }
+    }
+  ]);
+});
+
+test("removing an index confirms the exact dropIndexes command", async () => {
+  const statement = 'shop.runCommand({"dropIndexes":"customers","index":"email_1"})';
+  const calls = fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    collection_indexes: twoIndexes,
+    drop_index: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "applied" }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              destructive: true,
+              reason: "Comando destrutivo: remove o índice",
+              statements: [statement]
+            }
+          }
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Índices" }));
+  await user.click(await screen.findByRole("button", { name: "Remover índice email_1" }));
+
+  const confirm = await screen.findByRole("alertdialog");
+  expect(within(confirm).getByText(statement)).toBeInTheDocument();
+  await user.click(within(confirm).getByRole("button", { name: "Executar" }));
+
+  await waitFor(() =>
+    expect(
+      (callsTo(calls, "drop_index") as { name: string; confirmed: boolean }[]).map(c => [
+        c.name,
+        c.confirmed
+      ])
+    ).toEqual([
+      ["email_1", false],
+      ["email_1", true]
+    ])
+  );
+});
+
+test("read-only connections cannot change indexes", async () => {
+  fakeBackend([{ ...devMongo, readOnly: true }], {
+    list_schemas: () => schemas,
+    collection_indexes: twoIndexes
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Índices" }));
+
+  expect(await screen.findByText("email_1")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Novo índice" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Remover índice/ })).not.toBeInTheDocument();
 });
 
 test("an applied filter lights the magenta chip with the query; edits not yet applied promote Aplicar", async () => {
@@ -310,4 +575,87 @@ test("the aggregation summary counts documents in the singular and the plural", 
   expect(aggregationSummary(1, false, 4)).toBe("1 documento · 4 ms");
   expect(aggregationSummary(2, false, 4)).toBe("2 documentos · 4 ms");
   expect(aggregationSummary(100, true, 9)).toBe("100+ documentos (mostrando os primeiros) · 9 ms");
+});
+
+type WatchArgs = { watchId: string; pipeline: string; onMessage: Channel<WatchMessage> };
+
+test("the live panel lists change events, pauses, clears and stops when left", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Ao vivo" }));
+  await user.click(screen.getByRole("button", { name: "Iniciar" }));
+  await screen.findByText(/^Ouvindo/);
+
+  const [watch] = callsTo(calls, "watch_collection") as WatchArgs[];
+  expect(watch.pipeline).toBe("[]");
+  const send = (message: WatchMessage) => act(() => watch.onMessage.onmessage(message));
+  send({
+    kind: "change",
+    event: {
+      operation: "insert",
+      id: '{"$oid":"65a1b2c3d4e5f60718293a4b"}',
+      document: '{"_id":{"$oid":"65a1b2c3d4e5f60718293a4b"},"visits":{"$numberLong":"7"}}',
+      diff: null,
+      at: "2026-10-16T12:00:00Z"
+    }
+  });
+  send({
+    kind: "change",
+    event: {
+      operation: "update",
+      id: "1",
+      document: null,
+      diff: '{"updatedFields":{"n":2},"removedFields":[]}',
+      at: null
+    }
+  });
+
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Ouvindo · 2 eventos");
+  expect(screen.getByText('_id: ObjectId("65a1b2c3d4e5f60718293a4b")')).toBeInTheDocument();
+  expect(screen.getByText("NumberLong(7)")).toBeInTheDocument();
+  expect(screen.getByText("updateDescription")).toBeInTheDocument();
+
+  // paused: the view holds still, the stream keeps counting
+  await user.click(screen.getByRole("button", { name: "Pausar" }));
+  send({
+    kind: "change",
+    event: { operation: "delete", id: "1", document: null, diff: null, at: null }
+  });
+  expect(status).toHaveTextContent("3 eventos · pausado: 1 novos fora da tela");
+  expect(screen.queryByText("delete")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Retomar" }));
+  expect(screen.getByText("delete")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Limpar" }));
+  expect(status).toHaveTextContent("Ouvindo · 0 eventos");
+
+  // leaving the section closes the stream on the server
+  await user.click(screen.getByRole("tab", { name: "Documentos" }));
+  await waitFor(() => expect(callsTo(calls, "stop_watch")).toEqual([{ watchId: watch.watchId }]));
+});
+
+test("a server that cannot watch says why", async () => {
+  fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    watch_collection: () =>
+      Promise.reject({
+        kind: "validation",
+        message:
+          "change streams exigem um replica set ou cluster fragmentado; este servidor é standalone"
+      })
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Ao vivo" }));
+  await user.click(screen.getByRole("button", { name: "Iniciar" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("este servidor é standalone");
+  expect(screen.getByRole("button", { name: "Iniciar" })).toBeInTheDocument();
+});
+
+test("the live summary names the memory limit", () => {
+  expect(liveSummary("live", 1, 0)).toBe("Ouvindo · 1 evento");
+  expect(liveSummary("idle", MAX_LIVE_EVENTS, 0)).toBe(
+    `Parado · os últimos ${MAX_LIVE_EVENTS} eventos (os mais antigos saem da memória)`
+  );
 });

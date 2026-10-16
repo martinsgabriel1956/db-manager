@@ -24,7 +24,10 @@ import {
 type ConnectionFieldsProps = {
   values: ConnectionFormValues;
   errors: FormErrors;
-  isEditing: boolean;
+  /** what an empty secret field keeps: the connection's own, or the original's on a copy */
+  storedSecret: "own" | "copy" | null;
+  /** the groups already in use, offered as the group field's suggestions */
+  groups: string[];
   onChange: (patch: Partial<ConnectionFormValues>) => void;
   onEngineChange: (engine: Engine) => void;
 };
@@ -92,7 +95,8 @@ const READ_ONLY_HINT: Record<Engine, string> = {
 export function ConnectionFields({
   values,
   errors,
-  isEditing,
+  storedSecret,
+  groups,
   onChange,
   onEngineChange
 }: ConnectionFieldsProps) {
@@ -146,6 +150,25 @@ export function ConnectionFields({
           {textInput("name", { placeholder: `ex.: ${ENGINE_LABEL[values.engine]} prod` })}
         </Field>
       </div>
+      <Field
+        id="group"
+        label="Grupo (opcional)"
+        hint="Pasta na lateral: escolha uma existente ou digite um nome novo. Sem grupo, a conexão fica no topo."
+      >
+        <Input
+          id="group"
+          list="group-suggestions"
+          autoComplete="off"
+          value={values.group}
+          aria-describedby="group-hint"
+          onChange={event => onChange({ group: event.target.value })}
+        />
+        <datalist id="group-suggestions">
+          {groups.map(group => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
+      </Field>
 
       {!isSqlite && !isMongo && !hasNodes && (
         <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />
@@ -211,9 +234,11 @@ export function ConnectionFields({
               aria-invalid={errors.uri ? true : undefined}
               aria-describedby={errors.uri ? "uri-error" : undefined}
               placeholder={
-                isEditing
+                storedSecret === "own"
                   ? "Deixe vazio para manter a salva"
-                  : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
+                  : storedSecret === "copy"
+                    ? "Deixe vazio para copiar a da conexão original"
+                    : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
               }
               onChange={event => onChange({ uri: event.target.value })}
             />
@@ -291,18 +316,24 @@ export function ConnectionFields({
               disabled={values.clearPassword}
               aria-invalid={errors.password ? true : undefined}
               aria-describedby={errors.password ? "password-hint password-error" : "password-hint"}
-              placeholder={isEditing ? "Deixe vazio para manter a senha salva" : ""}
+              placeholder={
+                storedSecret === "own"
+                  ? "Deixe vazio para manter a senha salva"
+                  : storedSecret === "copy"
+                    ? "Deixe vazio para copiar a senha da conexão original"
+                    : ""
+              }
               onChange={event => onChange({ password: event.target.value })}
             />
           </Field>
-          {isEditing && (
+          {storedSecret && (
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={values.clearPassword}
                 onChange={event => onChange({ clearPassword: event.target.checked, password: "" })}
               />
-              Remover senha salva
+              {storedSecret === "own" ? "Remover senha salva" : "Não copiar a senha salva"}
             </label>
           )}
           {isSentinel && (
@@ -318,11 +349,17 @@ export function ConnectionFields({
                   value={values.sentinelPassword}
                   disabled={values.clearSentinelPassword}
                   aria-describedby="sentinelPassword-hint"
-                  placeholder={isEditing ? "Deixe vazio para manter a senha salva" : ""}
+                  placeholder={
+                    storedSecret === "own"
+                      ? "Deixe vazio para manter a senha salva"
+                      : storedSecret === "copy"
+                        ? "Deixe vazio para copiar a da conexão original"
+                        : ""
+                  }
                   onChange={event => onChange({ sentinelPassword: event.target.value })}
                 />
               </Field>
-              {isEditing && (
+              {storedSecret && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -334,7 +371,9 @@ export function ConnectionFields({
                       })
                     }
                   />
-                  Remover senha do sentinel salva
+                  {storedSecret === "own"
+                    ? "Remover senha do sentinel salva"
+                    : "Não copiar a senha do sentinel salva"}
                 </label>
               )}
             </>
@@ -357,8 +396,8 @@ export function ConnectionFields({
                 Conectar por túnel SSH
               </label>
               <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
-                Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Só chave ou
-                agente, sem senha. Host e porta acima são vistos a partir do servidor SSH.
+                Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Host e porta
+                acima são vistos a partir do servidor SSH.
               </p>
             </div>
           )}
@@ -380,6 +419,42 @@ export function ConnectionFields({
                   {textInput("sshIdentityFile", { placeholder: "~/.ssh/id_ed25519" })}
                 </Field>
               </div>
+              <Field
+                id="sshPassword"
+                label="Senha SSH ou passphrase da chave (opcional)"
+                hint="Vai para o keychain, separada da senha do banco, e chega ao ssh só pelo ambiente do processo, nunca pela linha de comando. Vazia: só chave sem passphrase ou agente."
+              >
+                <Input
+                  id="sshPassword"
+                  type="password"
+                  autoComplete="off"
+                  value={values.sshPassword}
+                  disabled={values.clearSshPassword}
+                  aria-describedby="sshPassword-hint"
+                  placeholder={
+                    storedSecret === "own"
+                      ? "Deixe vazio para manter a salva"
+                      : storedSecret === "copy"
+                        ? "Deixe vazio para copiar a da conexão original"
+                        : ""
+                  }
+                  onChange={event => onChange({ sshPassword: event.target.value })}
+                />
+              </Field>
+              {storedSecret && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={values.clearSshPassword}
+                    onChange={event =>
+                      onChange({ clearSshPassword: event.target.checked, sshPassword: "" })
+                    }
+                  />
+                  {storedSecret === "own"
+                    ? "Remover senha SSH salva"
+                    : "Não copiar a senha SSH salva"}
+                </label>
+              )}
             </>
           )}
         </>

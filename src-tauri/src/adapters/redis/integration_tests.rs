@@ -10,8 +10,8 @@ use testcontainers_modules::testcontainers::{ContainerAsync, GenericImage, Image
 
 use super::{MAX_ELEMENTS, RedisAdapter};
 use crate::domain::{
-    AppError, ConnectionConfig, Engine, Environment, NodeAddress, RedisText, RedisValue, Target,
-    TlsConfig, TlsMode,
+    AppError, ConnectionConfig, Engine, Environment, NodeAddress, PubSubEvent, RedisText,
+    RedisValue, Target, TlsConfig, TlsMode,
 };
 
 pub(crate) async fn start() -> (ContainerAsync<Redis>, ConnectionConfig) {
@@ -45,6 +45,7 @@ fn config(port: u16) -> ConnectionConfig {
         },
         key_separator: Some(":".into()),
         ssh: None,
+        group: None,
     }
 }
 
@@ -413,6 +414,23 @@ async fn cluster_scans_every_primary_and_routes_by_key() {
     assert!(redis.read_key(1, "user:1").await.is_err());
     let info = redis.info(None).await.unwrap();
     assert_eq!(info[0].name, "Cluster");
+
+    // pub/sub listens on the first seed; a PUBLISH reaches every node
+    let (tx, mut events) = tokio::sync::mpsc::unbounded_channel();
+    redis
+        .subscribe("s", &["news".into()], &[], move |event| {
+            tx.send(event).is_ok()
+        })
+        .await
+        .unwrap();
+    run(&redis, 0, "PUBLISH news hi").await;
+    let event = tokio::time::timeout(Duration::from_secs(5), events.recv())
+        .await
+        .expect("message in time");
+    assert!(
+        matches!(&event, Some(PubSubEvent::Message { payload, .. }) if payload.text == "hi"),
+        "{event:?}"
+    );
 }
 
 /// A master and one sentinel in one container, on the same ports inside and outside:

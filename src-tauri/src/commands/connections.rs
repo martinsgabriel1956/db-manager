@@ -28,6 +28,7 @@ pub async fn save_connection(
     state: State<'_, AppState>,
     config: ConnectionConfig,
     secret: SecretChange,
+    ssh_secret: SecretChange,
     sentinel_secret: SecretChange,
 ) -> Result<KeychainOutcome, AppError> {
     let id = config.id.clone();
@@ -38,6 +39,7 @@ pub async fn save_connection(
             state.secrets.as_ref(),
             config,
             secret,
+            ssh_secret,
             sentinel_secret,
         )?
     };
@@ -54,19 +56,21 @@ pub async fn test_connection(
     state: State<'_, AppState>,
     config: ConnectionConfig,
     secret: SecretChange,
+    ssh_secret: SecretChange,
     sentinel_secret: SecretChange,
 ) -> Result<(), AppError> {
-    let (config, password, sentinel_password) = {
+    let (config, secrets) = {
         let store = state.store.lock().unwrap_or_else(PoisonError::into_inner);
         connections::prepare_test(
             &store,
             state.secrets.as_ref(),
             config,
             secret,
+            ssh_secret,
             sentinel_secret,
         )?
     };
-    sql::test_connection(&config, password, sentinel_password).await
+    sql::test_connection(&config, secrets).await
 }
 
 #[tauri::command]

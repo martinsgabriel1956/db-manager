@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { useConnections } from "@/features/connections/queries";
 import { ExportButton } from "@/features/export/ExportButton";
+import { ImportCsvButton } from "@/features/import/ImportCsvButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
@@ -63,6 +64,14 @@ export function TableView(props: TableViewProps) {
         {props.readOnly && <Badge variant="held">Somente leitura</Badge>}
         <div className="ml-auto flex min-w-0 items-center gap-4">
           <ConnectionContext connectionId={props.connectionId} />
+          {/* somente leitura: the database would refuse the INSERT anyway */}
+          {!props.readOnly && (
+            <ImportCsvButton
+              connectionId={props.connectionId}
+              schema={props.schema}
+              table={props.table}
+            />
+          )}
           <ExportButton
             baseName={props.table}
             formats={[
