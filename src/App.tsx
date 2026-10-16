@@ -15,6 +15,7 @@ import {
 import { commands, type ConnectionConfig } from "@/bindings";
 import { CloseWindowDialog } from "@/components/CloseWindowDialog";
 import { Button } from "@/components/ui/button";
+import { UpdateDialog } from "@/components/UpdateDialog";
 import { ConnectionForm } from "@/features/connections/ConnectionForm";
 import { EnvTag } from "@/features/connections/EnvTag";
 import { defaultSchemaFor, isSqlEngine } from "@/features/connections/options";
@@ -617,6 +618,7 @@ export function App() {
       />
       <LegendDialog open={legendOpen} onOpenChange={setLegendOpen} />
       <CloseWindowDialog onQuit={quit} />
+      <UpdateDialog connections={list} />
     </div>
   );
 }
