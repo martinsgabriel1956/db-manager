@@ -506,6 +506,7 @@ pub fn close_cursor(registry: &Registry, cursor_id: &str) {
 
 /// Cancels a script that is still running (no-op if it already finished).
 pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppError> {
+    registry.request_cancel(run_id);
     match registry.running(run_id) {
         Some((connection, session)) => match &connection.live {
             Live::Sql(sql) => {
