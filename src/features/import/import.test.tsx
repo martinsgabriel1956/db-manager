@@ -2,9 +2,9 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
-import type { CsvImport, ImportResponse } from "@/bindings";
+import type { CsvImport, DocumentImport, ImportResponse } from "@/bindings";
 import { initialMapping } from "@/features/import/ImportCsvButton";
-import { callsTo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import { callsTo, devMongo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
 type ImportArgs = { connectionId: string; runId: string; request: CsvImport; confirmed: boolean };
@@ -133,4 +133,67 @@ test("a somente leitura connection shows no import", async () => {
   fakeBackend([prodPostgres]);
   await openUsers(/^Postgres prod/);
   expect(screen.queryByRole("button", { name: /Importar CSV/ })).not.toBeInTheDocument();
+});
+
+type DocumentImportArgs = {
+  connectionId: string;
+  runId: string;
+  request: DocumentImport;
+  confirmed: boolean;
+};
+
+async function openCustomers(
+  connection = devMongo,
+  overrides: Parameters<typeof fakeBackend>[1] = {}
+) {
+  const calls = fakeBackend([connection], {
+    list_schemas: () => [{ name: "shop", relations: [{ name: "customers", kind: "table" }] }],
+    "plugin:dialog|open": () => "/tmp/customers.ndjson",
+    ...overrides
+  });
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+  await user.click(await screen.findByRole("treeitem", { name: /^Mongo dev/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "customers" }));
+  return { calls, user };
+}
+
+test("documents are reviewed with the first one as stored, then inserted", async () => {
+  const { calls, user } = await openCustomers();
+
+  await user.click(await screen.findByRole("button", { name: /^Importar$/ }));
+  const confirm = await screen.findByRole("alertdialog");
+  expect(confirm).toHaveTextContent("Importar 2 documentos");
+  expect(
+    within(confirm).getByRole("region", { name: "Comando que será executado" })
+  ).toHaveTextContent('"$numberLong":"9007199254740993"');
+  await user.click(within(confirm).getByRole("button", { name: "Importar" }));
+
+  expect(await screen.findByText("2 documentos importados")).toBeInTheDocument();
+  const [review, run] = callsTo(calls, "import_documents") as DocumentImportArgs[];
+  expect(review).toMatchObject({
+    connectionId: "mongo-1",
+    confirmed: false,
+    request: { database: "shop", collection: "customers", path: "/tmp/customers.ndjson" }
+  });
+  expect(run).toMatchObject({ confirmed: true, request: review.request });
+  await waitFor(() => expect(callsTo(calls, "browse_collection").length).toBeGreaterThan(1));
+});
+
+test("a refused file says which line, and nothing runs", async () => {
+  const { user } = await openCustomers(devMongo, {
+    import_documents: () =>
+      Promise.reject({ kind: "validation", message: "linha 3: JSON inválido" })
+  });
+
+  await user.click(await screen.findByRole("button", { name: /^Importar$/ }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("linha 3: JSON inválido");
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+});
+
+test("a somente leitura collection shows no import", async () => {
+  await openCustomers({ ...devMongo, readOnly: true });
+  await screen.findByRole("button", { name: /Exportar/ });
+  expect(screen.queryByRole("button", { name: /^Importar$/ })).not.toBeInTheDocument();
 });

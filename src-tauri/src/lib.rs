@@ -57,6 +57,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::export::export_collection,
             commands::import::preview_csv,
             commands::import::import_csv,
+            commands::import::import_documents,
             commands::mongo::browse_collection,
             commands::mongo::collection_indexes,
             commands::mongo::run_aggregation,

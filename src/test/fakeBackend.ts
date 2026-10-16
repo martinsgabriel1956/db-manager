@@ -334,6 +334,17 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       ],
       delimiter: ";"
     }),
+    import_documents: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "imported", rows: 2, durationMs: 4 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Importar 2 documentos de customers.ndjson em shop.customers",
+              statements: [`shop.customers.insertMany([${mongoDocuments[0]}, …])`],
+              destructive: false
+            }
+          },
     import_csv: args =>
       (args as { confirmed: boolean }).confirmed
         ? { status: "imported", rows: 1200, durationMs: 9 }

@@ -32,10 +32,20 @@ pub struct CsvImport {
     pub mapping: Vec<ColumnMapping>,
 }
 
+/// An NDJSON or JSON array file of Extended JSON documents, into a collection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentImport {
+    pub database: String,
+    pub collection: String,
+    pub path: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum ImportResponse {
-    /// always first: the sample INSERT and the row count, to confirm before anything runs
+    /// always first: the sample INSERT (or first document) and the count, to confirm
+    /// before anything runs
     NeedsConfirmation {
         confirmation: Confirmation,
     },

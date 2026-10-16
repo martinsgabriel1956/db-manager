@@ -1,6 +1,7 @@
 //! Imports read a file batch by batch, never whole: a CSV goes into a SQL table in
-//! one transaction (an error on any line rolls everything back and names the line).
-//! Nothing runs before the user saw the sample INSERT and the row count.
+//! one transaction (an error on any line rolls everything back and names the line);
+//! NDJSON or a JSON array goes into a MongoDB collection with `insertMany`. Nothing
+//! runs before the user saw what will be written and how much.
 
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -9,10 +10,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use mongodb::bson::Document;
+
 use crate::adapters::csv::{self, Record};
 use crate::adapters::dialect::Dialect;
+use crate::adapters::mongo::InsertFailure;
+use crate::adapters::mongo::ejson::{self, DocumentReader};
 use crate::adapters::{SqlTransaction, error_position, sql_builder};
-use crate::domain::{AppError, Confirmation, CsvImport, CsvPreview, ImportResponse};
+use crate::domain::{
+    AppError, Confirmation, CsvImport, CsvPreview, DocumentImport, ImportResponse,
+};
 use crate::registry::{OpenConnection, Registry};
 use crate::storage::history::HistoryStore;
 use crate::use_cases::sql::{elapsed_ms, record};
@@ -74,11 +81,7 @@ pub async fn import_csv(
                 "o arquivo só tem o cabeçalho: nenhuma linha para importar",
             ));
         }
-        let rows = if total == 1 {
-            "1 linha".to_string()
-        } else {
-            format!("{total} linhas")
-        };
+        let rows = count(total, "linha", "linhas");
         return Ok(ImportResponse::NeedsConfirmation {
             confirmation: Confirmation {
                 reason: format!(
@@ -286,7 +289,156 @@ fn nothing_saved(err: AppError) -> AppError {
     }
 }
 
+const DOCUMENT_BATCH: usize = 1000;
+
+/// Unconfirmed, reads the whole file (every document parsed) and answers with the
+/// first document and the count; confirmed, inserts in order with `insertMany`
+/// batches under `run_id`. MongoDB has no transaction here: what went in before a
+/// refused document stays, and the error says how much.
+pub async fn import_documents(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    run_id: &str,
+    request: DocumentImport,
+    confirmed: bool,
+) -> Result<ImportResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let mongo = connection.mongo()?;
+    if connection.read_only {
+        return Err(AppError::read_only(&connection.name));
+    }
+    let target = format!("{}.{}", request.database, request.collection);
+    let mut reader = open_documents(&request.path)?;
+
+    if !confirmed {
+        let mut first = None;
+        let mut total: u64 = 0;
+        while let Some((line, text)) = reader.next_document()? {
+            let document = parse_line(line, &text)?;
+            first.get_or_insert(document);
+            total += 1;
+        }
+        let Some(first) = first else {
+            return Err(AppError::validation(
+                "o arquivo não tem documentos para importar",
+            ));
+        };
+        return Ok(ImportResponse::NeedsConfirmation {
+            confirmation: Confirmation {
+                reason: format!(
+                    "Importar {} de {} em {target}, com insertMany em lotes de até \
+                     {DOCUMENT_BATCH}. Sem transação: se um documento for recusado, os \
+                     anteriores ficam gravados. Abaixo, o primeiro documento como será gravado.",
+                    count(total, "documento", "documentos"),
+                    file_name(&request.path),
+                ),
+                statements: vec![format!(
+                    "{target}.insertMany([{}, …])",
+                    ejson::to_text(first)
+                )],
+                destructive: false,
+            },
+        });
+    }
+
+    registry.start_run(run_id, connection.clone(), 0);
+    let started = Instant::now();
+    let mut inserted: u32 = 0;
+    let result = async {
+        loop {
+            let mut lines = Vec::with_capacity(DOCUMENT_BATCH);
+            let mut documents = Vec::with_capacity(DOCUMENT_BATCH);
+            while documents.len() < DOCUMENT_BATCH {
+                let Some((line, text)) = reader.next_document()? else {
+                    break;
+                };
+                lines.push(line);
+                documents.push(parse_line(line, &text)?);
+            }
+            if registry.cancel_requested(run_id) {
+                return Err(AppError::cancelled());
+            }
+            if documents.is_empty() {
+                return Ok(());
+            }
+            let batch = u32::try_from(documents.len()).unwrap_or(u32::MAX);
+            if let Err(failure) = mongo
+                .insert_many(&request.database, &request.collection, documents, run_id)
+                .await
+            {
+                let InsertFailure { index, error } = failure;
+                return Err(match index {
+                    Some(index) => {
+                        inserted =
+                            inserted.saturating_add(u32::try_from(index).unwrap_or(u32::MAX));
+                        AppError::Database(format!("linha {}: {error}", lines[index]))
+                    }
+                    None => error,
+                });
+            }
+            inserted = inserted.saturating_add(batch);
+        }
+    }
+    .await;
+    registry.finish_run(run_id);
+    let duration_ms = elapsed_ms(started);
+    let result = result
+        .map(|()| inserted)
+        .map_err(|err| partly_saved(err, inserted));
+    record(
+        history,
+        connection_id,
+        &connection,
+        &format!("// import ← {}\n{target}.insertMany(…)", request.path),
+        duration_ms,
+        result.as_ref().err(),
+    )
+    .await;
+    Ok(ImportResponse::Imported {
+        rows: result?,
+        duration_ms,
+    })
+}
+
+fn parse_line(line: u64, text: &str) -> Result<Document, AppError> {
+    ejson::parse_document(text, &format!("linha {line}"))
+}
+
+/// No transaction in MongoDB: the message says how much was written.
+fn partly_saved(err: AppError, inserted: u32) -> AppError {
+    let saved = match inserted {
+        0 => "nada foi gravado".to_string(),
+        n => format!(
+            "{} já ficaram gravados",
+            count(u64::from(n), "documento", "documentos")
+        ),
+    };
+    match err {
+        AppError::Cancelled(_) => AppError::Cancelled(format!("importação cancelada: {saved}")),
+        AppError::Validation(message) => AppError::Validation(format!("{message}. {saved}")),
+        AppError::Database(message) => AppError::Database(format!("{message}. {saved}")),
+        AppError::Storage(message) => AppError::Storage(format!("{message}. {saved}")),
+        other => other,
+    }
+}
+
+fn count(n: u64, one: &str, many: &str) -> String {
+    match n {
+        1 => format!("1 {one}"),
+        n => format!("{n} {many}"),
+    }
+}
+
 fn open_csv(path: &str) -> Result<(CsvReader, Vec<String>), AppError> {
+    csv::Reader::new(open_file(path)?)
+}
+
+fn open_documents(path: &str) -> Result<DocumentReader<BufReader<File>>, AppError> {
+    Ok(DocumentReader::new(open_file(path)?))
+}
+
+fn open_file(path: &str) -> Result<BufReader<File>, AppError> {
     let path = PathBuf::from(path);
     if !path.is_absolute() {
         return Err(AppError::validation("escolha um arquivo para importar"));
@@ -294,7 +446,7 @@ fn open_csv(path: &str) -> Result<(CsvReader, Vec<String>), AppError> {
     let file = File::open(&path).map_err(|err| {
         AppError::validation(format!("não foi possível abrir {}: {err}", path.display()))
     })?;
-    csv::Reader::new(BufReader::new(file))
+    Ok(BufReader::new(file))
 }
 
 fn file_name(path: &str) -> String {
@@ -709,6 +861,198 @@ mod integration_tests {
             read_only
                 .import("ro", read_only.request(&path, &["id", "name"]), false)
                 .await,
+            Err(AppError::ReadOnly(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn mongo_imports_documents_byte_for_byte() {
+        use crate::domain::{DocumentFormat, FindRequest};
+        use crate::use_cases::export::export_collection;
+
+        let (_container, config) = crate::adapters::mongo::integration_tests::start().await;
+        let db = Db::open(config.clone(), None, "").await;
+        let mongo = db.registry.connection(&db.id).unwrap();
+        for document in [
+            r#"{"_id": {"$oid": "65a1b2c3d4e5f60718293a4b"}, "at": {"$date": "2024-02-29T12:00:00.123Z"}, "big": {"$numberLong": "9007199254740993"}, "price": {"$numberDecimal": "10.10"}, "n": 1, "x": 1.5, "bin": {"$binary": {"base64": "AP8=", "subType": "00"}}, "nested": {"z": 1, "a": [1, "b"]}}"#,
+            r#"{"_id": 2, "small": {"$numberLong": "3"}, "text": "São \"Paulo\"\n"}"#,
+        ] {
+            mongo
+                .mongo()
+                .unwrap()
+                .insert(
+                    "shop",
+                    "items",
+                    ejson::parse_document(document, "doc").unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+        let find = |collection: &str| FindRequest {
+            database: "shop".into(),
+            collection: collection.into(),
+            filter: String::new(),
+            sort: r#"{"_id": -1}"#.into(),
+            projection: String::new(),
+            page: 0,
+            page_size: 1,
+        };
+        let export = |collection: &'static str, format: DocumentFormat, name: &str| {
+            let path = db.dir.path().join(name).to_string_lossy().into_owned();
+            let find = find(collection);
+            let db = &db;
+            async move {
+                export_collection(&db.registry, &db.history, &db.id, "e", find, format, &path)
+                    .await
+                    .unwrap();
+                path
+            }
+        };
+        let request = |collection: &str, path: &str| DocumentImport {
+            database: "shop".into(),
+            collection: collection.into(),
+            path: path.into(),
+        };
+        let import = |run_id: &'static str, request: DocumentImport, confirmed: bool| {
+            import_documents(
+                &db.registry,
+                &db.history,
+                &db.id,
+                run_id,
+                request,
+                confirmed,
+            )
+        };
+
+        let original = export("items", DocumentFormat::Ndjson, "items.ndjson").await;
+        // first the first document as stored and the count; nothing runs
+        let ImportResponse::NeedsConfirmation { confirmation } =
+            import("d1", request("copy", &original), false)
+                .await
+                .unwrap()
+        else {
+            panic!("asked first");
+        };
+        assert!(
+            confirmation
+                .reason
+                .starts_with("Importar 2 documentos de items.ndjson em shop.copy"),
+            "{}",
+            confirmation.reason
+        );
+        // the first document as it will be stored: the same text the export wrote
+        let first = std::fs::read_to_string(&original).unwrap();
+        assert_eq!(
+            confirmation.statements[0],
+            format!(
+                "shop.copy.insertMany([{}, …])",
+                first.lines().next().unwrap()
+            )
+        );
+
+        // NDJSON and a JSON array come back byte for byte
+        for (collection, source) in [
+            ("copy", original.clone()),
+            (
+                "from_array",
+                export("items", DocumentFormat::JsonArray, "items.json").await,
+            ),
+        ] {
+            let ImportResponse::Imported { rows, .. } =
+                import("d2", request(collection, &source), true)
+                    .await
+                    .unwrap()
+            else {
+                panic!("imported");
+            };
+            assert_eq!(rows, 2);
+            let again = export(collection, DocumentFormat::Ndjson, "again.ndjson").await;
+            assert_eq!(
+                std::fs::read(&again).unwrap(),
+                std::fs::read(&original).unwrap()
+            );
+        }
+
+        // a duplicate _id in the second batch: the first 1200 stay (no transaction)
+        let mut dupes = String::new();
+        for id in 1..=1500 {
+            writeln!(dupes, r#"{{"_id": {}}}"#, if id == 1201 { 5 } else { id }).unwrap();
+        }
+        let dupes = db.file("dupes.ndjson", &dupes);
+        let error = import("d3", request("dupes", &dupes), true)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(message.starts_with("linha 1201: E11000"), "{message}");
+        assert!(
+            message.ends_with("1200 documentos já ficaram gravados"),
+            "{message}"
+        );
+
+        // a broken line is found before anything runs
+        let broken = db.file("broken.ndjson", "{\"_id\": 1}\n{\"_id\": 2}\n{\"_id\": \n");
+        assert!(matches!(
+            import("d4", request("broken", &broken), false).await,
+            Err(AppError::Validation(_))
+        ));
+        let bad = db.file(
+            "bad.ndjson",
+            "{\"_id\": 1}\n{\"n\": {\"$numberLong\": 1}}\n",
+        );
+        let message = import("d5", request("bad", &bad), false)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.starts_with("linha 2: Extended JSON inválido"),
+            "{message}"
+        );
+
+        // cancel stops before the next batch
+        let mut big = String::new();
+        for id in 0..200_000 {
+            writeln!(big, r#"{{"_id": {id}}}"#).unwrap();
+        }
+        let big = db.file("big.ndjson", &big);
+        let (result, ()) = tokio::join!(import("big", request("big", &big), true), async {
+            while db.registry.running("big").is_none() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            sql::cancel_run(&db.registry, "big").await.unwrap();
+        });
+        let error = result.unwrap_err();
+        assert!(matches!(error, AppError::Cancelled(_)), "{error:?}");
+        assert!(
+            error.to_string().starts_with("importação cancelada: "),
+            "{error}"
+        );
+
+        let entries = db
+            .history
+            .search("import ←", Some(&db.id), false, 10)
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 4, "the runs, not the reviews");
+
+        let read_only = Db::open(
+            ConnectionConfig {
+                read_only: true,
+                ..config
+            },
+            None,
+            "",
+        )
+        .await;
+        assert!(matches!(
+            import_documents(
+                &read_only.registry,
+                &read_only.history,
+                &read_only.id,
+                "ro",
+                request("x", &original),
+                false
+            )
+            .await,
             Err(AppError::ReadOnly(_))
         ));
     }

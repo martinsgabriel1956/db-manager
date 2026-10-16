@@ -1,7 +1,6 @@
 import { useId, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Square, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import {
   commands,
   type ColumnMapping,
@@ -21,18 +20,16 @@ import {
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import { connected, useStructure } from "@/features/explorer/queries";
+import { ImportStatus, useImportRun } from "@/features/import/ImportRun";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type ImportCsvButtonProps = { connectionId: string; schema: string; table: string };
 
-type ImportState =
+type Step =
   | { status: "idle" }
   | { status: "mapping"; path: string; preview: CsvPreview; error: string | null }
-  | { status: "confirming"; request: CsvImport; confirmation: Confirmation }
-  | { status: "running"; runId: string }
-  | { status: "done"; rows: number }
-  | { status: "error"; message: string };
+  | { status: "confirming"; request: CsvImport; confirmation: Confirmation };
 
 const DELIMITERS: Record<string, string> = { ",": "vírgula", ";": "ponto e vírgula", "\t": "tab" };
 
@@ -56,10 +53,12 @@ export function initialMapping(fileColumns: string[], tableColumns: string[]): s
  * in the confirmation before anything runs.
  */
 export function ImportCsvButton({ connectionId, schema, table }: ImportCsvButtonProps) {
-  const queryClient = useQueryClient();
   const structure = useStructure(connectionId, schema, table);
   const tableColumns = structure.data?.columns.map(column => column.name) ?? [];
-  const [state, setState] = useState<ImportState>({ status: "idle" });
+  const runner = useImportRun(["browse", connectionId], rows =>
+    rows === 1 ? "1 linha importada" : `${rows.toLocaleString("pt-BR")} linhas importadas`
+  );
+  const [step, setStep] = useState<Step>({ status: "idle" });
   const [mapping, setMapping] = useState<string[]>([]);
   const [reviewing, setReviewing] = useState(false);
 
@@ -75,105 +74,67 @@ export function ImportCsvButton({ connectionId, schema, table }: ImportCsvButton
     try {
       const preview = await commands.previewCsv(path);
       setMapping(initialMapping(preview.columns, tableColumns));
-      setState({ status: "mapping", path, preview, error: null });
+      setStep({ status: "mapping", path, preview, error: null });
     } catch (err) {
-      setState({ status: "error", message: errorMessage(err) });
+      runner.fail(err);
     }
   }
 
-  function request(path: string): CsvImport {
+  async function review(path: string, preview: CsvPreview) {
     const columns: ColumnMapping[] = mapping.flatMap((column, source) =>
       column ? [{ source, column }] : []
     );
-    return { schema, table, path, mapping: columns };
-  }
-
-  async function review(path: string, preview: CsvPreview) {
-    const next = request(path);
+    const request: CsvImport = { schema, table, path, mapping: columns };
     setReviewing(true);
     try {
       const response = await connected(connectionId, () =>
-        commands.importCsv(connectionId, crypto.randomUUID(), next, false)
+        commands.importCsv(connectionId, crypto.randomUUID(), request, false)
       );
       if (response.status === "needsConfirmation") {
-        setState({ status: "confirming", request: next, confirmation: response.confirmation });
+        setStep({ status: "confirming", request, confirmation: response.confirmation });
       }
     } catch (err) {
-      setState({ status: "mapping", path, preview, error: errorMessage(err) });
+      setStep({ status: "mapping", path, preview, error: errorMessage(err) });
     }
     setReviewing(false);
   }
 
-  async function run(next: CsvImport) {
-    const runId = crypto.randomUUID();
-    setState({ status: "running", runId });
-    try {
-      const response = await connected(connectionId, () =>
-        commands.importCsv(connectionId, runId, next, true)
-      );
-      if (response.status === "imported") {
-        setState({ status: "done", rows: response.rows });
-      }
-    } catch (err) {
-      setState({ status: "error", message: errorMessage(err) });
-    }
-    queryClient.invalidateQueries({ queryKey: ["browse", connectionId] });
-    queryClient.invalidateQueries({ queryKey: ["history"] });
-  }
-
-  if (state.status === "running") {
-    return (
-      <span className="flex items-center gap-2 text-xs text-muted-foreground">
-        Importando…
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={() => commands.cancelRun(state.runId).catch(() => undefined)}
-        >
-          <Square /> Cancelar importação
-        </Button>
-      </span>
-    );
-  }
-
   return (
-    <span className="flex items-center gap-2 text-xs">
-      {state.status === "done" && (
-        <span role="status" className="text-success">
-          {state.rows.toLocaleString("pt-BR")}{" "}
-          {state.rows === 1 ? "linha importada" : "linhas importadas"}
-        </span>
-      )}
-      {state.status === "error" && (
-        <span role="alert" className="max-w-96 break-words text-destructive">
-          {state.message}
-        </span>
-      )}
+    <ImportStatus runner={runner}>
       <Button size="xs" variant="outline" disabled={!structure.data} onClick={pick}>
         <Upload /> Importar CSV
       </Button>
-      {state.status === "mapping" && (
+      {step.status === "mapping" && (
         <MappingDialog
-          path={state.path}
-          preview={state.preview}
+          path={step.path}
+          preview={step.preview}
           tableColumns={tableColumns}
           table={`${schema}.${table}`}
           mapping={mapping}
-          error={state.error}
+          error={step.error}
           pending={reviewing}
           onChange={setMapping}
-          onReview={() => review(state.path, state.preview)}
-          onCancel={() => setState({ status: "idle" })}
+          onReview={() => review(step.path, step.preview)}
+          onCancel={() => setStep({ status: "idle" })}
         />
       )}
       <ConfirmDialog
         connectionId={connectionId}
-        confirmation={state.status === "confirming" ? state.confirmation : null}
+        confirmation={step.status === "confirming" ? step.confirmation : null}
         confirmLabel="Importar"
-        onConfirm={() => state.status === "confirming" && run(state.request)}
-        onCancel={() => setState({ status: "idle" })}
+        onConfirm={() => {
+          if (step.status === "confirming") {
+            setStep({ status: "idle" });
+            runner.run(runId =>
+              connected(connectionId, () =>
+                commands.importCsv(connectionId, runId, step.request, true)
+              )
+            );
+          }
+        }}
+        onCancel={() => setStep({ status: "idle" })}
       />
-    </span>
+    </ImportStatus>
   );
 }
 
