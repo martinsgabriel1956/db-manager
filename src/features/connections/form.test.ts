@@ -65,7 +65,8 @@ describe("parseForm", () => {
         ssh: null,
         group: null
       },
-      secret: { action: "set", value: "pw" }
+      secret: { action: "set", value: "pw" },
+      sshSecret: { action: "keep" }
     });
   });
 
@@ -185,6 +186,25 @@ describe("ssh tunnel", () => {
     );
 
     expect(sqlite.success && sqlite.config.ssh).toBeNull();
+  });
+
+  test("the ssh password is its own secret change, sent only with the tunnel", () => {
+    const tunnel = form({ name: "pg", sshEnabled: true, sshHost: "bastion" });
+    const sshSecret = (values: ConnectionFormValues, copyOf?: string) => {
+      const result = parseForm(values, "2", false, copyOf);
+      return result.success && result.sshSecret;
+    };
+
+    expect(sshSecret({ ...tunnel, sshPassword: "pw" })).toEqual({ action: "set", value: "pw" });
+    expect(sshSecret(tunnel)).toEqual({ action: "keep" });
+    expect(sshSecret({ ...tunnel, clearSshPassword: true })).toEqual({ action: "clear" });
+    expect(sshSecret(tunnel, "1")).toEqual({ action: "copyFrom", value: "1" });
+    expect(sshSecret({ ...tunnel, sshEnabled: false, sshPassword: "pw" })).toEqual({
+      action: "keep"
+    });
+    // never mixed with the database's password
+    const both = parseForm({ ...tunnel, password: "db", sshPassword: "ssh" }, "2");
+    expect(both.success && both.secret).toEqual({ action: "set", value: "db" });
   });
 
   test("round-trips through fromConfig", () => {

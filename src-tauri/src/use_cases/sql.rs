@@ -15,7 +15,7 @@ use crate::domain::{
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
-use crate::storage::secrets::SecretStore;
+use crate::storage::secrets::{SecretStore, ssh_key};
 use crate::use_cases::guard;
 
 /// Rows per batch in the SQL editor (initial result and each `fetch_more`).
@@ -35,7 +35,11 @@ pub async fn connect(
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let (live, tunnel) = open(&config, secret).await?;
+    let ssh_password = match config.ssh {
+        Some(_) => secrets.get(&ssh_key(&config.id))?,
+        None => None,
+    };
+    let (live, tunnel) = open(&config, secret, ssh_password).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -55,11 +59,12 @@ pub async fn connect(
 async fn open(
     config: &ConnectionConfig,
     secret: Option<String>,
+    ssh_password: Option<String>,
 ) -> Result<(Live, Option<SshTunnel>), AppError> {
     let mut config = config.clone();
     let tunnel = match (&config.ssh, &mut config.target) {
         (Some(ssh), Target::Network { host, port, .. }) => {
-            let tunnel = SshTunnel::open(ssh, host, *port).await?;
+            let tunnel = SshTunnel::open(ssh, host, *port, ssh_password.as_deref()).await?;
             *host = "127.0.0.1".to_string();
             *port = tunnel.local_port;
             Some(tunnel)
@@ -80,8 +85,9 @@ async fn open(
 pub async fn test_connection(
     config: &ConnectionConfig,
     secret: Option<String>,
+    ssh_password: Option<String>,
 ) -> Result<(), AppError> {
-    let (live, _tunnel) = open(config, secret).await?;
+    let (live, _tunnel) = open(config, secret, ssh_password).await?;
     live.close().await;
     Ok(())
 }

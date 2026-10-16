@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 use tauri_specta::{Builder, ErrorHandlingMode, collect_commands};
 
+pub use adapters::ssh::askpass_reply;
 use registry::Registry;
 use storage::connections::ConnectionStore;
 use storage::history::HistoryStore;
