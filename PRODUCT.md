@@ -31,14 +31,14 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 
 - App desktop Tauri; a interface roda num webview (WebKitGTK no Linux). Janela padrão 1200×800, mínimo 960×600. Tema claro/escuro segue o sistema operacional.
 - Layout de trabalho: árvore de conexões na lateral (conexão → schema/database → tabelas/coleções, ou databases 0–15 no Redis) e abas persistidas na área principal (tabelas, editores SQL, coleções, databases Redis, diagramas ER, histórico).
-- Fluxos centrais: cadastrar conexão (senha/URI no keychain do SO, túnel SSH opcional); navegar tabela paginada com filtro e ordenação; editar células em stage e salvar numa transação; rodar SQL com autocomplete, cancelamento real e timeout; CRUD de documentos e pipeline de agregação no Mongo; navegar chaves por `SCAN`, editar por tipo (RedisJSON incluso), TTL, renomear e console no Redis; histórico pesquisável; export em streaming (CSV, NDJSON, JSON); diagrama ER somente leitura.
+- Fluxos centrais: cadastrar conexão (senha/URI no keychain do SO, túnel SSH opcional); navegar tabela paginada com filtro e ordenação; editar células em stage e salvar numa transação; rodar SQL com autocomplete, cancelamento real e timeout; CRUD de documentos e pipeline de agregação no Mongo; navegar chaves por `SCAN`, editar por tipo (RedisJSON incluso), TTL, renomear, console e pub/sub no Redis; histórico pesquisável; export em streaming (CSV, NDJSON, JSON); diagrama ER somente leitura.
 - Ritual de segurança: a conexão `prod` marca a janela inteira (borda e faixa "Produção") e toda escrita passa pelo diálogo que mostra o comando.
 - Bancos de demonstração locais em `dev/demo` (Docker Compose + SQLite gerado) para desenvolver e demonstrar.
 
 ## Capabilities and Constraints
 
 - Decisões e escopo de cada marco (M0–M6) em `docs/decisions.md`; é a fonte de verdade técnica.
-- **Fora da v1:** edição de schema pela UI, builder visual de agregação, inferência de schema, gestão de índices, change streams, pub/sub/monitor, Redis cluster/sentinel, export no Redis. Cluster, edição de schema, builder de agregação e pub/sub estão previstos para v2+. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
+- **Fora da v1:** edição de schema pela UI, builder visual de agregação, inferência de schema, gestão de índices, change streams, MONITOR, Redis cluster/sentinel, export no Redis. Cluster, edição de schema e builder de agregação estão previstos para v2+. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
 - Edição inline só em tabela com chave primária editável; senão a tabela é somente leitura. Mongo e Redis editam na hora, sem stage.
 - Redis: sempre `SCAN`, nunca `KEYS`. Sem cancelamento no Redis e no SQLite (só timeout).
 - Distribuição só Linux (AppImage + `.deb`) via GitHub Releases; sem builds de macOS/Windows por enquanto.

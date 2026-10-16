@@ -5,7 +5,7 @@ use redis::Value;
 use crate::adapters::redis::reply;
 use crate::domain::{
     AppError, CommandOutcome, CommandResponse, Confirmation, Environment, InfoSection, KeyDetail,
-    KeyEdit, KeyEditRequest, KeyEditResponse, KeyPage, RedisDatabase, RedisModule,
+    KeyEdit, KeyEditRequest, KeyEditResponse, KeyPage, PubSubEvent, RedisDatabase, RedisModule,
 };
 use crate::registry::Registry;
 use crate::storage::history::HistoryStore;
@@ -174,12 +174,30 @@ const DESTRUCTIVE_COMMANDS: &[(&str, &str)] = &[
 /// connection the whole app shares with that database.
 const REFUSED_COMMANDS: &[(&str, &str)] = &[
     ("SELECT", "use a aba do database em vez de SELECT"),
-    ("SUBSCRIBE", "pub/sub não é suportado no console"),
-    ("PSUBSCRIBE", "pub/sub não é suportado no console"),
-    ("SSUBSCRIBE", "pub/sub não é suportado no console"),
-    ("UNSUBSCRIBE", "pub/sub não é suportado no console"),
-    ("PUNSUBSCRIBE", "pub/sub não é suportado no console"),
-    ("SUNSUBSCRIBE", "pub/sub não é suportado no console"),
+    (
+        "SUBSCRIBE",
+        "o console não assina canais: use a seção Pub/sub",
+    ),
+    (
+        "PSUBSCRIBE",
+        "o console não assina canais: use a seção Pub/sub",
+    ),
+    (
+        "SSUBSCRIBE",
+        "o console não assina canais: use a seção Pub/sub",
+    ),
+    (
+        "UNSUBSCRIBE",
+        "o console não assina canais: use a seção Pub/sub",
+    ),
+    (
+        "PUNSUBSCRIBE",
+        "o console não assina canais: use a seção Pub/sub",
+    ),
+    (
+        "SUNSUBSCRIBE",
+        "o console não assina canais: use a seção Pub/sub",
+    ),
     ("MONITOR", "MONITOR não é suportado no console"),
     ("MULTI", "transações não são suportadas no console"),
     ("EXEC", "transações não são suportadas no console"),
@@ -488,12 +506,35 @@ pub async fn run_command(
     line: &str,
     confirmed: bool,
 ) -> Result<CommandResponse, AppError> {
-    let connection = registry.connection(connection_id)?;
-    let redis = connection.redis()?;
     let args = reply::split_args(line).map_err(AppError::validation)?;
     if args.is_empty() {
         return Err(AppError::validation("nenhum comando para executar"));
     }
+    execute(
+        registry,
+        history,
+        connection_id,
+        db,
+        args,
+        line.trim().to_string(),
+        confirmed,
+    )
+    .await
+}
+
+/// Runs one command (as arguments) under the console rules; `statement` is what
+/// the confirmation and the history show.
+async fn execute(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    db: u8,
+    args: Vec<Vec<u8>>,
+    statement: String,
+    confirmed: bool,
+) -> Result<CommandResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let redis = connection.redis()?;
     let words: Vec<String> = args
         .iter()
         .map(|arg| String::from_utf8_lossy(arg).into_owned())
@@ -514,7 +555,6 @@ pub async fn run_command(
         }
         _ => None,
     };
-    let statement = line.trim().to_string();
     if let Some(reason) = reason
         && !confirmed
     {
@@ -545,6 +585,69 @@ pub async fn run_command(
             duration_ms,
         },
     })
+}
+
+/// PUBLISH from the pub/sub panel: a write like any other (refused on read-only
+/// connections, confirmed on prod, recorded in the history).
+pub async fn publish(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    db: u8,
+    channel: &str,
+    message: &str,
+    confirmed: bool,
+) -> Result<CommandResponse, AppError> {
+    if channel.is_empty() {
+        return Err(AppError::validation("informe o canal"));
+    }
+    let args = ["PUBLISH", channel, message];
+    execute(
+        registry,
+        history,
+        connection_id,
+        db,
+        args.iter().map(|arg| arg.as_bytes().to_vec()).collect(),
+        reply::command_line(&args),
+        confirmed,
+    )
+    .await
+}
+
+/// Starts a subscription to the channels and patterns (blank ones ignored). Only
+/// reads: allowed on read-only and prod connections without asking.
+pub async fn subscribe(
+    registry: &Registry,
+    connection_id: &str,
+    session_id: &str,
+    channels: &[String],
+    patterns: &[String],
+    send: impl Fn(PubSubEvent) -> bool + Send + 'static,
+) -> Result<(), AppError> {
+    let names = |list: &[String]| -> Vec<String> {
+        list.iter()
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+            .collect()
+    };
+    let (channels, patterns) = (names(channels), names(patterns));
+    if channels.is_empty() && patterns.is_empty() {
+        return Err(AppError::validation("informe ao menos um canal ou padrão"));
+    }
+    registry
+        .connection(connection_id)?
+        .redis()?
+        .subscribe(session_id, &channels, &patterns, send)
+        .await
+}
+
+/// Ends a live session. The connection may already be closed (which ended it).
+pub fn stop_session(registry: &Registry, connection_id: &str, session_id: &str) {
+    if let Ok(connection) = registry.connection(connection_id)
+        && let Ok(redis) = connection.redis()
+    {
+        redis.stop(session_id);
+    }
 }
 
 #[cfg(test)]
@@ -613,6 +716,8 @@ mod tests {
                 "{line} should be refused"
             );
         }
+        // pub/sub has its own panel, on a dedicated connection
+        assert!(matches!(verdict("PSUBSCRIBE a*"), Verdict::Refused(r) if r.contains("Pub/sub")));
     }
 
     #[test]
@@ -703,7 +808,7 @@ mod tests {
 mod integration_tests {
     use super::*;
     use crate::adapters::redis::integration_tests::start;
-    use crate::domain::{ConnectionConfig, RedisValue};
+    use crate::domain::{ConnectionConfig, RedisText, RedisValue};
     use crate::storage::secrets::SecretStore;
     use crate::use_cases::redis::server_modules;
     use crate::use_cases::sql;
@@ -1001,6 +1106,131 @@ mod integration_tests {
             "OK"
         );
         assert_eq!(databases(&registry, "redis").await.unwrap()[0].keys, 0);
+    }
+
+    async fn next<T>(rx: &mut tokio::sync::mpsc::UnboundedReceiver<T>) -> T {
+        tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("event in time")
+            .expect("channel open")
+    }
+
+    #[tokio::test]
+    async fn pubsub_listens_on_its_own_connection_until_stopped() {
+        use tokio::sync::mpsc;
+
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+
+        // read-only: subscribing only reads, publishing is a write
+        config.read_only = true;
+        open(&registry, &config).await;
+        let (tx, mut first) = mpsc::unbounded_channel();
+        subscribe(
+            &registry,
+            "redis",
+            "s1",
+            &["news".into()],
+            &[],
+            move |event| tx.send(event).is_ok(),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            publish(&registry, &history, "redis", 0, "news", "x", true).await,
+            Err(AppError::ReadOnly(_))
+        ));
+        assert!(matches!(
+            subscribe(&registry, "redis", "s0", &[" ".into()], &[], |_| true).await,
+            Err(AppError::Validation(_))
+        ));
+
+        // closing the connection ends its subscriptions
+        config.read_only = false;
+        config.environment = Environment::Prod;
+        open(&registry, &config).await;
+        assert_eq!(
+            next(&mut first).await,
+            PubSubEvent::Ended {
+                reason: "assinatura encerrada".into()
+            }
+        );
+
+        let (tx, mut events) = mpsc::unbounded_channel();
+        subscribe(
+            &registry,
+            "redis",
+            "s2",
+            &["news".into()],
+            &["user:*".into()],
+            move |event| tx.send(event).is_ok(),
+        )
+        .await
+        .unwrap();
+        // prod: PUBLISH asks first, showing the command
+        let CommandResponse::NeedsConfirmation { confirmation } =
+            publish(&registry, &history, "redis", 0, "news", "olá mundo", false)
+                .await
+                .unwrap()
+        else {
+            panic!("confirmation expected");
+        };
+        assert_eq!(confirmation.statements, [r#"PUBLISH news "olá mundo""#]);
+        assert_eq!(
+            output(
+                publish(&registry, &history, "redis", 0, "news", "olá mundo", true)
+                    .await
+                    .unwrap()
+            ),
+            "(integer) 1"
+        );
+        let text = |value: &str, binary| RedisText {
+            text: value.into(),
+            binary,
+        };
+        assert_eq!(
+            next(&mut events).await,
+            PubSubEvent::Message {
+                channel: text("news", false),
+                pattern: None,
+                payload: text("olá mundo", false),
+            }
+        );
+        // binary payloads arrive escaped, with the pattern that matched
+        output(
+            console(&registry, &history, r#"PUBLISH user:1 "\xff""#, true)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            next(&mut events).await,
+            PubSubEvent::Message {
+                channel: text("user:1", false),
+                pattern: Some(text("user:*", false)),
+                payload: text(r"\xff", true),
+            }
+        );
+
+        stop_session(&registry, "redis", "s2");
+        assert!(matches!(next(&mut events).await, PubSubEvent::Ended { .. }));
+        assert_eq!(
+            output(
+                publish(&registry, &history, "redis", 0, "news", "x", true)
+                    .await
+                    .unwrap()
+            ),
+            "(integer) 0"
+        );
+        let entries = history
+            .search("PUBLISH", Some("redis"), false, 10)
+            .await
+            .unwrap();
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.sql == "SELECT 0\nPUBLISH news \"olá mundo\"")
+        );
     }
 
     #[tokio::test]
