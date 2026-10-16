@@ -51,6 +51,8 @@ export function useTableEditing({
   const [cancelled, setCancelled] = useState(false);
   /** cells just saved, kept for one beat so their hatch develops away */
   const [developed, setDeveloped] = useState<Record<number, string[]> | null>(null);
+  /** how many saves went through: what was counted from the table before is stale */
+  const [saves, setSaves] = useState(0);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -92,6 +94,7 @@ export function useTableEditing({
         )
       );
       setStaged(EMPTY_STAGED);
+      setSaves(prev => prev + 1);
       setNotice({
         text: `${response.rowsChanged} ${response.rowsChanged === 1 ? "alteração salva" : "alterações salvas"}`,
         confirmed
@@ -160,6 +163,7 @@ export function useTableEditing({
     canEdit,
     keyEditable,
     count,
+    saves,
     isNewRow: (row: number) => newRowAt(row) !== undefined,
     isDeleted: (row: number) => staged.deletes.includes(row),
     setValue,

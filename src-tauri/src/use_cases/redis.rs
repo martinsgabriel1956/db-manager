@@ -130,6 +130,13 @@ const READ_COMMANDS: &[&str] = &[
     "LATENCY LATEST",
     "ROLE",
     "LOLWUT",
+    "CLUSTER INFO",
+    "CLUSTER NODES",
+    "CLUSTER SLOTS",
+    "CLUSTER SHARDS",
+    "CLUSTER MYID",
+    "CLUSTER KEYSLOT",
+    "CLUSTER COUNTKEYSINSLOT",
 ];
 
 /// Writes that always ask first, wherever they run.
@@ -157,6 +164,8 @@ const DESTRUCTIVE_COMMANDS: &[(&str, &str)] = &[
         "muda a replicação e pode apagar os dados deste servidor",
     ),
     ("CLIENT KILL", "derruba conexões de clientes"),
+    ("CLUSTER RESET", "tira este nó do cluster"),
+    ("CLUSTER FAILOVER", "troca o primário do shard"),
 ];
 
 /// Commands the console cannot run: they would hang or change the state of the
@@ -275,7 +284,13 @@ pub async fn scan_keys(
     } else {
         pattern
     };
-    if cursor.is_empty() || !cursor.bytes().all(|b| b.is_ascii_digit()) {
+    // a cluster's cursor is "<primary index>:<cursor>"
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    let valid = match cursor.split_once(':') {
+        Some((node, rest)) => digits(node) && digits(rest),
+        None => digits(cursor),
+    };
+    if !valid {
         return Err(AppError::validation("cursor de SCAN inválido"));
     }
     registry

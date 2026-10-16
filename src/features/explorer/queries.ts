@@ -31,6 +31,14 @@ export function useStructure(connectionId: string, schema: string, table: string
   });
 }
 
+export function useDdl(connectionId: string, schema: string, table: string) {
+  return useQuery({
+    queryKey: ["ddl", connectionId, schema, table],
+    queryFn: () => connected(connectionId, () => commands.tableDdl(connectionId, schema, table)),
+    staleTime: Infinity
+  });
+}
+
 export function useCompletion(connectionId: string) {
   return useQuery({
     queryKey: ["completion", connectionId],

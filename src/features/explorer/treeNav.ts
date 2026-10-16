@@ -43,3 +43,27 @@ export function treeMove(rows: TreeRow[], index: number, key: string): TreeMove 
       return null;
   }
 }
+
+/**
+ * The sidebar's folders: connections without a group first, then each group in
+ * alphabetical order. Connections keep the order they came in (by name, from the backend).
+ */
+export function byGroup<T extends { group?: string | null }>(
+  connections: T[]
+): { ungrouped: T[]; groups: { name: string; connections: T[] }[] } {
+  const groups = new Map<string, T[]>();
+  const ungrouped: T[] = [];
+  for (const connection of connections) {
+    if (connection.group) {
+      groups.set(connection.group, [...(groups.get(connection.group) ?? []), connection]);
+    } else {
+      ungrouped.push(connection);
+    }
+  }
+  return {
+    ungrouped,
+    groups: [...groups]
+      .sort(([a], [b]) => a.localeCompare(b, "pt-BR"))
+      .map(([name, members]) => ({ name, connections: members }))
+  };
+}

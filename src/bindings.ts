@@ -17,25 +17,30 @@ export const commands = {
 	hideWindow: () => __TAURI_INVOKE<null>("hide_window"),
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
-	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),
+	saveConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange, sentinelSecret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret, sshSecret, sentinelSecret }),
 	deleteConnection: (id: string) => __TAURI_INVOKE<KeychainOutcome>("delete_connection", { id }),
 	/**
 	 *  Connects with the form's draft (saved or not) and closes right away, so wrong
 	 *  credentials are found before they are stored. Never touches open sessions.
 	 */
-	testConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret }),
+	testConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange, sentinelSecret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret, sshSecret, sentinelSecret }),
 	connectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("connect_database", { connectionId }),
 	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
 	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),
 	tableStructure: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<TableStructure>("table_structure", { connectionId, schema, table }),
+	tableDdl: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<TableDdl>("table_ddl", { connectionId, schema, table }),
 	completionTables: (connectionId: string) => __TAURI_INVOKE<CompletionTable[]>("completion_tables", { connectionId }),
 	browseTable: (connectionId: string, request: BrowseRequest) => __TAURI_INVOKE<RowBatch>("browse_table", { connectionId, request }),
+	estimateRows: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<string | null>("estimate_rows", { connectionId, schema, table }),
+	countRows: (connectionId: string, runId: string, request: BrowseRequest) => __TAURI_INVOKE<string>("count_rows", { connectionId, runId, request }),
 	runScript: (connectionId: string, runId: string, sql: string, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("run_script", { connectionId, runId, sql, confirmed }),
 	explain: (connectionId: string, runId: string, sql: string, analyze: boolean, confirmed: boolean) => __TAURI_INVOKE<ExplainResponse>("explain", { connectionId, runId, sql, analyze, confirmed }),
 	fetchMore: (cursorId: string) => __TAURI_INVOKE<RowBatch>("fetch_more", { cursorId }),
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
+	alterSchema: (connectionId: string, schema: string, table: string, change: SchemaChange, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("alter_schema", { connectionId, schema, table, change, confirmed }),
+	columnDefinition: (connectionId: string, schema: string, table: string, column: string) => __TAURI_INVOKE<string>("column_definition", { connectionId, schema, table, column }),
 	copyAsInsert: (connectionId: string, schema: string, table: string, columns: string[], rows: Cell[][]) => __TAURI_INVOKE<string>("copy_as_insert", { connectionId, schema, table, columns, rows }),
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
@@ -43,10 +48,19 @@ export const commands = {
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
+	previewCsv: (path: string) => __TAURI_INVOKE<CsvPreview>("preview_csv", { path }),
+	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
+	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
+	indexStatement: (index: NewIndex) => __TAURI_INVOKE<string>("index_statement", { index }),
+	createIndex: (connectionId: string, index: NewIndex, confirmed: boolean) => __TAURI_INVOKE<IndexResponse>("create_index", { connectionId, index, confirmed }),
+	dropIndex: (connectionId: string, database: string, collection: string, name: string, confirmed: boolean) => __TAURI_INVOKE<IndexResponse>("drop_index", { connectionId, database, collection, name, confirmed }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
+	sampleSchema: (connectionId: string, runId: string, database: string, collection: string, size: number) => __TAURI_INVOKE<SchemaSample>("sample_schema", { connectionId, runId, database, collection, size }),
 	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
+	watchCollection: (connectionId: string, watchId: string, database: string, collection: string, pipeline: string, onMessage: Channel<WatchMessage>) => __TAURI_INVOKE<null>("watch_collection", { connectionId, watchId, database, collection, pipeline, onMessage }),
+	stopWatch: (watchId: string) => __TAURI_INVOKE<void>("stop_watch", { watchId }),
 	redisDatabases: (connectionId: string) => __TAURI_INVOKE<RedisDatabase[]>("redis_databases", { connectionId }),
 	scanKeys: (connectionId: string, db: number, pattern: string, cursor: string) => __TAURI_INVOKE<KeyPage>("scan_keys", { connectionId, db, pattern, cursor }),
 	readKey: (connectionId: string, db: number, key: string) => __TAURI_INVOKE<KeyDetail>("read_key", { connectionId, db, key }),
@@ -64,6 +78,8 @@ export const commands = {
 	redisSubscribe: (connectionId: string, sessionId: string, channels: string[], patterns: string[], onEvent: Channel<PubSubEvent>) => __TAURI_INVOKE<null>("redis_subscribe", { connectionId, sessionId, channels, patterns, onEvent }),
 	stopRedisSession: (connectionId: string, sessionId: string) => __TAURI_INVOKE<void>("stop_redis_session", { connectionId, sessionId }),
 	redisPublish: (connectionId: string, db: number, channel: string, message: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("redis_publish", { connectionId, db, channel, message, confirmed }),
+	/**  The master address the sentinels resolved; null when not behind Sentinel. */
+	redisMaster: (connectionId: string) => __TAURI_INVOKE<string | null>("redis_master", { connectionId }),
 	/**
 	 *  MONITOR on a dedicated connection; lines arrive on `on_event` until
 	 *  `stop_redis_session` or the limits. Prod asks first.
@@ -133,6 +149,32 @@ export type Cell = { t: "null" } | { t: "bool"; v: boolean } |
 	text: string,
 } };
 
+/**  One change stream event, values as Extended JSON text. */
+export type ChangeEvent = {
+	/**  insert, update, replace, delete, drop, invalidate… */
+	operation: string,
+	/**  documentKey._id */
+	id: string | null,
+	/**  fullDocument (insert, replace) */
+	document: string | null,
+	/**  updateDescription (update): updatedFields, removedFields, truncatedArrays */
+	diff: string | null,
+	/**  wallTime, or clusterTime (seconds) on servers before 6.0; RFC 3339 */
+	at: string | null,
+};
+
+/**
+ *  A column of a new table or one being added. `data_type` and `default` are SQL as
+ *  the user types it (`varchar(20)`, `now()`, `'a'`): it goes into the DDL as is, and
+ *  the exact command is shown before it runs.
+ */
+export type ColumnDefinition = {
+	name: string,
+	dataType: string,
+	nullable: boolean,
+	default: string | null,
+};
+
 export type ColumnInfo = {
 	name: string,
 	dataType: string,
@@ -141,6 +183,12 @@ export type ColumnInfo = {
 	isPrimaryKey: boolean,
 	/**  values the column accepts (enum labels, boolean literals); empty = free text */
 	options: string[],
+};
+
+/**  File column (by position) → table column. */
+export type ColumnMapping = {
+	source: number,
+	column: string,
 };
 
 /**  New value typed by the user; `None` writes NULL. */
@@ -196,6 +244,37 @@ export type ConnectionConfig = {
 	keySeparator: string | null,
 	/**  absent in files saved before the tunnel existed */
 	ssh?: SshConfig | null,
+	/**  folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups */
+	group?: string | null,
+};
+
+/**  A constraint added to an existing table. */
+export type Constraint = { kind: "unique"; columns: string[] } | 
+/**  the boolean SQL expression, as typed */
+{ kind: "check"; expression: string } | 
+/**  to a table of the same schema */
+{ kind: "foreignKey"; columns: string[]; referencedTable: string; referencedColumns: string[]; onDelete: ReferentialAction | null };
+
+export type ConstraintInfo = {
+	name: string,
+	definition: string,
+};
+
+export type CsvImport = {
+	schema: string,
+	table: string,
+	path: string,
+	/**  table columns left out keep their default */
+	mapping: ColumnMapping[],
+};
+
+/**  The start of a CSV file, to map its columns before importing. */
+export type CsvPreview = {
+	columns: string[],
+	/**  the first rows; `None` is an empty unquoted field (NULL) */
+	rows: ((string | null)[])[],
+	/**  guessed from the header: `,`, `;` or a tab */
+	delimiter: string,
 };
 
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
@@ -210,6 +289,13 @@ export type DocumentFormat =
 "ndjson" | 
 /**  a JSON array of documents */
 "jsonArray";
+
+/**  An NDJSON or JSON array file of Extended JSON documents, into a collection. */
+export type DocumentImport = {
+	database: string,
+	collection: string,
+	path: string,
+};
 
 export type DocumentPage = {
 	documents: string[],
@@ -236,6 +322,18 @@ export type ExplainResponse = { status: "explained"; plan: ExplainPlan } | { sta
 export type ExportOutcome = {
 	rows: number,
 	durationMs: number,
+};
+
+/**  One field path: `address.city` inside objects, `tags[]` for array elements. */
+export type FieldSummary = {
+	path: string,
+	/**  sampled documents where the path occurs */
+	documents: number,
+	/**  BSON types by the `$type` alias, most frequent first; array elements count one by one */
+	types: TypeCount[],
+	/**  Extended JSON of the first scalar value seen; none for paths that only hold objects/arrays */
+	example: string | null,
+	exampleTruncated: boolean,
 };
 
 export type Filter = {
@@ -290,10 +388,27 @@ export type HistoryEntry = {
 	starred: boolean,
 };
 
+export type ImportResponse = 
+/**
+ *  always first: the sample INSERT (or first document) and the count, to confirm
+ *  before anything runs
+ */
+{ status: "needsConfirmation"; confirmation: Confirmation } | { status: "imported"; rows: number; duration_ms: number };
+
 export type IndexInfo = {
 	name: string,
 	definition: string,
 };
+
+export type IndexKey = {
+	field: string,
+	kind: IndexKind,
+};
+
+/**  How a field is indexed: ascending/descending, or a special index type. */
+export type IndexKind = "asc" | "desc" | "text" | "hashed" | "2dsphere" | "2d";
+
+export type IndexResponse = { status: "applied" } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 export type InfoSection = {
 	name: string,
@@ -371,6 +486,26 @@ export type MonitorEvent = { kind: "line"; text: string } |
 /**  stopped, the limit reached, or the server closed the connection */
 { kind: "ended"; reason: string };
 
+export type NewIndex = {
+	database: string,
+	collection: string,
+	/**  in order: the order of a compound index matters */
+	keys: IndexKey[],
+	/**  empty: generated from the keys, as the drivers do (`email_1`) */
+	name: string,
+	unique: boolean,
+	sparse: boolean,
+	/**  TTL */
+	expireAfterSeconds: number | null,
+	/**  Extended JSON; empty means none */
+	partialFilter: string,
+};
+
+export type NodeAddress = {
+	host: string,
+	port: number,
+};
+
 /**
  *  One step of a query plan, in the engine's own words and units. Costs are the
  *  planner's estimate for the node including its children (SQLite has none).
@@ -415,6 +550,9 @@ export type RedisValue = { kind: "string"; value: RedisText } | { kind: "hash"; 
 /**  module types (RedisJSON, …): shown by name only */
 { kind: "unsupported"; typeName: string };
 
+/**  What a foreign key does when the referenced row is deleted: a closed list, not SQL text. */
+export type ReferentialAction = "restrict" | "cascade" | "setNull";
+
 export type Relation = {
 	name: string,
 	kind: RelationKind,
@@ -439,9 +577,34 @@ export type RowChange = { kind: "update"; key: KeyValue[]; values: ColumnValue[]
 
 export type RunResponse = { status: "executed"; outcome: ScriptOutcome } | { status: "needsConfirmation"; confirmation: Confirmation };
 
+/**  One change of a table's structure; each becomes a single DDL statement. */
+export type SchemaChange = { kind: "createTable"; columns: ColumnDefinition[]; primaryKey: string[] } | { kind: "addColumn"; column: ColumnDefinition } | { kind: "renameColumn"; column: string; newName: string } | { kind: "dropColumn"; column: string } | 
+/**  Postgres; `using` converts values the server cannot cast by itself */
+{ kind: "setType"; column: string; dataType: string; using: string | null } | 
+/**  Postgres and MySQL; `None` drops the default */
+{ kind: "setDefault"; column: string; default: string | null } | 
+/**  Postgres */
+{ kind: "setNullable"; column: string; nullable: boolean } | 
+/**  MySQL: `MODIFY COLUMN` rewrites the whole column, so its whole definition is given */
+{ kind: "redefineColumn"; column: string; definition: string } | { kind: "createIndex"; name: string; columns: string[]; unique: boolean } | { kind: "dropIndex"; name: string } | 
+/**  Postgres and MySQL; SQLite cannot rename an index */
+{ kind: "renameIndex"; name: string; newName: string } | 
+/**  stays in the same schema */
+{ kind: "renameTable"; newName: string } | { kind: "dropTable" } | 
+/**  Postgres and MySQL; SQLite only declares constraints in CREATE TABLE */
+{ kind: "addConstraint"; name: string; constraint: Constraint } | { kind: "dropConstraint"; name: string };
+
 export type SchemaInfo = {
 	name: string,
 	relations: Relation[],
+};
+
+/**  What a `$sample` of the collection holds: a sample, not the collection's schema. */
+export type SchemaSample = {
+	/**  documents that came back (fewer than asked when the collection is smaller) */
+	sampled: number,
+	fields: FieldSummary[],
+	durationMs: number,
 };
 
 export type ScriptOutcome = {
@@ -454,7 +617,12 @@ export type ScriptOutcome = {
  *  What to do with the stored password when saving a connection.
  *  The front never receives the stored password, so editing needs an explicit "keep".
  */
-export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" };
+export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" } | 
+/**
+ *  The stored secret of another connection (the id), copied on save when duplicating
+ *  it: the front never reads a stored secret, not even to copy it.
+ */
+{ action: "copyFrom"; value: string };
 
 export type Sort = {
 	column: string,
@@ -494,15 +662,27 @@ export type TableChanges = {
 	changes: RowChange[],
 };
 
+/**  The statements that create a table (or view), as the database reports them. */
+export type TableDdl = {
+	sql: string,
+	/**  true when rebuilt from the catalog (Postgres keeps no CREATE TABLE text) */
+	reconstructed: boolean,
+};
+
 export type TableStructure = {
 	columns: ColumnInfo[],
 	indexes: IndexInfo[],
 	foreignKeys: ForeignKeyInfo[],
+	/**
+	 *  UNIQUE and CHECK constraints (Postgres), CHECKs (MySQL, where UNIQUE is an index);
+	 *  none on SQLite, which keeps them only in the CREATE TABLE text
+	 */
+	constraints: ConstraintInfo[],
 };
 
 /**
- *  Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite)
- *  or a connection string (MongoDB).
+ *  Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
+ *  a connection string (MongoDB), a Redis Cluster or Redis behind Sentinel.
  */
 export type Target = { kind: "network"; host: string; port: number; database: string; username: string } | { kind: "file"; path: string } | 
 /**
@@ -510,7 +690,19 @@ export type Target = { kind: "network"; host: string; port: number; database: st
  *  carries credentials, so it is the secret kept in the keychain; only the
  *  database to open by default is stored here.
  */
-{ kind: "uri"; database: string };
+{ kind: "uri"; database: string } | 
+/**
+ *  Redis Cluster: the seed nodes; the client discovers the rest from them.
+ *  A cluster only has database 0.
+ */
+{ kind: "redisCluster"; nodes: NodeAddress[]; username: string } | 
+/**
+ *  Redis behind Sentinel: the sentinels and the name they know the master by.
+ *  The master's address is asked to them on every connect. `username` and the
+ *  connection's secret are the master's; a sentinel password, when needed, is a
+ *  second keychain entry.
+ */
+{ kind: "redisSentinel"; nodes: NodeAddress[]; masterName: string; database: string; username: string };
 
 export type TlsConfig = {
 	mode: TlsMode,
@@ -519,6 +711,11 @@ export type TlsConfig = {
 
 export type TlsMode = "disable" | "prefer" | "require" | "verifyFull";
 
+export type TypeCount = {
+	name: string,
+	count: number,
+};
+
 export type UpdateCheck = {
 	current: string,
 	/**  the newer version on GitHub Releases, if any */
@@ -526,6 +723,9 @@ export type UpdateCheck = {
 	/**  the updater can replace this install; false = point to the release page */
 	installable: boolean,
 };
+
+/**  What a watch sends to the UI: events, then at most one error that ends it. */
+export type WatchMessage = { kind: "change"; event: ChangeEvent } | { kind: "error"; message: string };
 
 export type WriteRequest = {
 	database: string,

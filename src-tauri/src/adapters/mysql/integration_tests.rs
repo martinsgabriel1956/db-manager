@@ -16,7 +16,7 @@ use crate::domain::{
     FilterOp, KeyValue, RelationKind, RowChange, Sort, SortDirection, Target, TlsConfig, TlsMode,
 };
 
-async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
+pub(crate) async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
     let container = Mysql::default()
         .start()
         .await
@@ -41,6 +41,7 @@ async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     };
     (container, config)
 }
@@ -174,6 +175,23 @@ async fn values_types_and_introspection() {
     );
     assert_eq!(key.referenced_columns, ["id"]);
     assert_eq!(db.primary_key("test", "people").await.unwrap(), vec!["id"]);
+    // TABLE_ROWS is an estimate; a view has none
+    assert!(db.estimate_rows("test", "teams").await.unwrap().is_some());
+    assert_eq!(db.estimate_rows("test", "sad_people").await.unwrap(), None);
+    let count = crate::adapters::sql_builder::count_sql(
+        db.dialect(),
+        &BrowseRequest {
+            schema: "test".into(),
+            table: "people".into(),
+            filters: vec![],
+            sort: None,
+            page: 0,
+            page_size: 1,
+        },
+    )
+    .unwrap();
+    let rows = run(&db, &count).await.unwrap().first.batch.rows;
+    assert_eq!(rows, vec![vec![Cell::Int("1".into())]]);
     assert!(matches!(
         db.table_structure("test", "missing").await,
         Err(AppError::NotFound(_))
@@ -492,4 +510,205 @@ async fn explain_returns_the_plan_as_a_tree() {
     assert!(labels.contains(&"nested_loop".to_string()), "{labels:?}");
     assert!(labels.iter().any(|l| l.starts_with("o (")), "{labels:?}");
     assert!(labels.iter().any(|l| l.starts_with("u (")), "{labels:?}");
+}
+
+#[tokio::test]
+async fn ddl_is_the_servers_show_create_table() {
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+    run(
+        &db,
+        "CREATE TABLE `we``ird` (id INT PRIMARY KEY, name VARCHAR(10) NOT NULL DEFAULT 'a', KEY by_name (name));
+         CREATE VIEW names AS SELECT name FROM `we``ird`",
+    )
+    .await
+    .unwrap();
+
+    let ddl = db.ddl("test", "we`ird").await.unwrap();
+    assert!(!ddl.reconstructed);
+    assert!(
+        ddl.sql
+            .starts_with("CREATE TABLE `we``ird` (\n  `id` int NOT NULL,"),
+        "{}",
+        ddl.sql
+    );
+    assert!(ddl.sql.contains("KEY `by_name` (`name`)"), "{}", ddl.sql);
+    assert!(ddl.sql.ends_with(';'));
+    let view = db.ddl("test", "names").await.unwrap();
+    assert!(view.sql.contains("VIEW `names` AS select"), "{}", view.sql);
+    assert!(db.ddl("test", "missing").await.is_err());
+}
+
+#[tokio::test]
+async fn structure_changes_and_modify_from_the_whole_definition() {
+    use crate::adapters::sql_builder::schema_sql;
+    use crate::domain::{ColumnDefinition, Constraint, ReferentialAction, SchemaChange};
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+    let apply = |change: SchemaChange| {
+        let db = &db;
+        async move {
+            let sql = schema_sql(db.dialect(), "test", "items", &change).unwrap();
+            run(db, &sql).await.map(|_| ())
+        }
+    };
+    apply(SchemaChange::CreateTable {
+        columns: vec![
+            ColumnDefinition {
+                name: "id".into(),
+                data_type: "int".into(),
+                nullable: false,
+                default: None,
+            },
+            ColumnDefinition {
+                name: "code".into(),
+                data_type: "varchar(10)".into(),
+                nullable: true,
+                default: None,
+            },
+        ],
+        primary_key: vec!["id".into()],
+    })
+    .await
+    .unwrap();
+    run(
+        &db,
+        "ALTER TABLE items MODIFY code varchar(10) NOT NULL DEFAULT 'a' COMMENT 'it''s'",
+    )
+    .await
+    .unwrap();
+
+    // MODIFY starts from everything the column has: the comment survives a type change
+    let current = db.column_definition("test", "items", "code").await.unwrap();
+    assert_eq!(current, "varchar(10) NOT NULL DEFAULT 'a' COMMENT 'it''s'");
+    apply(SchemaChange::RedefineColumn {
+        column: "code".into(),
+        definition: current.replace("varchar(10)", "varchar(20)"),
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        db.column_definition("test", "items", "code").await.unwrap(),
+        "varchar(20) NOT NULL DEFAULT 'a' COMMENT 'it''s'"
+    );
+    assert!(matches!(
+        db.column_definition("test", "items", "missing").await,
+        Err(AppError::NotFound(_))
+    ));
+
+    apply(SchemaChange::SetDefault {
+        column: "code".into(),
+        default: Some("'b'".into()),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::RenameColumn {
+        column: "code".into(),
+        new_name: "sku".into(),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::CreateIndex {
+        name: "items_sku".into(),
+        columns: vec!["sku".into()],
+        unique: true,
+    })
+    .await
+    .unwrap();
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert_eq!(structure.columns[1].name, "sku");
+    assert_eq!(structure.columns[1].default.as_deref(), Some("b"));
+    assert!(structure.indexes.iter().any(|i| i.name == "items_sku"));
+
+    apply(SchemaChange::DropIndex {
+        name: "items_sku".into(),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::DropColumn {
+        column: "sku".into(),
+    })
+    .await
+    .unwrap();
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert_eq!(structure.columns.len(), 1);
+    assert_eq!(structure.indexes.len(), 1);
+
+    // constraints, index names and tables
+    run(&db, "CREATE TABLE teams (id INT PRIMARY KEY)")
+        .await
+        .unwrap();
+    apply(SchemaChange::AddColumn {
+        column: ColumnDefinition {
+            name: "team_id".into(),
+            data_type: "int".into(),
+            nullable: true,
+            default: None,
+        },
+    })
+    .await
+    .unwrap();
+    for change in [
+        SchemaChange::AddConstraint {
+            name: "items_team".into(),
+            constraint: Constraint::ForeignKey {
+                columns: vec!["team_id".into()],
+                referenced_table: "teams".into(),
+                referenced_columns: vec!["id".into()],
+                on_delete: Some(ReferentialAction::SetNull),
+            },
+        },
+        SchemaChange::AddConstraint {
+            name: "items_positive".into(),
+            constraint: Constraint::Check {
+                expression: "id > 0".into(),
+            },
+        },
+        SchemaChange::RenameIndex {
+            name: "items_team".into(),
+            new_name: "items_by_team".into(),
+        },
+    ] {
+        apply(change).await.unwrap();
+    }
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert_eq!(structure.foreign_keys[0].name, "items_team");
+    assert_eq!(structure.constraints.len(), 1);
+    assert_eq!(structure.constraints[0].name, "items_positive");
+    assert!(
+        structure.constraints[0].definition.starts_with("CHECK ("),
+        "{:?}",
+        structure.constraints
+    );
+    assert!(structure.indexes.iter().any(|i| i.name == "items_by_team"));
+    for name in ["items_positive", "items_team"] {
+        apply(SchemaChange::DropConstraint { name: name.into() })
+            .await
+            .unwrap();
+    }
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert!(structure.constraints.is_empty() && structure.foreign_keys.is_empty());
+
+    // renaming keeps the table in its database, whatever the session's default is
+    apply(SchemaChange::RenameTable {
+        new_name: "things".into(),
+    })
+    .await
+    .unwrap();
+    assert!(db.table_structure("test", "things").await.is_ok());
+    run(
+        &db,
+        &schema_sql(db.dialect(), "test", "things", &SchemaChange::DropTable).unwrap(),
+    )
+    .await
+    .unwrap();
+    assert!(db.table_structure("test", "things").await.is_err());
+
+    // a READ ONLY session refuses DDL too
+    let read_only = connect(&config, true).await;
+    let err = run(&read_only, "ALTER TABLE items ADD COLUMN extra int")
+        .await
+        .err()
+        .unwrap();
+    assert!(err.to_string().contains("READ ONLY"), "{err}");
 }

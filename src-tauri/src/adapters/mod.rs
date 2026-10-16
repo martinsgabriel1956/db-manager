@@ -13,12 +13,13 @@ pub mod stream;
 
 use crate::domain::{
     AppError, BrowseRequest, CompletionTable, ConnectionConfig, Engine, RowBatch, SchemaInfo,
-    TableStructure,
+    TableDdl, TableStructure,
 };
 use dialect::Dialect;
 use mysql::MysqlAdapter;
 use postgres::PostgresAdapter;
 use sqlite::SqliteAdapter;
+use sqlx::{AssertSqlSafe, MySql, Postgres, Sqlite, Transaction};
 use stream::ScriptRun;
 
 /// An open SQL database. An enum rather than `Box<dyn SqlAdapter>`: the engines are
@@ -87,8 +88,20 @@ impl SqlConnection {
         each!(self, adapter => adapter.table_structure(schema, table).await)
     }
 
+    pub async fn ddl(&self, schema: &str, table: &str) -> Result<TableDdl, AppError> {
+        each!(self, adapter => adapter.ddl(schema, table).await)
+    }
+
     pub async fn completion_tables(&self) -> Result<Vec<CompletionTable>, AppError> {
         each!(self, adapter => adapter.completion_tables().await)
+    }
+
+    pub async fn estimate_rows(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<String>, AppError> {
+        each!(self, adapter => adapter.estimate_rows(schema, table).await)
     }
 
     pub async fn primary_key(&self, schema: &str, table: &str) -> Result<Vec<String>, AppError> {
@@ -114,5 +127,65 @@ impl SqlConnection {
 
     pub async fn cancel(&self, session: i64) {
         each!(self, adapter => adapter.cancel(session).await)
+    }
+
+    /// A transaction on a connection of its own, plus the session id to cancel it by.
+    pub async fn begin(&self) -> Result<(SqlTransaction, i64), AppError> {
+        Ok(match self {
+            SqlConnection::Postgres(adapter) => {
+                let (tx, session) = adapter.begin().await?;
+                (SqlTransaction::Postgres(tx), session)
+            }
+            SqlConnection::Mysql(adapter) => {
+                let (tx, session) = adapter.begin().await?;
+                (SqlTransaction::Mysql(tx), session)
+            }
+            SqlConnection::Sqlite(adapter) => {
+                let (tx, session) = adapter.begin().await?;
+                (SqlTransaction::Sqlite(tx), session)
+            }
+        })
+    }
+}
+
+/// An open transaction; dropping it without `commit` rolls back.
+pub enum SqlTransaction {
+    Postgres(Transaction<'static, Postgres>),
+    Mysql(Transaction<'static, MySql>),
+    Sqlite(Transaction<'static, Sqlite>),
+}
+
+impl SqlTransaction {
+    /// Runs one statement as text. The error stays a `sqlx::Error`, so the caller can
+    /// read where in the statement it happened (`error_position`).
+    pub async fn execute(&mut self, statement: &str) -> Result<(), sqlx::Error> {
+        let statement = sqlx::raw_sql(AssertSqlSafe(statement.to_string()));
+        match self {
+            SqlTransaction::Postgres(tx) => statement.execute(&mut **tx).await.map(drop),
+            SqlTransaction::Mysql(tx) => statement.execute(&mut **tx).await.map(drop),
+            SqlTransaction::Sqlite(tx) => statement.execute(&mut **tx).await.map(drop),
+        }
+    }
+
+    pub async fn commit(self) -> Result<(), AppError> {
+        match self {
+            SqlTransaction::Postgres(tx) => tx.commit().await?,
+            SqlTransaction::Mysql(tx) => tx.commit().await?,
+            SqlTransaction::Sqlite(tx) => tx.commit().await?,
+        }
+        Ok(())
+    }
+}
+
+/// The 1-based character offset PostgreSQL reports for an error in a statement
+/// (a value it cannot convert); MySQL and SQLite name the column in the message.
+pub fn error_position(err: &sqlx::Error) -> Option<usize> {
+    match err
+        .as_database_error()?
+        .try_downcast_ref::<sqlx::postgres::PgDatabaseError>()?
+        .position()?
+    {
+        sqlx::postgres::PgErrorPosition::Original(position) => Some(position),
+        sqlx::postgres::PgErrorPosition::Internal { .. } => None,
     }
 }

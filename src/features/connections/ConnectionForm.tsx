@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ConnectionFields } from "@/features/connections/ConnectionFields";
 import {
   changeEngine,
+  duplicateForm,
   EMPTY_FORM,
   fromConfig,
   parseForm,
@@ -12,15 +13,19 @@ import {
   type FormErrors
 } from "@/features/connections/form";
 import {
+  useConnections,
   useDeleteConnection,
   useSaveConnection,
   type SaveConnectionInput
 } from "@/features/connections/queries";
+import { byGroup } from "@/features/explorer/treeNav";
 import { errorMessage } from "@/lib/errors";
 
 type ConnectionFormProps = {
   /** null = creating a new connection */
   connection: ConnectionConfig | null;
+  /** a new connection filled from this one ("Duplicar conexão") */
+  copyOf?: ConnectionConfig | null;
   onSaved: (id: string, keychainWarning: string | null) => void;
   onDeleted: (keychainWarning: string | null) => void;
   onCancel: () => void;
@@ -29,14 +34,20 @@ type ConnectionFormProps = {
 };
 
 /** Connects with the draft, saved or not, and closes; the elapsed time is all it reports. */
-async function testDraft({ config, secret }: SaveConnectionInput): Promise<number> {
+async function testDraft({
+  config,
+  secret,
+  sshSecret,
+  sentinelSecret
+}: SaveConnectionInput): Promise<number> {
   const started = performance.now();
-  await commands.testConnection(config, secret);
+  await commands.testConnection(config, secret, sshSecret, sentinelSecret);
   return Math.round(performance.now() - started);
 }
 
 export function ConnectionForm({
   connection,
+  copyOf = null,
   onSaved,
   onDeleted,
   onCancel,
@@ -46,8 +57,10 @@ export function ConnectionForm({
   // lazy init: the id must stay stable across re-renders of a new, unsaved connection
   const [id] = useState(() => connection?.id ?? crypto.randomUUID());
   const [initial] = useState<ConnectionFormValues>(() =>
-    connection ? fromConfig(connection) : EMPTY_FORM
+    connection ? fromConfig(connection) : copyOf ? duplicateForm(copyOf) : EMPTY_FORM
   );
+  // fixed with the id: the copy keeps pointing at the original's secrets until saved
+  const [copyOfId] = useState(() => copyOf?.id);
   const [values, setValues] = useState(initial);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   // typed but not saved: cancelling asks once instead of dropping it. On a new connection,
@@ -60,6 +73,8 @@ export function ConnectionForm({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const save = useSaveConnection();
+  const connections = useConnections();
+  const groups = byGroup(connections.data ?? []).groups.map(group => group.name);
   const remove = useDeleteConnection();
   const test = useMutation({ mutationFn: testDraft });
   // a result speaks only for the values it tested: editing a field retires it
@@ -82,7 +97,8 @@ export function ConnectionForm({
         environment: values.environment || "local"
       },
       id,
-      isEditing
+      isEditing,
+      copyOfId
     );
     if (!parsed.success) {
       setErrors(parsed.errors);
@@ -91,28 +107,33 @@ export function ConnectionForm({
     }
     setErrors({});
     setTestedValues(JSON.stringify(values));
-    test.mutate({ config: parsed.config, secret: parsed.secret });
+    test.mutate(parsed);
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const parsed = parseForm(values, id, isEditing);
+    const parsed = parseForm(values, id, isEditing, copyOfId);
     if (!parsed.success) {
       setErrors(parsed.errors);
       focusFirstInvalid();
       return;
     }
     setErrors({});
-    save.mutate(
-      { config: parsed.config, secret: parsed.secret },
-      {
-        onSuccess: outcome => {
-          // the secret was applied; re-saving must not set or clear it again
-          setValues(prev => ({ ...prev, password: "", clearPassword: false }));
-          onSaved(id, outcome.keychainWarning);
-        }
+    save.mutate(parsed, {
+      onSuccess: outcome => {
+        // the secrets were applied; re-saving must not set or clear them again
+        setValues(prev => ({
+          ...prev,
+          password: "",
+          clearPassword: false,
+          sshPassword: "",
+          clearSshPassword: false,
+          sentinelPassword: "",
+          clearSentinelPassword: false
+        }));
+        onSaved(id, outcome.keychainWarning);
       }
-    );
+    });
   }
 
   function handleCancel() {
@@ -138,12 +159,12 @@ export function ConnectionForm({
       {/* editing names which connection: the identifier keeps its case, like a table name */}
       <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-3 border-b-2 border-foreground pb-2">
         <span className="display-caps text-[1.75rem]">
-          {isEditing ? "Editar conexão" : "Nova conexão"}
+          {isEditing ? "Editar conexão" : copyOf ? "Duplicar conexão" : "Nova conexão"}
         </span>
-        {connection && (
+        {(connection ?? copyOf) && (
           <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
             <span className="sr-only">: </span>
-            {connection.name}
+            {(connection ?? copyOf)?.name}
           </span>
         )}
       </h2>
@@ -151,7 +172,8 @@ export function ConnectionForm({
       <ConnectionFields
         values={values}
         errors={errors}
-        isEditing={isEditing}
+        storedSecret={isEditing ? "own" : copyOfId ? "copy" : null}
+        groups={groups}
         onChange={patch => setValues(prev => ({ ...prev, ...patch }))}
         onEngineChange={engine => setValues(prev => changeEngine(prev, engine))}
       />
@@ -172,7 +194,7 @@ export function ConnectionForm({
           <p className="text-destructive">Não conectou: {errorMessage(test.error)}</p>
           <p className="text-xs text-muted-foreground">
             Nada foi salvo. Confira host, porta, usuário e senha; com TLS em Exigir, o servidor
-            precisa aceitar TLS. Banco atrás de bastion: abra um túnel antes (ssh -L).
+            precisa aceitar TLS. Banco atrás de bastion: marque Conectar por túnel SSH.
           </p>
         </div>
       )}
