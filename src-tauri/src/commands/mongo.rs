@@ -2,7 +2,8 @@ use tauri::State;
 
 use crate::AppState;
 use crate::domain::{
-    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, WriteRequest, WriteResponse,
+    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, SchemaSample, WriteRequest,
+    WriteResponse,
 };
 use crate::use_cases::mongo;
 
@@ -66,6 +67,27 @@ pub async fn write_document(
         &connection_id,
         request,
         confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sample_schema(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    database: String,
+    collection: String,
+    size: u32,
+) -> Result<SchemaSample, AppError> {
+    mongo::sample_schema(
+        &state.registry,
+        &connection_id,
+        &run_id,
+        &database,
+        &collection,
+        size,
     )
     .await
 }

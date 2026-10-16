@@ -45,6 +45,7 @@ export const commands = {
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
+	sampleSchema: (connectionId: string, runId: string, database: string, collection: string, size: number) => __TAURI_INVOKE<SchemaSample>("sample_schema", { connectionId, runId, database, collection, size }),
 	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
 	redisDatabases: (connectionId: string) => __TAURI_INVOKE<RedisDatabase[]>("redis_databases", { connectionId }),
 	scanKeys: (connectionId: string, db: number, pattern: string, cursor: string) => __TAURI_INVOKE<KeyPage>("scan_keys", { connectionId, db, pattern, cursor }),
@@ -210,6 +211,18 @@ export type Environment = "local" | "dev" | "staging" | "prod";
 export type ExportOutcome = {
 	rows: number,
 	durationMs: number,
+};
+
+/**  One field path: `address.city` inside objects, `tags[]` for array elements. */
+export type FieldSummary = {
+	path: string,
+	/**  sampled documents where the path occurs */
+	documents: number,
+	/**  BSON types by the `$type` alias, most frequent first; array elements count one by one */
+	types: TypeCount[],
+	/**  Extended JSON of the first scalar value seen; none for paths that only hold objects/arrays */
+	example: string | null,
+	exampleTruncated: boolean,
 };
 
 export type Filter = {
@@ -383,6 +396,14 @@ export type SchemaInfo = {
 	relations: Relation[],
 };
 
+/**  What a `$sample` of the collection holds: a sample, not the collection's schema. */
+export type SchemaSample = {
+	/**  documents that came back (fewer than asked when the collection is smaller) */
+	sampled: number,
+	fields: FieldSummary[],
+	durationMs: number,
+};
+
 export type ScriptOutcome = {
 	statementCount: number,
 	durationMs: number,
@@ -457,6 +478,11 @@ export type TlsConfig = {
 };
 
 export type TlsMode = "disable" | "prefer" | "require" | "verifyFull";
+
+export type TypeCount = {
+	name: string,
+	count: number,
+};
 
 export type WriteRequest = {
 	database: string,

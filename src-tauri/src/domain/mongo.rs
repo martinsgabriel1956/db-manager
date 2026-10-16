@@ -76,3 +76,34 @@ pub enum WriteResponse {
         confirmation: Confirmation,
     },
 }
+
+/// What a `$sample` of the collection holds: a sample, not the collection's schema.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaSample {
+    /// documents that came back (fewer than asked when the collection is smaller)
+    pub sampled: u32,
+    pub fields: Vec<FieldSummary>,
+    pub duration_ms: u32,
+}
+
+/// One field path: `address.city` inside objects, `tags[]` for array elements.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldSummary {
+    pub path: String,
+    /// sampled documents where the path occurs
+    pub documents: u32,
+    /// BSON types by the `$type` alias, most frequent first; array elements count one by one
+    pub types: Vec<TypeCount>,
+    /// Extended JSON of the first scalar value seen; none for paths that only hold objects/arrays
+    pub example: Option<String>,
+    pub example_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeCount {
+    pub name: String,
+    pub count: u32,
+}

@@ -1,4 +1,5 @@
 pub mod ejson;
+pub mod schema;
 
 #[cfg(test)]
 pub(crate) mod integration_tests;
@@ -277,6 +278,28 @@ impl MongoAdapter {
             documents.push(ejson::to_text(document));
         }
         Ok((documents, false))
+    }
+
+    /// `$sample` of `size` documents, tagged with `comment` so `kill` can stop it.
+    pub async fn sample(
+        &self,
+        database: &str,
+        collection: &str,
+        size: u32,
+        comment: &str,
+    ) -> Result<Vec<Document>, AppError> {
+        let options = AggregateOptions::builder()
+            .comment(Some(Bson::String(comment.to_string())))
+            .max_time(self.max_time())
+            .build();
+        self.collection(database, collection)
+            .aggregate(vec![doc! { "$sample": { "size": i64::from(size) } }])
+            .with_options(options)
+            .await
+            .map_err(|err| self.error(err))?
+            .try_collect()
+            .await
+            .map_err(|err| self.error(err))
     }
 
     /// Returns the new document's _id as Extended JSON.

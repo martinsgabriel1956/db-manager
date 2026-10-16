@@ -56,6 +56,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::mongo::browse_collection,
             commands::mongo::collection_indexes,
             commands::mongo::run_aggregation,
+            commands::mongo::sample_schema,
             commands::mongo::write_document,
             commands::redis::redis_databases,
             commands::redis::scan_keys,
