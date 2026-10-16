@@ -85,6 +85,9 @@ impl OpenConnection {
 struct Run {
     connection: Arc<OpenConnection>,
     session: i64,
+    /// set by `cancel_run`: an import stops before its next batch (SQLite has no
+    /// server-side cancel)
+    cancelled: bool,
 }
 
 struct OpenCursor {
@@ -147,12 +150,25 @@ impl Registry {
             Run {
                 connection,
                 session,
+                cancelled: false,
             },
         );
     }
 
     pub fn finish_run(&self, run_id: &str) {
         lock(&self.runs).remove(run_id);
+    }
+
+    pub fn request_cancel(&self, run_id: &str) {
+        if let Some(run) = lock(&self.runs).get_mut(run_id) {
+            run.cancelled = true;
+        }
+    }
+
+    pub fn cancel_requested(&self, run_id: &str) -> bool {
+        lock(&self.runs)
+            .get(run_id)
+            .is_some_and(|run| run.cancelled)
     }
 
     pub fn running(&self, run_id: &str) -> Option<(Arc<OpenConnection>, i64)> {

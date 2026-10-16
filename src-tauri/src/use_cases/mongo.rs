@@ -2,17 +2,19 @@ use std::time::Instant;
 
 use mongodb::bson::{Bson, Document, doc};
 
-use crate::adapters::mongo::ejson;
+use crate::adapters::mongo::{ejson, schema};
 use crate::domain::{
     AggregateOutcome, AggregateResponse, AppError, Confirmation, DocumentPage, DocumentWrite,
-    Environment, FindRequest, IndexInfo, IndexKind, IndexResponse, NewIndex, WriteRequest,
-    WriteResponse,
+    Environment, FindRequest, IndexInfo, IndexKind, IndexResponse, NewIndex, SchemaSample,
+    WriteRequest, WriteResponse,
 };
 use crate::registry::Registry;
 use crate::storage::history::HistoryStore;
 use crate::use_cases::sql::{MAX_PAGE_SIZE, elapsed_ms, record};
 
 const PROD_REASON: &str = "Conexão de produção: confirme antes de escrever";
+/// `$sample` above ~5% of a collection sorts it in memory: keep samples modest.
+pub const MAX_SAMPLE_SIZE: u32 = 10_000;
 
 pub async fn browse_collection(
     registry: &Registry,
@@ -289,6 +291,35 @@ pub async fn run_aggregation(
             truncated,
             duration_ms,
         },
+    })
+}
+
+/// Field paths, BSON types and examples of a `$sample` of `size` documents. A read:
+/// allowed on read-only connections, tagged with `run_id` so `cancel_run` can kill it.
+pub async fn sample_schema(
+    registry: &Registry,
+    connection_id: &str,
+    run_id: &str,
+    database: &str,
+    collection: &str,
+    size: u32,
+) -> Result<SchemaSample, AppError> {
+    if size == 0 || size > MAX_SAMPLE_SIZE {
+        return Err(AppError::validation(format!(
+            "amostra deve ter entre 1 e {MAX_SAMPLE_SIZE} documentos"
+        )));
+    }
+    let connection = registry.connection(connection_id)?;
+    let mongo = connection.mongo()?;
+    registry.start_run(run_id, connection.clone(), 0);
+    let started = Instant::now();
+    let result = mongo.sample(database, collection, size, run_id).await;
+    registry.finish_run(run_id);
+    let documents = result?;
+    Ok(SchemaSample {
+        sampled: u32::try_from(documents.len()).unwrap_or(u32::MAX),
+        fields: schema::infer(&documents),
+        duration_ms: elapsed_ms(started),
     })
 }
 
@@ -802,6 +833,81 @@ mod integration_tests {
             drop("n_1", true).await,
             Err(AppError::ReadOnly(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn schema_sample_through_the_registry() {
+        let (_container, mut config) = start().await;
+        config.read_only = true;
+        let registry = Registry::default();
+        let mongo = crate::adapters::mongo::MongoAdapter::connect(&config, None)
+            .await
+            .unwrap();
+        for document in [
+            r#"{"_id": 1, "name": "Ana", "visits": {"$numberLong": "9007199254740993"}, "address": {"city": "SP"}, "tags": ["a", "b"]}"#,
+            r#"{"_id": 2, "name": null, "price": {"$numberDecimal": "19.90"}, "items": [{"sku": "x"}, {"sku": 3}]}"#,
+            r#"{"_id": {"$oid": "65a1b2c3d4e5f60718293a4b"}, "name": "Bia", "created": {"$date": "2024-01-01T00:00:00Z"}}"#,
+        ] {
+            mongo
+                .insert(
+                    "shop",
+                    "items",
+                    ejson::parse_document(document, "doc").unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+        // read-only connections may sample: it is a read
+        open(&registry, &config).await;
+
+        let sample = sample_schema(&registry, "mongo", "run", "shop", "items", 100)
+            .await
+            .unwrap();
+
+        assert_eq!(sample.sampled, 3);
+        assert!(registry.running("run").is_none());
+        let field = |path: &str| sample.fields.iter().find(|f| f.path == path).unwrap();
+        let types = |path: &str| -> Vec<(String, u32)> {
+            field(path)
+                .types
+                .iter()
+                .map(|t| (t.name.clone(), t.count))
+                .collect()
+        };
+        assert_eq!(types("_id"), [("int".into(), 2), ("objectId".into(), 1)]);
+        assert_eq!(types("name"), [("string".into(), 2), ("null".into(), 1)]);
+        assert_eq!(field("name").documents, 3);
+        assert_eq!(field("tags[]").documents, 1);
+        assert_eq!(
+            types("items[].sku"),
+            [("int".into(), 1), ("string".into(), 1)]
+        );
+        assert_eq!(field("address.city").example.as_deref(), Some(r#""SP""#));
+        // examples keep their Extended JSON types
+        assert_eq!(
+            field("visits").example.as_deref(),
+            Some(r#"{"$numberLong":"9007199254740993"}"#)
+        );
+        assert_eq!(
+            field("price").example.as_deref(),
+            Some(r#"{"$numberDecimal":"19.90"}"#)
+        );
+        assert_eq!(
+            field("created").example.as_deref(),
+            Some(r#"{"$date":"2024-01-01T00:00:00Z"}"#)
+        );
+
+        // fewer documents than the collection holds
+        let one = sample_schema(&registry, "mongo", "run", "shop", "items", 1)
+            .await
+            .unwrap();
+        assert_eq!(one.sampled, 1);
+        for size in [0, MAX_SAMPLE_SIZE + 1] {
+            assert!(matches!(
+                sample_schema(&registry, "mongo", "run", "shop", "items", size).await,
+                Err(AppError::Validation(_))
+            ));
+        }
     }
 
     #[tokio::test]

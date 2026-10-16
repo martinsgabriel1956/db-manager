@@ -43,12 +43,16 @@ export const commands = {
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
+	previewCsv: (path: string) => __TAURI_INVOKE<CsvPreview>("preview_csv", { path }),
+	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
+	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	indexStatement: (index: NewIndex) => __TAURI_INVOKE<string>("index_statement", { index }),
 	createIndex: (connectionId: string, index: NewIndex, confirmed: boolean) => __TAURI_INVOKE<IndexResponse>("create_index", { connectionId, index, confirmed }),
 	dropIndex: (connectionId: string, database: string, collection: string, name: string, confirmed: boolean) => __TAURI_INVOKE<IndexResponse>("drop_index", { connectionId, database, collection, name, confirmed }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
+	sampleSchema: (connectionId: string, runId: string, database: string, collection: string, size: number) => __TAURI_INVOKE<SchemaSample>("sample_schema", { connectionId, runId, database, collection, size }),
 	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
 	redisDatabases: (connectionId: string) => __TAURI_INVOKE<RedisDatabase[]>("redis_databases", { connectionId }),
 	scanKeys: (connectionId: string, db: number, pattern: string, cursor: string) => __TAURI_INVOKE<KeyPage>("scan_keys", { connectionId, db, pattern, cursor }),
@@ -141,6 +145,12 @@ export type ColumnInfo = {
 	options: string[],
 };
 
+/**  File column (by position) → table column. */
+export type ColumnMapping = {
+	source: number,
+	column: string,
+};
+
 /**  New value typed by the user; `None` writes NULL. */
 export type ColumnValue = {
 	column: string,
@@ -198,6 +208,23 @@ export type ConnectionConfig = {
 	group?: string | null,
 };
 
+export type CsvImport = {
+	schema: string,
+	table: string,
+	path: string,
+	/**  table columns left out keep their default */
+	mapping: ColumnMapping[],
+};
+
+/**  The start of a CSV file, to map its columns before importing. */
+export type CsvPreview = {
+	columns: string[],
+	/**  the first rows; `None` is an empty unquoted field (NULL) */
+	rows: ((string | null)[])[],
+	/**  guessed from the header: `,`, `;` or a tab */
+	delimiter: string,
+};
+
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
 export type DiagramTable = {
 	name: string,
@@ -210,6 +237,13 @@ export type DocumentFormat =
 "ndjson" | 
 /**  a JSON array of documents */
 "jsonArray";
+
+/**  An NDJSON or JSON array file of Extended JSON documents, into a collection. */
+export type DocumentImport = {
+	database: string,
+	collection: string,
+	path: string,
+};
 
 export type DocumentPage = {
 	documents: string[],
@@ -236,6 +270,18 @@ export type ExplainResponse = { status: "explained"; plan: ExplainPlan } | { sta
 export type ExportOutcome = {
 	rows: number,
 	durationMs: number,
+};
+
+/**  One field path: `address.city` inside objects, `tags[]` for array elements. */
+export type FieldSummary = {
+	path: string,
+	/**  sampled documents where the path occurs */
+	documents: number,
+	/**  BSON types by the `$type` alias, most frequent first; array elements count one by one */
+	types: TypeCount[],
+	/**  Extended JSON of the first scalar value seen; none for paths that only hold objects/arrays */
+	example: string | null,
+	exampleTruncated: boolean,
 };
 
 export type Filter = {
@@ -289,6 +335,13 @@ export type HistoryEntry = {
 	error: string | null,
 	starred: boolean,
 };
+
+export type ImportResponse = 
+/**
+ *  always first: the sample INSERT (or first document) and the count, to confirm
+ *  before anything runs
+ */
+{ status: "needsConfirmation"; confirmation: Confirmation } | { status: "imported"; rows: number; duration_ms: number };
 
 export type IndexInfo = {
 	name: string,
@@ -459,6 +512,14 @@ export type SchemaInfo = {
 	relations: Relation[],
 };
 
+/**  What a `$sample` of the collection holds: a sample, not the collection's schema. */
+export type SchemaSample = {
+	/**  documents that came back (fewer than asked when the collection is smaller) */
+	sampled: number,
+	fields: FieldSummary[],
+	durationMs: number,
+};
+
 export type ScriptOutcome = {
 	statementCount: number,
 	durationMs: number,
@@ -538,6 +599,11 @@ export type TlsConfig = {
 };
 
 export type TlsMode = "disable" | "prefer" | "require" | "verifyFull";
+
+export type TypeCount = {
+	name: string,
+	count: number,
+};
 
 export type UpdateCheck = {
 	current: string,

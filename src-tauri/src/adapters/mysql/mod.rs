@@ -1,7 +1,7 @@
 mod cell;
 
 #[cfg(test)]
-mod integration_tests;
+pub(crate) mod integration_tests;
 
 use std::time::Duration;
 
@@ -396,6 +396,10 @@ impl MysqlAdapter {
 
     pub async fn apply(&self, statements: &[String]) -> Result<u32, AppError> {
         stream::apply::<MySqlEngine>(&self.pool, statements).await
+    }
+
+    pub async fn begin(&self) -> Result<(sqlx::Transaction<'static, sqlx::MySql>, i64), AppError> {
+        stream::begin(&self.engine, &self.pool).await
     }
 
     pub async fn cancel(&self, session: i64) {

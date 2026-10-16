@@ -331,6 +331,37 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     export_table: () => ({ rows: 1234, durationMs: 3 }),
     export_collection: () => ({ rows: 2, durationMs: 3 }),
     "plugin:dialog|save": () => "/tmp/export.csv",
+    "plugin:dialog|open": () => "/tmp/users.csv",
+    preview_csv: () => ({
+      columns: ["ID", "perfil"],
+      rows: [
+        ["1", '{"a": 1}'],
+        ["2", null]
+      ],
+      delimiter: ";"
+    }),
+    import_documents: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "imported", rows: 2, durationMs: 4 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Importar 2 documentos de customers.ndjson em shop.customers",
+              statements: [`shop.customers.insertMany([${mongoDocuments[0]}, …])`],
+              destructive: false
+            }
+          },
+    import_csv: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "imported", rows: 1200, durationMs: 9 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Importar 1200 linhas de users.csv em public.users",
+              statements: ['INSERT INTO "public"."users" ("id") VALUES (\'1\'), (\'2\')'],
+              destructive: false
+            }
+          },
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
     // the launch check finds nothing new unless a test says otherwise

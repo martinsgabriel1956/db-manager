@@ -6,6 +6,7 @@ import { App } from "@/App";
 import type { ConnectionConfig, FindRequest, WriteRequest } from "@/bindings";
 import { aggregationSummary } from "@/features/mongo/AggregationPanel";
 import { invalidQueryFields } from "@/features/mongo/DocumentsPanel";
+import { presence, sampleSummary } from "@/features/mongo/SchemaPanel";
 import { callsTo, devMongo, fakeBackend } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
@@ -243,7 +244,7 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
   await user.click(screen.getByRole("tab", { name: "Agregação" }));
   const panel = screen.getByLabelText("Pipeline").closest("div.flex.h-full") as HTMLElement;
   const setPipeline = (text: string) => {
-    const view = editorIn(panel);
+    const view = EditorView.findFromDOM(within(panel).getByLabelText("Pipeline"))!;
     act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }));
   };
 
@@ -271,6 +272,162 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
   act(() =>
     release({ status: "executed", outcome: { documents: [], truncated: false, durationMs: 1 } })
   );
+});
+
+test("the stage builder writes the pipeline text and previews up to a stage", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Agregação" }));
+  const panel = screen.getByLabelText("Pipeline").closest("div.flex.h-full") as HTMLElement;
+  const editor = (label: string) => EditorView.findFromDOM(within(panel).getByLabelText(label))!;
+  const type = (label: string, text: string) => {
+    const view = editor(label);
+    act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }));
+  };
+  const pipeline = () => editor("Pipeline").state.doc.toString();
+  const stages = () => within(panel).getAllByRole("listitem");
+  expect(stages()).toHaveLength(2);
+
+  // the JSON drives the blocks, values exactly as typed
+  type("Pipeline", '[{"$match": {"n": 9007199254740993}}, {"$set": {"d": 1.0}}, {"$limit": 5}]');
+  expect(stages().map(stage => within(stage).getByText(/^\$/).textContent)).toEqual([
+    "$match",
+    "$set",
+    "$limit"
+  ]);
+  expect(editor("Estágio 2").state.doc.toString()).toBe('{"$set": {"d": 1.0}}');
+
+  // off = out of the JSON, still in the builder
+  await user.click(within(panel).getByRole("checkbox", { name: "Estágio 2 ligado" }));
+  expect(pipeline()).toBe('[\n  {"$match": {"n": 9007199254740993}},\n  {"$limit": 5}\n]');
+  expect(within(stages()[1]).getByText("Desligado")).toBeInTheDocument();
+
+  // reordering by keyboard keeps the focus on the moved stage
+  within(panel).getByRole("button", { name: "Mover estágio 3 para cima" }).focus();
+  await user.keyboard("{Enter}");
+  expect(within(panel).getByRole("button", { name: "Mover estágio 2 para cima" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(pipeline()).toBe('[\n  {"$limit": 5},\n  {"$match": {"n": 9007199254740993}}\n]');
+
+  await user.selectOptions(within(panel).getByLabelText("Operador do novo estágio"), "$count");
+  await user.click(within(panel).getByRole("button", { name: "Adicionar estágio" }));
+  await user.click(within(panel).getByRole("button", { name: "Remover estágio 1" }));
+  expect(pipeline()).toBe('[\n  {"$match": {"n": 9007199254740993}},\n  { "$count": "total" }\n]');
+
+  // a stage that is not valid JSON leaves the pipeline as it was and blocks the run
+  type("Estágio 1", '{"$match": ');
+  expect(within(panel).getByText(/Estágio inválido/)).toBeInTheDocument();
+  expect(pipeline()).toContain("9007199254740993");
+  await user.click(within(panel).getByRole("button", { name: "Executar" }));
+  expect(within(panel).getByText("Estágio 1: JSON inválido")).toBeInTheDocument();
+  type("Estágio 1", '{"$match": {"d": 2.0}}');
+
+  await user.click(within(panel).getByRole("button", { name: "Prévia até o estágio 3" }));
+  expect(await within(panel).findByRole("status")).toHaveTextContent(
+    'Prévia até o estágio 3 ($count), com { "$limit": 20 } no fim'
+  );
+  expect((callsTo(calls, "run_aggregation").at(-1) as { pipeline: string }).pipeline).toBe(
+    '[\n  {"$match": {"d": 2.0}},\n  { "$count": "total" },\n  { "$limit": 20 }\n]'
+  );
+  expect(stages()[2]).toHaveAttribute("aria-current", "step");
+
+  // a preview never writes; the stage turned off keeps its place, so $out is the 3rd
+  type("Pipeline", '[{"$match": {}}, {"$out": "copy"}]');
+  expect(within(panel).getByRole("button", { name: "Prévia até o estágio 2" })).toBeDisabled();
+  const runs = callsTo(calls, "run_aggregation").length;
+  await user.click(within(panel).getByRole("button", { name: "Prévia até o estágio 3" }));
+  expect(within(panel).getByRole("alert")).toHaveTextContent(
+    "A prévia não executa $out nem $merge"
+  );
+  expect(callsTo(calls, "run_aggregation")).toHaveLength(runs);
+});
+
+test("the schema tab samples documents and says it is only a sample", async () => {
+  let release: (value: unknown) => void = () => undefined;
+  const calls = fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    sample_schema: args =>
+      (args as { size: number }).size === 7
+        ? new Promise(resolve => {
+            release = resolve;
+          })
+        : {
+            sampled: 2,
+            durationMs: 3,
+            fields: [
+              {
+                path: "_id",
+                documents: 2,
+                types: [{ name: "objectId", count: 2 }],
+                example: '{"$oid":"65a1b2c3d4e5f60718293a4b"}',
+                exampleTruncated: false
+              },
+              {
+                path: "tags",
+                documents: 1,
+                types: [{ name: "array", count: 1 }],
+                example: null,
+                exampleTruncated: false
+              },
+              {
+                path: "tags[]",
+                documents: 1,
+                types: [
+                  { name: "string", count: 2 },
+                  { name: "null", count: 1 }
+                ],
+                example: '"a"',
+                exampleTruncated: true
+              }
+            ]
+          }
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Schema" }));
+
+  expect(screen.getByText(/não o schema da coleção/)).toBeInTheDocument();
+  const size = screen.getByRole("spinbutton", { name: "Documentos na amostra" });
+  await user.clear(size);
+  await user.type(size, "50");
+  expect(
+    screen.getByText('shop.customers.aggregate([{ "$sample": { "size": 50 } }])')
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Amostrar" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "2 documentos amostrados · 3 caminhos · 3 ms"
+  );
+  expect(callsTo(calls, "sample_schema")).toEqual([
+    {
+      connectionId: "mongo-1",
+      runId: expect.any(String),
+      database: "shop",
+      collection: "customers",
+      size: 50
+    }
+  ]);
+  const tags = screen.getByText("tags[]").closest("tr") as HTMLElement;
+  expect(tags).toHaveTextContent("string 2 · null 1");
+  expect(tags).toHaveTextContent("1 de 2 (50%)");
+  expect(tags).toHaveTextContent('"a" … (cortado)');
+  expect(screen.getByText('{"$oid":"65a1b2c3d4e5f60718293a4b"}')).toBeInTheDocument();
+
+  await user.clear(size);
+  await user.type(size, "0");
+  expect(screen.getByRole("button", { name: "Amostrar" })).toBeDisabled();
+
+  await user.clear(size);
+  await user.type(size, "7{Enter}");
+  await user.click(await screen.findByRole("button", { name: "Cancelar" }));
+  const runId = (callsTo(calls, "sample_schema").at(-1) as { runId: string }).runId;
+  expect(callsTo(calls, "cancel_run")).toEqual([{ runId }]);
+  act(() => release({ sampled: 0, durationMs: 1, fields: [] }));
+  expect(await screen.findByRole("status")).toHaveTextContent("0 documentos amostrados");
+});
+
+test("schema sample wording", () => {
+  expect(sampleSummary(1, 1, 2)).toBe("1 documento amostrado · 1 caminho · 2 ms");
+  expect(presence(1, 3)).toBe("1 de 3 (33%)");
 });
 
 const twoIndexes = () => [
