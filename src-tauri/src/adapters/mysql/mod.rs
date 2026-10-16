@@ -16,9 +16,9 @@ use crate::adapters::dialect::Dialect;
 use crate::adapters::sql_builder;
 use crate::adapters::stream::{self, Engine, ScriptRun};
 use crate::domain::{
-    AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableStructure, Target,
-    TlsMode,
+    AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ConstraintInfo,
+    ForeignKeyInfo, IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo,
+    TableStructure, Target, TlsMode,
 };
 
 const MAX_POOL_CONNECTIONS: u32 = 5;
@@ -262,8 +262,32 @@ impl MysqlAdapter {
         .bind(table)
         .fetch_all(&self.pool);
 
-        let (columns, index_columns, key_columns) =
-            tokio::try_join!(columns, index_columns, key_columns)?;
+        // CHECK constraints are enforced from 8.0.16; UNIQUE ones are listed as indexes
+        let checks = async {
+            let rows = sqlx::query_as::<_, (String, String)>(
+                r"SELECT CAST(tc.CONSTRAINT_NAME AS CHAR), CAST(cc.CHECK_CLAUSE AS CHAR)
+                  FROM information_schema.TABLE_CONSTRAINTS tc
+                  JOIN information_schema.CHECK_CONSTRAINTS cc
+                    ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+                   AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+                  WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'CHECK'
+                  ORDER BY tc.CONSTRAINT_NAME",
+            )
+            .bind(schema)
+            .bind(table)
+            .fetch_all(&self.pool)
+            .await;
+            match rows {
+                // servers before 8.0.16 have no CHECK_CONSTRAINTS table: no checks to list
+                Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("42S02") => {
+                    Ok(Vec::new())
+                }
+                rows => rows,
+            }
+        };
+
+        let (columns, index_columns, key_columns, checks) =
+            tokio::try_join!(columns, index_columns, key_columns, checks)?;
         if columns.is_empty() {
             return Err(AppError::not_found(&format!("tabela {schema}.{table}")));
         }
@@ -303,6 +327,13 @@ impl MysqlAdapter {
         }
 
         Ok(TableStructure {
+            constraints: checks
+                .into_iter()
+                .map(|(name, clause)| ConstraintInfo {
+                    name,
+                    definition: format!("CHECK {clause}"),
+                })
+                .collect(),
             columns: columns
                 .into_iter()
                 .map(|(name, data_type, nullable, default, primary)| ColumnInfo {

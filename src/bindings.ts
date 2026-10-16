@@ -207,6 +207,18 @@ export type ConnectionConfig = {
 	ssh?: SshConfig | null,
 };
 
+/**  A constraint added to an existing table. */
+export type Constraint = { kind: "unique"; columns: string[] } | 
+/**  the boolean SQL expression, as typed */
+{ kind: "check"; expression: string } | 
+/**  to a table of the same schema */
+{ kind: "foreignKey"; columns: string[]; referencedTable: string; referencedColumns: string[]; onDelete: ReferentialAction | null };
+
+export type ConstraintInfo = {
+	name: string,
+	definition: string,
+};
+
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
 export type DiagramTable = {
 	name: string,
@@ -414,6 +426,9 @@ export type RedisValue = { kind: "string"; value: RedisText } | { kind: "hash"; 
 /**  module types (RedisJSON, …): shown by name only */
 { kind: "unsupported"; typeName: string };
 
+/**  What a foreign key does when the referenced row is deleted: a closed list, not SQL text. */
+export type ReferentialAction = "restrict" | "cascade" | "setNull";
+
 export type Relation = {
 	name: string,
 	kind: RelationKind,
@@ -447,7 +462,13 @@ export type SchemaChange = { kind: "createTable"; columns: ColumnDefinition[]; p
 /**  Postgres */
 { kind: "setNullable"; column: string; nullable: boolean } | 
 /**  MySQL: `MODIFY COLUMN` rewrites the whole column, so its whole definition is given */
-{ kind: "redefineColumn"; column: string; definition: string } | { kind: "createIndex"; name: string; columns: string[]; unique: boolean } | { kind: "dropIndex"; name: string };
+{ kind: "redefineColumn"; column: string; definition: string } | { kind: "createIndex"; name: string; columns: string[]; unique: boolean } | { kind: "dropIndex"; name: string } | 
+/**  Postgres and MySQL; SQLite cannot rename an index */
+{ kind: "renameIndex"; name: string; newName: string } | 
+/**  stays in the same schema */
+{ kind: "renameTable"; newName: string } | { kind: "dropTable" } | 
+/**  Postgres and MySQL; SQLite only declares constraints in CREATE TABLE */
+{ kind: "addConstraint"; name: string; constraint: Constraint } | { kind: "dropConstraint"; name: string };
 
 export type SchemaInfo = {
 	name: string,
@@ -508,6 +529,11 @@ export type TableStructure = {
 	columns: ColumnInfo[],
 	indexes: IndexInfo[],
 	foreignKeys: ForeignKeyInfo[],
+	/**
+	 *  UNIQUE and CHECK constraints (Postgres), CHECKs (MySQL, where UNIQUE is an index);
+	 *  none on SQLite, which keeps them only in the CREATE TABLE text
+	 */
+	constraints: ConstraintInfo[],
 };
 
 /**

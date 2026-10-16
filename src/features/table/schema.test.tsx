@@ -4,7 +4,13 @@ import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { ConnectionConfig, SchemaChange } from "@/bindings";
 import { useTabs } from "@/features/tabs/store";
-import { callsTo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import {
+  callsTo,
+  devPostgres,
+  fakeBackend,
+  prodPostgres,
+  usersStructure
+} from "@/test/fakeBackend";
 import { renderWithClient, rowAction } from "@/test/render";
 
 type AlterArgs = { table: string; change: SchemaChange; confirmed: boolean };
@@ -249,4 +255,146 @@ test("a command the database refuses brings the form back with the error", async
   const form = await screen.findByRole("dialog", { name: "Adicionar coluna" });
   expect(within(form).getByRole("alert")).toHaveTextContent('column "x" already exists');
   expect(within(form).getByLabelText("Nome")).toHaveValue("x");
+});
+
+test("renaming the table moves its tab; dropping it closes the tab", async () => {
+  const calls = fakeBackend([devPostgres]);
+  const user = await openStructure(devPostgres);
+
+  await user.click(screen.getByRole("button", { name: "Renomear tabela…" }));
+  const name = await screen.findByLabelText("Novo nome");
+  await user.clear(name);
+  await user.type(name, "members{Enter}");
+  await user.click(
+    within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Executar" })
+  );
+
+  await waitFor(() =>
+    expect(
+      useTabs
+        .getState()
+        .tabs.filter(tab => tab.kind === "table")
+        .map(tab => (tab.kind === "table" ? tab.table : ""))
+    ).toEqual(["members"])
+  );
+  expect(altered(calls).at(-1)).toMatchObject({
+    table: "users",
+    change: { kind: "renameTable", newName: "members" },
+    confirmed: true
+  });
+
+  await user.click(await screen.findByRole("tab", { name: "Estrutura" }));
+  await user.click(await screen.findByRole("button", { name: "Remover tabela" }));
+  const confirm = await screen.findByRole("alertdialog");
+  expect(within(confirm).getByText("Comando destrutivo: ALTER TABLE … DROP")).toBeInTheDocument();
+  await user.click(within(confirm).getByRole("button", { name: "Executar" }));
+
+  await waitFor(() =>
+    expect(useTabs.getState().tabs.filter(tab => tab.kind === "table")).toEqual([])
+  );
+  expect(altered(calls).at(-1)).toMatchObject({
+    table: "members",
+    change: { kind: "dropTable" }
+  });
+});
+
+test("foreign keys, constraints and index names are added, renamed and removed", async () => {
+  const withConstraints = {
+    ...usersStructure,
+    foreignKeys: [
+      {
+        name: "users_team",
+        definition: "FOREIGN KEY (team_id) REFERENCES teams(id)",
+        columns: ["team_id"],
+        referencedSchema: "public",
+        referencedTable: "teams",
+        referencedColumns: ["id"]
+      }
+    ],
+    constraints: [{ name: "users_adult", definition: "CHECK ((age >= 18))" }]
+  };
+  const calls = fakeBackend([devPostgres], {
+    table_structure: () => withConstraints,
+    list_schemas: () => [
+      {
+        name: "public",
+        relations: [
+          { name: "users", kind: "table" },
+          { name: "teams", kind: "table" }
+        ]
+      }
+    ]
+  });
+  const user = await openStructure(devPostgres);
+  const cancel = async () =>
+    user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancelar" })
+    );
+
+  await user.click(screen.getByRole("button", { name: "Adicionar chave estrangeira" }));
+  const form = await screen.findByRole("dialog", { name: "Adicionar chave estrangeira" });
+  await user.type(within(form).getByLabelText("Nome da constraint"), "users_team2");
+  await user.selectOptions(within(form).getByLabelText("Coluna"), "profile");
+  await user.selectOptions(within(form).getByLabelText("Tabela referenciada"), "teams");
+  await user.selectOptions(within(form).getByLabelText("Coluna referenciada"), "id");
+  await user.selectOptions(
+    within(form).getByLabelText("Ao excluir a linha referenciada"),
+    "cascade"
+  );
+  await user.click(within(form).getByRole("button", { name: "Revisar comando" }));
+  await cancel();
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+  await user.click(screen.getByRole("button", { name: "Adicionar constraint" }));
+  await user.type(await screen.findByLabelText("Nome da constraint"), "users_id_positive");
+  await user.type(screen.getByLabelText("Expressão"), "id > 0{Enter}");
+  await cancel();
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+  await user.click(screen.getByRole("button", { name: "Remover chave estrangeira users_team" }));
+  await cancel();
+  await user.click(screen.getByRole("button", { name: "Remover constraint users_adult" }));
+  await cancel();
+  await user.click(screen.getByRole("button", { name: "Renomear índice users_pkey" }));
+  const name = await screen.findByLabelText("Novo nome");
+  await user.clear(name);
+  await user.type(name, "users_key{Enter}");
+  await cancel();
+
+  expect(altered(calls).map(call => call.change)).toEqual([
+    {
+      kind: "addConstraint",
+      name: "users_team2",
+      constraint: {
+        kind: "foreignKey",
+        columns: ["profile"],
+        referencedTable: "teams",
+        referencedColumns: ["id"],
+        onDelete: "cascade"
+      }
+    },
+    {
+      kind: "addConstraint",
+      name: "users_id_positive",
+      constraint: { kind: "check", expression: "id > 0" }
+    },
+    { kind: "dropConstraint", name: "users_team" },
+    { kind: "dropConstraint", name: "users_adult" },
+    { kind: "renameIndex", name: "users_pkey", newName: "users_key" }
+  ]);
+});
+
+test("SQLite offers no constraint changes nor index renames, and says why", async () => {
+  fakeBackend([localSqlite], {
+    list_schemas: () => [{ name: "main", relations: [{ name: "users", kind: "table" }] }]
+  });
+  await openStructure(localSqlite);
+
+  expect(screen.getByText(/O SQLite só declara constraints/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Adicionar chave estrangeira" })
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Renomear índice/ })).not.toBeInTheDocument();
+  // the table itself it renames and drops
+  expect(screen.getByRole("button", { name: "Renomear tabela…" })).toBeInTheDocument();
 });

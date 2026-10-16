@@ -212,7 +212,8 @@ export const usersStructure: TableStructure = {
     }
   ],
   indexes: [{ name: "users_pkey", definition: "CREATE UNIQUE INDEX users_pkey ON users (id)" }],
-  foreignKeys: []
+  foreignKeys: [],
+  constraints: []
 };
 
 export const usersPage: RowBatch = {
