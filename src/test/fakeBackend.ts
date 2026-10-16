@@ -332,6 +332,12 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     },
     edit_key: () => ({ status: "applied" }),
     run_redis_command: () => ({ status: "executed", outcome: { output: "OK", durationMs: 1 } }),
+    redis_subscribe: () => null,
+    stop_redis_session: () => null,
+    redis_publish: () => ({
+      status: "executed",
+      outcome: { output: "(integer) 1", durationMs: 1 }
+    }),
     server_info: () => [
       { name: "Server", entries: [["redis_version", "7.4.0"]] },
       { name: "Memory", entries: [["used_memory_human", "1.2M"]] }
