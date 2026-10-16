@@ -497,7 +497,7 @@ function ConnectionNode({
               </div>
               <p className="text-xs text-muted-foreground">
                 Confira host, porta e senha em Editar conexão e use Testar conexão, que tenta sem
-                salvar. Banco atrás de bastion: abra um túnel antes (ssh -L).
+                salvar. Banco atrás de bastion: marque Conectar por túnel SSH.
               </p>
               {/* both ways out the text names, within reach of Tab */}
               <div className="flex flex-wrap gap-1.5">
