@@ -204,3 +204,24 @@ pub enum PubSubEvent {
     /// the subscription is over (server closed the connection, or it was stopped)
     Ended { reason: String },
 }
+
+/// What MONITOR sends to the panel: each command the server runs, as the server
+/// prints it (`1700000000.123456 [0 127.0.0.1:5000] "GET" "k"`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum MonitorEvent {
+    Line {
+        text: String,
+    },
+    /// stopped, the limit reached, or the server closed the connection
+    Ended {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum LiveStart {
+    Started,
+    NeedsConfirmation { confirmation: Confirmation },
+}
