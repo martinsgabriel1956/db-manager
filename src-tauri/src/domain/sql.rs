@@ -75,6 +75,15 @@ pub struct ConstraintInfo {
     pub definition: String,
 }
 
+/// The statements that create a table (or view), as the database reports them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDdl {
+    pub sql: String,
+    /// true when rebuilt from the catalog (Postgres keeps no CREATE TABLE text)
+    pub reconstructed: bool,
+}
+
 /// A table of the ER diagram: its columns and the foreign keys leaving it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

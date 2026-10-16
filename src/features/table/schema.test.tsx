@@ -77,15 +77,17 @@ test("adding a column shows the exact DDL first and runs it only once confirmed"
     }
   ]);
   const structureReads = callsTo(calls, "table_structure").length;
+  const ddlReads = callsTo(calls, "table_ddl").length;
 
   await user.click(within(confirm).getByRole("button", { name: "Executar" }));
 
   expect(await screen.findByRole("status")).toHaveTextContent("Executado: -- addColumn");
   expect(altered(calls)[1].confirmed).toBe(true);
-  // the structure is read again
+  // the structure and its DDL are read again
   await waitFor(() =>
     expect(callsTo(calls, "table_structure").length).toBeGreaterThan(structureReads)
   );
+  await waitFor(() => expect(callsTo(calls, "table_ddl").length).toBeGreaterThan(ddlReads));
   expect(screen.queryByRole("dialog", { name: "Adicionar coluna" })).not.toBeInTheDocument();
 });
 

@@ -330,6 +330,34 @@ async fn explain_query_plan_nests_by_parent() {
 }
 
 #[tokio::test]
+async fn ddl_is_the_text_stored_in_sqlite_master() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = database(
+        &dir,
+        "ddl.db",
+        r"CREATE TABLE people (id  integer PRIMARY KEY, name TEXT UNIQUE);
+          CREATE INDEX people_name ON people (name);
+          CREATE TRIGGER people_audit AFTER INSERT ON people BEGIN SELECT 1; END;",
+    )
+    .await;
+    let db = SqliteAdapter::connect(&config, true).await.unwrap();
+
+    let ddl = db.ddl("main", "people").await.unwrap();
+    assert!(!ddl.reconstructed);
+    // as typed (spacing and case kept); the table first, then its indexes and triggers; the UNIQUE's automatic index has no text
+    assert_eq!(
+        ddl.sql,
+        "CREATE TABLE people (id  integer PRIMARY KEY, name TEXT UNIQUE);\n\n\
+         CREATE INDEX people_name ON people (name);\n\n\
+         CREATE TRIGGER people_audit AFTER INSERT ON people BEGIN SELECT 1; END;"
+    );
+    assert!(matches!(
+        db.ddl("main", "missing").await,
+        Err(AppError::NotFound(_))
+    ));
+}
+
+#[tokio::test]
 async fn structure_changes_within_what_sqlite_alters() {
     use crate::adapters::sql_builder::schema_sql;
     use crate::domain::{ColumnDefinition, SchemaChange};

@@ -13,7 +13,7 @@ pub mod stream;
 
 use crate::domain::{
     AppError, BrowseRequest, CompletionTable, ConnectionConfig, Engine, RowBatch, SchemaInfo,
-    TableStructure,
+    TableDdl, TableStructure,
 };
 use dialect::Dialect;
 use mysql::MysqlAdapter;
@@ -86,6 +86,10 @@ impl SqlConnection {
         table: &str,
     ) -> Result<TableStructure, AppError> {
         each!(self, adapter => adapter.table_structure(schema, table).await)
+    }
+
+    pub async fn ddl(&self, schema: &str, table: &str) -> Result<TableDdl, AppError> {
+        each!(self, adapter => adapter.ddl(schema, table).await)
     }
 
     pub async fn completion_tables(&self) -> Result<Vec<CompletionTable>, AppError> {
