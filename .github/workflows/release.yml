@@ -27,6 +27,16 @@ jobs:
             exit 1
           fi
 
+      # unsigned bundles would publish a latest.json no install can verify: stop before compiling
+      - name: Signing key is set
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::secret TAURI_SIGNING_PRIVATE_KEY ausente: veja a seção Release do README"
+            exit 1
+          fi
+
       - name: Tauri system dependencies
         run: |
           sudo apt-get update
@@ -48,11 +58,26 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # the key signs each bundle (.sig); it lives only in the repo secrets, never in a file
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           # __VERSION__ is filled by the action from tauri.conf.json: "Ordo 0.2.0", like v0.1.0
           releaseName: Ordo __VERSION__
           generateReleaseNotes: true
-          # only what docs/decisions.md ships: no rpm, and no auto-update (out of v1)
-          args: --bundles deb,appimage
-          uploadUpdaterJson: false
+          # only what docs/decisions.md ships: no rpm. Updater artifacts (the .sig files) only
+          # here, so a local `pnpm tauri build` needs no key
+          args: '--bundles deb,appimage --config {"bundle":{"createUpdaterArtifacts":true}}'
+          # latest.json: what the app's updater reads (plugins.updater.endpoints in tauri.conf.json)
+          uploadUpdaterJson: true
+
+      # checksums of what people download by hand; the .sig files cover the updater
+      - name: SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd src-tauri/target/release/bundle
+          sha256sum deb/*.deb appimage/*.AppImage | sed 's#  .*/#  #' > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber
