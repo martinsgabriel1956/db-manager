@@ -54,6 +54,8 @@ export const commands = {
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
 	sampleSchema: (connectionId: string, runId: string, database: string, collection: string, size: number) => __TAURI_INVOKE<SchemaSample>("sample_schema", { connectionId, runId, database, collection, size }),
 	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
+	watchCollection: (connectionId: string, watchId: string, database: string, collection: string, pipeline: string, onMessage: Channel<WatchMessage>) => __TAURI_INVOKE<null>("watch_collection", { connectionId, watchId, database, collection, pipeline, onMessage }),
+	stopWatch: (watchId: string) => __TAURI_INVOKE<void>("stop_watch", { watchId }),
 	redisDatabases: (connectionId: string) => __TAURI_INVOKE<RedisDatabase[]>("redis_databases", { connectionId }),
 	scanKeys: (connectionId: string, db: number, pattern: string, cursor: string) => __TAURI_INVOKE<KeyPage>("scan_keys", { connectionId, db, pattern, cursor }),
 	readKey: (connectionId: string, db: number, key: string) => __TAURI_INVOKE<KeyDetail>("read_key", { connectionId, db, key }),
@@ -134,6 +136,20 @@ export type Cell = { t: "null" } | { t: "bool"; v: boolean } |
 	typeName: string,
 	text: string,
 } };
+
+/**  One change stream event, values as Extended JSON text. */
+export type ChangeEvent = {
+	/**  insert, update, replace, delete, drop, invalidate… */
+	operation: string,
+	/**  documentKey._id */
+	id: string | null,
+	/**  fullDocument (insert, replace) */
+	document: string | null,
+	/**  updateDescription (update): updatedFields, removedFields, truncatedArrays */
+	diff: string | null,
+	/**  wallTime, or clusterTime (seconds) on servers before 6.0; RFC 3339 */
+	at: string | null,
+};
 
 export type ColumnInfo = {
 	name: string,
@@ -612,6 +628,9 @@ export type UpdateCheck = {
 	/**  the updater can replace this install; false = point to the release page */
 	installable: boolean,
 };
+
+/**  What a watch sends to the UI: events, then at most one error that ends it. */
+export type WatchMessage = { kind: "change"; event: ChangeEvent } | { kind: "error"; message: string };
 
 export type WriteRequest = {
 	database: string,

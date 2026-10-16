@@ -3,8 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
 import { expect, test } from "vitest";
 import { App } from "@/App";
-import type { ConnectionConfig, FindRequest, WriteRequest } from "@/bindings";
+import type { Channel } from "@tauri-apps/api/core";
+import type { ConnectionConfig, FindRequest, WatchMessage, WriteRequest } from "@/bindings";
 import { aggregationSummary } from "@/features/mongo/AggregationPanel";
+import { liveSummary, MAX_LIVE_EVENTS } from "@/features/mongo/LivePanel";
 import { invalidQueryFields } from "@/features/mongo/DocumentsPanel";
 import { presence, sampleSummary } from "@/features/mongo/SchemaPanel";
 import { callsTo, devMongo, fakeBackend } from "@/test/fakeBackend";
@@ -573,4 +575,87 @@ test("the aggregation summary counts documents in the singular and the plural", 
   expect(aggregationSummary(1, false, 4)).toBe("1 documento · 4 ms");
   expect(aggregationSummary(2, false, 4)).toBe("2 documentos · 4 ms");
   expect(aggregationSummary(100, true, 9)).toBe("100+ documentos (mostrando os primeiros) · 9 ms");
+});
+
+type WatchArgs = { watchId: string; pipeline: string; onMessage: Channel<WatchMessage> };
+
+test("the live panel lists change events, pauses, clears and stops when left", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Ao vivo" }));
+  await user.click(screen.getByRole("button", { name: "Iniciar" }));
+  await screen.findByText(/^Ouvindo/);
+
+  const [watch] = callsTo(calls, "watch_collection") as WatchArgs[];
+  expect(watch.pipeline).toBe("[]");
+  const send = (message: WatchMessage) => act(() => watch.onMessage.onmessage(message));
+  send({
+    kind: "change",
+    event: {
+      operation: "insert",
+      id: '{"$oid":"65a1b2c3d4e5f60718293a4b"}',
+      document: '{"_id":{"$oid":"65a1b2c3d4e5f60718293a4b"},"visits":{"$numberLong":"7"}}',
+      diff: null,
+      at: "2026-10-16T12:00:00Z"
+    }
+  });
+  send({
+    kind: "change",
+    event: {
+      operation: "update",
+      id: "1",
+      document: null,
+      diff: '{"updatedFields":{"n":2},"removedFields":[]}',
+      at: null
+    }
+  });
+
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent("Ouvindo · 2 eventos");
+  expect(screen.getByText('_id: ObjectId("65a1b2c3d4e5f60718293a4b")')).toBeInTheDocument();
+  expect(screen.getByText("NumberLong(7)")).toBeInTheDocument();
+  expect(screen.getByText("updateDescription")).toBeInTheDocument();
+
+  // paused: the view holds still, the stream keeps counting
+  await user.click(screen.getByRole("button", { name: "Pausar" }));
+  send({
+    kind: "change",
+    event: { operation: "delete", id: "1", document: null, diff: null, at: null }
+  });
+  expect(status).toHaveTextContent("3 eventos · pausado: 1 novos fora da tela");
+  expect(screen.queryByText("delete")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Retomar" }));
+  expect(screen.getByText("delete")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Limpar" }));
+  expect(status).toHaveTextContent("Ouvindo · 0 eventos");
+
+  // leaving the section closes the stream on the server
+  await user.click(screen.getByRole("tab", { name: "Documentos" }));
+  await waitFor(() => expect(callsTo(calls, "stop_watch")).toEqual([{ watchId: watch.watchId }]));
+});
+
+test("a server that cannot watch says why", async () => {
+  fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    watch_collection: () =>
+      Promise.reject({
+        kind: "validation",
+        message:
+          "change streams exigem um replica set ou cluster fragmentado; este servidor é standalone"
+      })
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Ao vivo" }));
+  await user.click(screen.getByRole("button", { name: "Iniciar" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("este servidor é standalone");
+  expect(screen.getByRole("button", { name: "Iniciar" })).toBeInTheDocument();
+});
+
+test("the live summary names the memory limit", () => {
+  expect(liveSummary("live", 1, 0)).toBe("Ouvindo · 1 evento");
+  expect(liveSummary("idle", MAX_LIVE_EVENTS, 0)).toBe(
+    `Parado · os últimos ${MAX_LIVE_EVENTS} eventos (os mais antigos saem da memória)`
+  );
 });

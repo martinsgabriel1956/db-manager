@@ -5,6 +5,7 @@ import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { AggregationPanel } from "@/features/mongo/AggregationPanel";
 import { DocumentsPanel } from "@/features/mongo/DocumentsPanel";
 import { IndexesPanel } from "@/features/mongo/IndexesPanel";
+import { LivePanel } from "@/features/mongo/LivePanel";
 import { SchemaPanel } from "@/features/mongo/SchemaPanel";
 
 type CollectionViewProps = {
@@ -14,13 +15,14 @@ type CollectionViewProps = {
   readOnly: boolean;
 };
 
-type Section = "documents" | "aggregation" | "schema" | "indexes";
+type Section = "documents" | "aggregation" | "schema" | "indexes" | "live";
 
 const SECTION_LABEL: Record<Section, string> = {
   documents: "Documentos",
   aggregation: "Agregação",
   schema: "Schema",
-  indexes: "Índices"
+  indexes: "Índices",
+  live: "Ao vivo"
 };
 
 export function CollectionView({
@@ -65,6 +67,10 @@ export function CollectionView({
       </TabsContent>
       <TabsContent value="schema" forceMount className="min-h-0 flex-1">
         <SchemaPanel connectionId={connectionId} database={database} collection={collection} />
+      </TabsContent>
+      {/* not kept mounted: leaving the section closes the change stream on the server */}
+      <TabsContent value="live" className="min-h-0 flex-1">
+        <LivePanel connectionId={connectionId} database={database} collection={collection} />
       </TabsContent>
       <TabsContent value="indexes" className="min-h-0 flex-1 overflow-auto">
         <IndexesPanel
