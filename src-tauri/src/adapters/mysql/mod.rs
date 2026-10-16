@@ -17,8 +17,8 @@ use crate::adapters::sql_builder;
 use crate::adapters::stream::{self, Engine, ScriptRun};
 use crate::domain::{
     AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableStructure, Target,
-    TlsMode,
+    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableDdl,
+    TableStructure, Target, TlsMode,
 };
 
 const MAX_POOL_CONNECTIONS: u32 = 5;
@@ -329,6 +329,21 @@ impl MysqlAdapter {
                 })
                 .collect(),
             foreign_keys,
+        })
+    }
+
+    /// `SHOW CREATE TABLE` (or VIEW, which it also answers): the server's own text.
+    pub async fn ddl(&self, schema: &str, table: &str) -> Result<TableDdl, AppError> {
+        let row = sqlx::query(AssertSqlSafe(format!(
+            "SHOW CREATE TABLE {}.{}",
+            self.dialect.quote_ident(schema),
+            self.dialect.quote_ident(table)
+        )))
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(TableDdl {
+            sql: format!("{};", row.try_get::<String, _>(1)?),
+            reconstructed: false,
         })
     }
 

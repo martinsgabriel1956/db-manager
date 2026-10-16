@@ -16,8 +16,8 @@ use crate::adapters::sql_builder;
 use crate::adapters::stream::{self, Engine, ScriptRun};
 use crate::domain::{
     AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableStructure, Target,
-    TlsMode,
+    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableDdl,
+    TableStructure, Target, TlsMode,
 };
 
 const MAX_POOL_CONNECTIONS: u32 = 5;
@@ -27,6 +27,8 @@ const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(10);
 type ColumnRow = (String, String, bool, Option<String>, bool, Vec<String>);
 /// name, definition, columns, referenced schema, table and columns
 type ForeignKeyRow = (String, String, Vec<String>, String, String, Vec<String>);
+/// name, type, not null, default or generation expression, attidentity, attgenerated
+type DdlColumnRow = (String, String, bool, Option<String>, String, String);
 
 pub struct PostgresAdapter {
     pool: PgPool,
@@ -366,6 +368,140 @@ impl PostgresAdapter {
                     },
                 )
                 .collect(),
+        })
+    }
+
+    /// Postgres keeps no CREATE TABLE text (only pg_dump writes one): rebuilt from the
+    /// catalog with its own deparsers (format_type, pg_get_expr, pg_get_constraintdef,
+    /// pg_get_indexdef). Views come back whole from pg_get_viewdef.
+    pub async fn ddl(&self, schema: &str, table: &str) -> Result<TableDdl, AppError> {
+        let name = format!(
+            "{}.{}",
+            Self::DIALECT.quote_ident(schema),
+            Self::DIALECT.quote_ident(table)
+        );
+        type RelationRow = (String, Option<String>, Option<String>, Option<String>);
+        let relation: Option<RelationRow> = sqlx::query_as(
+            r"SELECT c.relkind::text,
+                     CASE WHEN c.relkind IN ('v', 'm') THEN pg_get_viewdef(c.oid, true) END,
+                     pg_get_partkeydef(c.oid),
+                     (SELECT s.srvname::text FROM pg_foreign_table f
+                      JOIN pg_foreign_server s ON s.oid = f.ftserver WHERE f.ftrelid = c.oid)
+              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1 AND c.relname = $2",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((kind, view, partition_key, server)) = relation else {
+            return Err(AppError::not_found(&format!("tabela {schema}.{table}")));
+        };
+        if let Some(view) = view {
+            let keyword = if kind == "m" {
+                "MATERIALIZED VIEW"
+            } else {
+                "VIEW"
+            };
+            return Ok(TableDdl {
+                sql: format!("CREATE {keyword} {name} AS\n{}", view.trim_end()),
+                reconstructed: true,
+            });
+        }
+
+        let oid = r"(quote_ident($1) || '.' || quote_ident($2))::regclass";
+        let columns = sqlx::query_as::<_, DdlColumnRow>(AssertSqlSafe(format!(
+            r"SELECT a.attname::text, format_type(a.atttypid, a.atttypmod), a.attnotnull,
+                     pg_get_expr(d.adbin, d.adrelid), a.attidentity::text,
+                     COALESCE(to_jsonb(a) ->> 'attgenerated', '')
+              FROM pg_attribute a
+              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+              WHERE a.attrelid = {oid} AND a.attnum > 0 AND NOT a.attisdropped
+              ORDER BY a.attnum"
+        )))
+        .bind(schema)
+        .bind(table)
+        .fetch_all(&self.pool);
+        // attgenerated exists from PG 12: read through to_jsonb so PG 11 still answers.
+        // NOT NULL constraints (contype 'n' since PG 18) are already on the columns
+        let constraints = sqlx::query_as::<_, (String, String)>(AssertSqlSafe(format!(
+            r"SELECT conname::text, pg_get_constraintdef(oid)
+              FROM pg_constraint
+              WHERE conrelid = {oid} AND contype IN ('p', 'u', 'c', 'f', 'x')
+              ORDER BY array_position(ARRAY['p', 'u', 'c', 'f', 'x'], contype::text), conname"
+        )))
+        .bind(schema)
+        .bind(table)
+        .fetch_all(&self.pool);
+        // indexes behind a PK/UNIQUE/EXCLUDE constraint come with the constraint
+        let indexes = sqlx::query_scalar::<_, String>(AssertSqlSafe(format!(
+            r"SELECT pg_get_indexdef(i.indexrelid)
+              FROM pg_index i
+              WHERE i.indrelid = {oid}
+                AND NOT EXISTS (SELECT 1 FROM pg_constraint k
+                                WHERE k.conindid = i.indexrelid AND k.conrelid = i.indrelid
+                                  AND k.contype IN ('p', 'u', 'x'))
+              ORDER BY i.indexrelid::regclass::text"
+        )))
+        .bind(schema)
+        .bind(table)
+        .fetch_all(&self.pool);
+        let (columns, constraints, indexes) = tokio::try_join!(columns, constraints, indexes)?;
+
+        let lines = columns
+            .into_iter()
+            .map(
+                |(column, data_type, not_null, expression, identity, generated)| {
+                    let mut line = format!("{} {data_type}", Self::DIALECT.quote_ident(&column));
+                    match (identity.as_str(), generated.as_str(), expression) {
+                        ("a", ..) => line.push_str(" GENERATED ALWAYS AS IDENTITY"),
+                        ("d", ..) => line.push_str(" GENERATED BY DEFAULT AS IDENTITY"),
+                        (_, "s", Some(expression)) => {
+                            line.push_str(&format!(" GENERATED ALWAYS AS ({expression}) STORED"));
+                        }
+                        (_, "v", Some(expression)) => {
+                            line.push_str(&format!(" GENERATED ALWAYS AS ({expression}) VIRTUAL"));
+                        }
+                        (_, _, Some(expression)) => {
+                            line.push_str(&format!(" DEFAULT {expression}"))
+                        }
+                        _ => {}
+                    }
+                    if not_null {
+                        line.push_str(" NOT NULL");
+                    }
+                    line
+                },
+            )
+            .chain(constraints.into_iter().map(|(constraint, definition)| {
+                format!(
+                    "CONSTRAINT {} {definition}",
+                    Self::DIALECT.quote_ident(&constraint)
+                )
+            }))
+            .map(|line| format!("    {line}"))
+            .collect::<Vec<_>>();
+
+        let keyword = if server.is_some() {
+            "FOREIGN TABLE"
+        } else {
+            "TABLE"
+        };
+        let mut sql = format!("CREATE {keyword} {name} (\n{}\n)", lines.join(",\n"));
+        if let Some(partition_key) = partition_key {
+            sql.push_str(&format!(" PARTITION BY {partition_key}"));
+        }
+        // ponytail: the server's OPTIONS (and INHERITS, storage, owner, grants) are left out
+        if let Some(server) = server {
+            sql.push_str(&format!(" SERVER {}", Self::DIALECT.quote_ident(&server)));
+        }
+        sql.push(';');
+        for index in indexes {
+            sql.push_str(&format!("\n\n{index};"));
+        }
+        Ok(TableDdl {
+            sql,
+            reconstructed: true,
         })
     }
 

@@ -40,6 +40,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::disconnect_database,
             commands::sql::list_schemas,
             commands::sql::table_structure,
+            commands::sql::table_ddl,
             commands::sql::completion_tables,
             commands::sql::browse_table,
             commands::sql::run_script,

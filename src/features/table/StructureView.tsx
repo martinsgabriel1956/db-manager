@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
-import { useStructure } from "@/features/explorer/queries";
+import { useState, type ReactNode } from "react";
+import { Copy } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useDdl, useStructure } from "@/features/explorer/queries";
 import { errorMessage } from "@/lib/errors";
 
 type StructureViewProps = { connectionId: string; schema: string; table: string };
@@ -25,6 +27,70 @@ function Section({ title, headers, children, empty }: SectionProps) {
           </thead>
           <tbody className="font-mono text-xs">{children}</tbody>
         </table>
+      )}
+    </section>
+  );
+}
+
+type DdlSectionProps = { connectionId: string; schema: string; table: string };
+
+/** The CREATE statement, as the database gives it (or rebuilt, on Postgres), with a copy button. */
+function DdlSection({ connectionId, schema, table }: DdlSectionProps) {
+  const ddl = useDdl(connectionId, schema, table);
+  const [copied, setCopied] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function copy(sql: string) {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopied({ ok: true, text: "DDL copiado" });
+    } catch (err) {
+      setCopied({ ok: false, text: `Não copiado: ${errorMessage(err)}` });
+    }
+  }
+
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center gap-3">
+        <h3 className="text-sm font-semibold">DDL</h3>
+        {ddl.isSuccess && (
+          <Button size="xs" variant="outline" onClick={() => copy(ddl.data.sql)}>
+            <Copy /> Copiar
+          </Button>
+        )}
+        {copied && (
+          <span
+            role={copied.ok ? "status" : "alert"}
+            className={copied.ok ? "text-xs text-success" : "text-xs text-destructive"}
+          >
+            {copied.text}
+          </span>
+        )}
+      </div>
+      {ddl.isPending && <p className="text-sm text-muted-foreground">Carregando DDL…</p>}
+      {ddl.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {errorMessage(ddl.error)}
+        </p>
+      )}
+      {ddl.isSuccess && (
+        <>
+          {ddl.data.reconstructed && (
+            <p className="text-xs text-muted-foreground">
+              Reconstruído a partir do catálogo: o Postgres não guarda o CREATE TABLE original.
+              Colunas, defaults, chaves, checks e índices estão aqui; permissões, dono, herança e
+              opções de armazenamento não.
+            </p>
+          )}
+          {/* scrollable: reachable by keyboard, named for screen readers */}
+          <pre
+            role="region"
+            tabIndex={0}
+            aria-label={`DDL de ${table}`}
+            className="overflow-auto border bg-muted p-3 font-mono text-xs whitespace-pre"
+          >
+            {ddl.data.sql}
+          </pre>
+        </>
       )}
     </section>
   );
@@ -78,6 +144,7 @@ export function StructureView({ connectionId, schema, table }: StructureViewProp
           </tr>
         ))}
       </Section>
+      <DdlSection connectionId={connectionId} schema={schema} table={table} />
     </div>
   );
 }
