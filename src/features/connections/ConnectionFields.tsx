@@ -24,6 +24,8 @@ type ConnectionFieldsProps = {
   errors: FormErrors;
   /** what an empty secret field keeps: the connection's own, or the original's on a copy */
   storedSecret: "own" | "copy" | null;
+  /** the groups already in use, offered as the group field's suggestions */
+  groups: string[];
   onChange: (patch: Partial<ConnectionFormValues>) => void;
   onEngineChange: (engine: Engine) => void;
 };
@@ -86,6 +88,7 @@ export function ConnectionFields({
   values,
   errors,
   storedSecret,
+  groups,
   onChange,
   onEngineChange
 }: ConnectionFieldsProps) {
@@ -135,6 +138,25 @@ export function ConnectionFields({
           {textInput("name", { placeholder: `ex.: ${ENGINE_LABEL[values.engine]} prod` })}
         </Field>
       </div>
+      <Field
+        id="group"
+        label="Grupo (opcional)"
+        hint="Pasta na lateral: escolha uma existente ou digite um nome novo. Sem grupo, a conexão fica no topo."
+      >
+        <Input
+          id="group"
+          list="group-suggestions"
+          autoComplete="off"
+          value={values.group}
+          aria-describedby="group-hint"
+          onChange={event => onChange({ group: event.target.value })}
+        />
+        <datalist id="group-suggestions">
+          {groups.map(group => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
+      </Field>
 
       {!isSqlite && !isMongo && <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />}
 
@@ -252,8 +274,8 @@ export function ConnectionFields({
               Conectar por túnel SSH
             </label>
             <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
-              Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Só chave ou
-              agente, sem senha. Host e porta acima são vistos a partir do servidor SSH.
+              Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Host e porta
+              acima são vistos a partir do servidor SSH.
             </p>
           </div>
           {values.sshEnabled && (
@@ -274,6 +296,42 @@ export function ConnectionFields({
                   {textInput("sshIdentityFile", { placeholder: "~/.ssh/id_ed25519" })}
                 </Field>
               </div>
+              <Field
+                id="sshPassword"
+                label="Senha SSH ou passphrase da chave (opcional)"
+                hint="Vai para o keychain, separada da senha do banco, e chega ao ssh só pelo ambiente do processo, nunca pela linha de comando. Vazia: só chave sem passphrase ou agente."
+              >
+                <Input
+                  id="sshPassword"
+                  type="password"
+                  autoComplete="off"
+                  value={values.sshPassword}
+                  disabled={values.clearSshPassword}
+                  aria-describedby="sshPassword-hint"
+                  placeholder={
+                    storedSecret === "own"
+                      ? "Deixe vazio para manter a salva"
+                      : storedSecret === "copy"
+                        ? "Deixe vazio para copiar a da conexão original"
+                        : ""
+                  }
+                  onChange={event => onChange({ sshPassword: event.target.value })}
+                />
+              </Field>
+              {storedSecret && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={values.clearSshPassword}
+                    onChange={event =>
+                      onChange({ clearSshPassword: event.target.checked, sshPassword: "" })
+                    }
+                  />
+                  {storedSecret === "own"
+                    ? "Remover senha SSH salva"
+                    : "Não copiar a senha SSH salva"}
+                </label>
+              )}
             </>
           )}
         </>

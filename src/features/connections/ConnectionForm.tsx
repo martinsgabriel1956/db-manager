@@ -13,10 +13,12 @@ import {
   type FormErrors
 } from "@/features/connections/form";
 import {
+  useConnections,
   useDeleteConnection,
   useSaveConnection,
   type SaveConnectionInput
 } from "@/features/connections/queries";
+import { byGroup } from "@/features/explorer/treeNav";
 import { errorMessage } from "@/lib/errors";
 
 type ConnectionFormProps = {
@@ -32,9 +34,9 @@ type ConnectionFormProps = {
 };
 
 /** Connects with the draft, saved or not, and closes; the elapsed time is all it reports. */
-async function testDraft({ config, secret }: SaveConnectionInput): Promise<number> {
+async function testDraft({ config, secret, sshSecret }: SaveConnectionInput): Promise<number> {
   const started = performance.now();
-  await commands.testConnection(config, secret);
+  await commands.testConnection(config, secret, sshSecret);
   return Math.round(performance.now() - started);
 }
 
@@ -66,6 +68,8 @@ export function ConnectionForm({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const save = useSaveConnection();
+  const connections = useConnections();
+  const groups = byGroup(connections.data ?? []).groups.map(group => group.name);
   const remove = useDeleteConnection();
   const test = useMutation({ mutationFn: testDraft });
   // a result speaks only for the values it tested: editing a field retires it
@@ -98,7 +102,7 @@ export function ConnectionForm({
     }
     setErrors({});
     setTestedValues(JSON.stringify(values));
-    test.mutate({ config: parsed.config, secret: parsed.secret });
+    test.mutate({ config: parsed.config, secret: parsed.secret, sshSecret: parsed.sshSecret });
   }
 
   function handleSubmit(event: FormEvent) {
@@ -111,11 +115,17 @@ export function ConnectionForm({
     }
     setErrors({});
     save.mutate(
-      { config: parsed.config, secret: parsed.secret },
+      { config: parsed.config, secret: parsed.secret, sshSecret: parsed.sshSecret },
       {
         onSuccess: outcome => {
           // the secret was applied; re-saving must not set or clear it again
-          setValues(prev => ({ ...prev, password: "", clearPassword: false }));
+          setValues(prev => ({
+            ...prev,
+            password: "",
+            clearPassword: false,
+            sshPassword: "",
+            clearSshPassword: false
+          }));
           onSaved(id, outcome.keychainWarning);
         }
       }
@@ -159,6 +169,7 @@ export function ConnectionForm({
         values={values}
         errors={errors}
         storedSecret={isEditing ? "own" : copyOfId ? "copy" : null}
+        groups={groups}
         onChange={patch => setValues(prev => ({ ...prev, ...patch }))}
         onEngineChange={engine => setValues(prev => changeEngine(prev, engine))}
       />
@@ -179,7 +190,7 @@ export function ConnectionForm({
           <p className="text-destructive">Não conectou: {errorMessage(test.error)}</p>
           <p className="text-xs text-muted-foreground">
             Nada foi salvo. Confira host, porta, usuário e senha; com TLS em Exigir, o servidor
-            precisa aceitar TLS. Banco atrás de bastion: abra um túnel antes (ssh -L).
+            precisa aceitar TLS. Banco atrás de bastion: marque Conectar por túnel SSH.
           </p>
         </div>
       )}

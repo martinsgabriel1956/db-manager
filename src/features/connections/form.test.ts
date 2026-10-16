@@ -24,7 +24,8 @@ const postgresConfig: ConnectionConfig = {
   target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
   tls: { mode: "verifyFull", caCertPath: "/ca.pem" },
   keySeparator: null,
-  ssh: null
+  ssh: null,
+  group: null
 };
 
 test("a new connection has no environment until one is chosen", () => {
@@ -61,9 +62,11 @@ describe("parseForm", () => {
         target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
         tls: { mode: "prefer", caCertPath: null },
         keySeparator: null,
-        ssh: null
+        ssh: null,
+        group: null
       },
-      secret: { action: "set", value: "pw" }
+      secret: { action: "set", value: "pw" },
+      sshSecret: { action: "keep" }
     });
   });
 
@@ -185,6 +188,25 @@ describe("ssh tunnel", () => {
     expect(sqlite.success && sqlite.config.ssh).toBeNull();
   });
 
+  test("the ssh password is its own secret change, sent only with the tunnel", () => {
+    const tunnel = form({ name: "pg", sshEnabled: true, sshHost: "bastion" });
+    const sshSecret = (values: ConnectionFormValues, copyOf?: string) => {
+      const result = parseForm(values, "2", false, copyOf);
+      return result.success && result.sshSecret;
+    };
+
+    expect(sshSecret({ ...tunnel, sshPassword: "pw" })).toEqual({ action: "set", value: "pw" });
+    expect(sshSecret(tunnel)).toEqual({ action: "keep" });
+    expect(sshSecret({ ...tunnel, clearSshPassword: true })).toEqual({ action: "clear" });
+    expect(sshSecret(tunnel, "1")).toEqual({ action: "copyFrom", value: "1" });
+    expect(sshSecret({ ...tunnel, sshEnabled: false, sshPassword: "pw" })).toEqual({
+      action: "keep"
+    });
+    // never mixed with the database's password
+    const both = parseForm({ ...tunnel, password: "db", sshPassword: "ssh" }, "2");
+    expect(both.success && both.secret).toEqual({ action: "set", value: "db" });
+  });
+
   test("round-trips through fromConfig", () => {
     const config: ConnectionConfig = {
       ...postgresConfig,
@@ -213,6 +235,20 @@ describe("fromConfig", () => {
 
     expect(values).toMatchObject({ filePath: "/a.db", host: "", port: "", caCertPath: "" });
   });
+});
+
+test("the group is trimmed, blank means none, and round-trips through fromConfig", () => {
+  const grouped = { ...postgresConfig, group: "Cliente X" };
+  const group = (value: string) => {
+    const result = parseForm(form({ name: "pg", group: value }), "1");
+    return result.success && result.config.group;
+  };
+
+  expect(group(" Cliente X ")).toBe("Cliente X");
+  expect(group("  ")).toBeNull();
+  expect(parseForm(fromConfig(grouped), "1")).toMatchObject({ success: true, config: grouped });
+  // a copy lands in the same folder
+  expect(duplicateForm(grouped).group).toBe("Cliente X");
 });
 
 describe("duplicateForm", () => {

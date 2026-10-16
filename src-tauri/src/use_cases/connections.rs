@@ -2,7 +2,7 @@ use crate::domain::{
     AppError, ConnectionConfig, Engine, KeychainOutcome, SecretChange, SshConfig, Target, TlsMode,
 };
 use crate::storage::connections::ConnectionStore;
-use crate::storage::secrets::SecretStore;
+use crate::storage::secrets::{SecretStore, ssh_key};
 
 const REDIS_MAX_DB: u8 = 15;
 
@@ -22,31 +22,77 @@ pub fn find(store: &ConnectionStore, id: &str) -> Result<ConnectionConfig, AppEr
 
 /// Upserts by id. Metadata is written first; a keychain failure after that is
 /// returned as a warning so the user knows the password was not stored.
+/// `ssh_secret` is the tunnel's password, kept under its own key; turning the tunnel
+/// off drops it.
 pub fn save(
     store: &ConnectionStore,
     secrets: &dyn SecretStore,
     config: ConnectionConfig,
     secret: SecretChange,
+    ssh_secret: SecretChange,
 ) -> Result<KeychainOutcome, AppError> {
     let config = normalize(config);
     let mut connections = store.load()?;
     validate(&config, &secret, &connections)?;
 
-    match connections.iter_mut().find(|c| c.id == config.id) {
-        Some(existing) => *existing = config.clone(),
-        None => connections.push(config.clone()),
-    }
+    let had_tunnel = match connections.iter_mut().find(|c| c.id == config.id) {
+        Some(existing) => {
+            let had_tunnel = existing.ssh.is_some();
+            *existing = config.clone();
+            had_tunnel
+        }
+        None => {
+            connections.push(config.clone());
+            false
+        }
+    };
     store.save(&connections)?;
 
-    let keychain_result = match secret {
-        SecretChange::Keep => Ok(()),
-        SecretChange::Set(password) => secrets.set(&config.id, &password),
-        SecretChange::Clear => secrets.delete(&config.id),
-        SecretChange::CopyFrom(source) => copy_secret(secrets, &source, &config.id),
+    let ssh_secret = match (&config.ssh, had_tunnel) {
+        (Some(_), _) => ssh_secret,
+        (None, true) => SecretChange::Clear,
+        (None, false) => SecretChange::Keep,
     };
+    let password = apply(secrets, &config.id, secret, str::to_owned);
+    let ssh_password = apply(secrets, &config.id, ssh_secret, ssh_key);
     Ok(KeychainOutcome {
-        keychain_warning: keychain_result.err().map(|err| err.to_string()),
+        keychain_warning: password.and(ssh_password).err().map(|err| err.to_string()),
     })
+}
+
+/// Applies a change to the secret stored under `key(id)`.
+fn apply(
+    secrets: &dyn SecretStore,
+    id: &str,
+    change: SecretChange,
+    key: fn(&str) -> String,
+) -> Result<(), AppError> {
+    match change {
+        SecretChange::Keep => Ok(()),
+        SecretChange::Set(secret) => secrets.set(&key(id), &secret),
+        SecretChange::Clear => secrets.delete(&key(id)),
+        // nothing stored under the source copies as nothing: the new one has no secret yet
+        SecretChange::CopyFrom(source) => match secrets.get(&key(&source))? {
+            Some(secret) => secrets.set(&key(id), &secret),
+            None => Ok(()),
+        },
+    }
+}
+
+/// The secret a draft would connect with, read without touching the keychain's contents:
+/// a new one as typed, the saved one when kept or copied, none when cleared.
+fn draft_secret(
+    secrets: &dyn SecretStore,
+    id: &str,
+    change: SecretChange,
+    key: fn(&str) -> String,
+) -> Result<Option<String>, AppError> {
+    match change {
+        SecretChange::Clear => Ok(None),
+        SecretChange::Set(secret) => Ok(Some(secret)),
+        SecretChange::Keep => secrets.get(&key(id)),
+        SecretChange::CopyFrom(source) => secrets.get(&key(&source)),
+    }
 }
 
 pub fn delete(
@@ -62,22 +108,17 @@ pub fn delete(
     }
     store.save(&connections)?;
 
+    let password = secrets.delete(id);
+    let ssh_password = secrets.delete(&ssh_key(id));
     Ok(KeychainOutcome {
-        keychain_warning: secrets.delete(id).err().map(|err| err.to_string()),
+        keychain_warning: password.and(ssh_password).err().map(|err| err.to_string()),
     })
-}
-
-/// Nothing stored under `source` copies as nothing: the new connection has no secret yet.
-fn copy_secret(secrets: &dyn SecretStore, source: &str, id: &str) -> Result<(), AppError> {
-    match secrets.get(source)? {
-        Some(secret) => secrets.set(id, &secret),
-        None => Ok(()),
-    }
 }
 
 /// Trims text fields and turns empty optional strings into None.
 fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
     config.name = config.name.trim().to_string();
+    config.group = non_empty(config.group);
     config.target = match config.target {
         Target::Network {
             host,
@@ -116,27 +157,29 @@ fn non_empty(value: Option<String>) -> Option<String> {
 }
 
 /// A draft to test: the same rules as saving, minus the name (it does not reach
-/// the database). Returns the normalized config and the secret it would connect
-/// with, read without touching the keychain: a new one as typed, the saved one
-/// when kept, none when cleared.
+/// the database). Returns the normalized config and the secrets it would connect
+/// with (database, then tunnel), without writing to the keychain.
 pub fn prepare_test(
     store: &ConnectionStore,
     secrets: &dyn SecretStore,
     config: ConnectionConfig,
     secret: SecretChange,
-) -> Result<(ConnectionConfig, Option<String>), AppError> {
+    ssh_secret: SecretChange,
+) -> Result<(ConnectionConfig, Option<String>, Option<String>), AppError> {
     let config = normalize(config);
     if config.id.trim().is_empty() {
         return Err(AppError::validation("id da conexão ausente"));
     }
     validate_target(&config, &secret, &store.load()?)?;
-    let password = match (config.engine, secret) {
-        (Engine::Sqlite, _) | (_, SecretChange::Clear) => None,
-        (_, SecretChange::Set(value)) => Some(value),
-        (_, SecretChange::Keep) => secrets.get(&config.id)?,
-        (_, SecretChange::CopyFrom(source)) => secrets.get(&source)?,
+    let password = match config.engine {
+        Engine::Sqlite => None,
+        _ => draft_secret(secrets, &config.id, secret, str::to_owned)?,
     };
-    Ok((config, password))
+    let ssh_password = match config.ssh {
+        Some(_) => draft_secret(secrets, &config.id, ssh_secret, ssh_key)?,
+        None => None,
+    };
+    Ok((config, password, ssh_password))
 }
 
 fn validate(
@@ -332,6 +375,7 @@ mod tests {
             },
             key_separator: None,
             ssh: None,
+            group: None,
         }
     }
 
@@ -360,6 +404,7 @@ mod tests {
             },
             key_separator: Some(":".into()),
             ssh: None,
+            group: None,
             ..postgres(id, "redis")
         }
     }
@@ -381,6 +426,7 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("s3cret".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -397,6 +443,7 @@ mod tests {
             &MemorySecrets::default(),
             postgres("1", "pg"),
             SecretChange::Set("s3cret".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -413,6 +460,7 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -420,6 +468,7 @@ mod tests {
             &store,
             &secrets,
             postgres("1", "renamed"),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -439,10 +488,18 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
-        save(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Clear,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(secrets.stored("1"), None);
     }
@@ -456,15 +513,24 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
-        save(&store, &secrets, postgres("2", "nada"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("2", "nada"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         save(
             &store,
             &secrets,
             postgres("3", "pg (cópia)"),
             SecretChange::CopyFrom("1".into()),
+            SecretChange::Keep,
         )
         .unwrap();
         // a source without a secret copies as none
@@ -473,17 +539,19 @@ mod tests {
             &secrets,
             postgres("4", "nada (cópia)"),
             SecretChange::CopyFrom("2".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
         assert_eq!(secrets.stored("3").as_deref(), Some("pw"));
         assert_eq!(secrets.stored("1").as_deref(), Some("pw"));
         assert_eq!(secrets.stored("4"), None);
-        let (_, password) = prepare_test(
+        let (_, password, _) = prepare_test(
             &store,
             &secrets,
             postgres("5", "draft"),
             SecretChange::CopyFrom("1".into()),
+            SecretChange::Keep,
         )
         .unwrap();
         assert_eq!(password.as_deref(), Some("pw"));
@@ -498,12 +566,20 @@ mod tests {
             &secrets,
             mongo_uri("1"),
             SecretChange::Set("mongodb://u:p@h/".into()),
+            SecretChange::Keep,
         )
         .unwrap();
         let mut copy = mongo_uri("2");
         copy.name = "copy".into();
 
-        save(&store, &secrets, copy, SecretChange::CopyFrom("1".into())).unwrap();
+        save(
+            &store,
+            &secrets,
+            copy,
+            SecretChange::CopyFrom("1".into()),
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(secrets.stored("2").as_deref(), Some("mongodb://u:p@h/"));
     }
@@ -517,6 +593,7 @@ mod tests {
             &BrokenKeychain,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -544,6 +621,7 @@ mod tests {
             &MemorySecrets::default(),
             config,
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -563,6 +641,36 @@ mod tests {
     }
 
     #[test]
+    fn save_trims_the_group_and_an_empty_one_is_none() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        let mut grouped = postgres("1", "a");
+        grouped.group = Some(" Cliente X ".into());
+        let mut blank = postgres("2", "b");
+        blank.group = Some("  ".into());
+
+        save(
+            &store,
+            &secrets,
+            grouped,
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        save(
+            &store,
+            &secrets,
+            blank,
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+
+        let groups: Vec<_> = list(&store).unwrap().into_iter().map(|c| c.group).collect();
+        assert_eq!(groups, [Some("Cliente X".to_string()), None]);
+    }
+
+    #[test]
     fn save_trims_ssh_fields_and_empties_become_none() {
         let (_dir, store) = store();
         let mut config = postgres("1", "pg");
@@ -577,6 +685,7 @@ mod tests {
             &store,
             &MemorySecrets::default(),
             config,
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -596,8 +705,22 @@ mod tests {
     fn list_sorts_by_name_case_insensitively() {
         let (_dir, store) = store();
         let secrets = MemorySecrets::default();
-        save(&store, &secrets, postgres("1", "beta"), SecretChange::Keep).unwrap();
-        save(&store, &secrets, postgres("2", "Alpha"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("1", "beta"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("2", "Alpha"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         let names: Vec<String> = list(&store).unwrap().into_iter().map(|c| c.name).collect();
 
@@ -609,8 +732,22 @@ mod tests {
         let (_dir, store) = store();
         let secrets = MemorySecrets::default();
 
-        save(&store, &secrets, sqlite("1"), SecretChange::Keep).unwrap();
-        save(&store, &secrets, redis("2"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            sqlite("1"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        save(
+            &store,
+            &secrets,
+            redis("2"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(list(&store).unwrap().len(), 2);
     }
@@ -733,7 +870,13 @@ mod tests {
 
         for (config, secret, expected) in cases {
             let (_dir, store) = store();
-            let msg = validation_message(save(&store, &MemorySecrets::default(), config, secret));
+            let msg = validation_message(save(
+                &store,
+                &MemorySecrets::default(),
+                config,
+                secret,
+                SecretChange::Keep,
+            ));
             assert_eq!(msg, expected);
         }
     }
@@ -759,10 +902,18 @@ mod tests {
             &secrets,
             mongo_uri("1"),
             SecretChange::Set(uri.into()),
+            SecretChange::Keep,
         )
         .unwrap();
         // editing later can keep it
-        save(&store, &secrets, mongo_uri("1"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            mongo_uri("1"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(secrets.stored("1").as_deref(), Some(uri));
         assert_eq!(
@@ -802,7 +953,13 @@ mod tests {
         for (config, secret, expected) in cases {
             let (_dir, store) = store();
             assert_eq!(
-                validation_message(save(&store, &MemorySecrets::default(), config, secret)),
+                validation_message(save(
+                    &store,
+                    &MemorySecrets::default(),
+                    config,
+                    secret,
+                    SecretChange::Keep
+                )),
                 expected
             );
         }
@@ -814,10 +971,17 @@ mod tests {
             &secrets,
             mongo_uri("1"),
             SecretChange::Set("mongodb://h".into()),
+            SecretChange::Keep,
         )
         .unwrap();
         assert_eq!(
-            validation_message(save(&store, &secrets, mongo_uri("1"), SecretChange::Clear)),
+            validation_message(save(
+                &store,
+                &secrets,
+                mongo_uri("1"),
+                SecretChange::Clear,
+                SecretChange::Keep
+            )),
             "a conexão por URI precisa da URI salva"
         );
     }
@@ -831,6 +995,7 @@ mod tests {
             &secrets,
             postgres("1", "Prod DB"),
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -838,6 +1003,7 @@ mod tests {
             &store,
             &secrets,
             postgres("2", "prod db"),
+            SecretChange::Keep,
             SecretChange::Keep,
         ));
 
@@ -853,6 +1019,7 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -863,6 +1030,86 @@ mod tests {
         assert_eq!(secrets.stored("1"), None);
     }
 
+    fn tunneled(id: &str, name: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            ssh: Some(SshConfig {
+                host: "bastion".into(),
+                port: None,
+                user: None,
+                identity_file: None,
+            }),
+            ..postgres(id, name)
+        }
+    }
+
+    #[test]
+    fn the_ssh_password_has_its_own_key_and_follows_the_tunnel() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        let ssh = |change| {
+            save(
+                &store,
+                &secrets,
+                tunneled("1", "pg"),
+                SecretChange::Keep,
+                change,
+            )
+        };
+
+        ssh(SecretChange::Set("ssh-pw".into())).unwrap();
+        assert_eq!(secrets.stored("1:ssh").as_deref(), Some("ssh-pw"));
+        assert_eq!(secrets.stored("1"), None);
+        ssh(SecretChange::Keep).unwrap();
+        assert_eq!(secrets.stored("1:ssh").as_deref(), Some("ssh-pw"));
+
+        // a copy takes the tunnel's password along with the database's
+        let copy = SecretChange::CopyFrom("1".into());
+        save(&store, &secrets, tunneled("2", "copy"), copy.clone(), copy).unwrap();
+        assert_eq!(secrets.stored("2:ssh").as_deref(), Some("ssh-pw"));
+
+        // turning the tunnel off drops its password, whatever the form sent
+        let set = SecretChange::Set("ignored".into());
+        save(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Keep,
+            set,
+        )
+        .unwrap();
+        assert_eq!(secrets.stored("1:ssh"), None);
+
+        delete(&store, &secrets, "2").unwrap();
+        assert_eq!(secrets.stored("2:ssh"), None);
+    }
+
+    #[test]
+    fn test_draft_reads_the_ssh_password_only_with_a_tunnel() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        let ssh_pw = SecretChange::Set("ssh-pw".into());
+        save(
+            &store,
+            &secrets,
+            tunneled("1", "pg"),
+            SecretChange::Keep,
+            ssh_pw.clone(),
+        )
+        .unwrap();
+        let draft = |config, ssh_secret| {
+            prepare_test(&store, &secrets, config, SecretChange::Keep, ssh_secret)
+                .unwrap()
+                .2
+        };
+
+        assert_eq!(
+            draft(tunneled("1", "pg"), SecretChange::Keep).as_deref(),
+            Some("ssh-pw")
+        );
+        assert_eq!(draft(tunneled("1", "pg"), SecretChange::Clear), None);
+        assert_eq!(draft(postgres("1", "pg"), ssh_pw), None);
+    }
+
     #[test]
     fn find_returns_the_connection_or_not_found() {
         let (_dir, store) = store();
@@ -870,6 +1117,7 @@ mod tests {
             &store,
             &MemorySecrets::default(),
             postgres("1", "pg"),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -898,6 +1146,7 @@ mod tests {
             &MemorySecrets::default(),
             postgres("1", "pg"),
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -913,11 +1162,12 @@ mod tests {
         let secrets = MemorySecrets::default();
 
         // a draft needs no name and is not stored
-        let (config, password) = prepare_test(
+        let (config, password, _) = prepare_test(
             &store,
             &secrets,
             postgres("1", "  "),
             SecretChange::Set("typed".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -936,13 +1186,34 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("saved".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
-        let keep = prepare_test(&store, &secrets, postgres("1", "pg"), SecretChange::Keep).unwrap();
-        let clear =
-            prepare_test(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
-        let file = prepare_test(&store, &secrets, sqlite("2"), SecretChange::Keep).unwrap();
+        let keep = prepare_test(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        let clear = prepare_test(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Clear,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        let file = prepare_test(
+            &store,
+            &secrets,
+            sqlite("2"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(keep.1.as_deref(), Some("saved"));
         assert_eq!(clear.1, None);
@@ -967,12 +1238,14 @@ mod tests {
             &MemorySecrets::default(),
             no_host,
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap_err();
         let new_uri = prepare_test(
             &store,
             &MemorySecrets::default(),
             mongo_uri("2"),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap_err();

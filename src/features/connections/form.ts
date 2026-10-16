@@ -18,6 +18,8 @@ import {
 
 export type ConnectionFormValues = {
   name: string;
+  /** folder in the sidebar; empty = ungrouped */
+  group: string;
   engine: Engine;
   /** empty until chosen: the protection regime is never a silent default */
   environment: Environment | "";
@@ -44,16 +46,20 @@ export type ConnectionFormValues = {
   sshPort: string;
   sshUser: string;
   sshIdentityFile: string;
+  /** the user's password or the key's passphrase; kept in the keychain apart from the database's */
+  sshPassword: string;
+  clearSshPassword: boolean;
 };
 
 export type FormErrors = Partial<Record<keyof ConnectionFormValues, string>>;
 
 export type ParsedForm =
-  | { success: true; config: ConnectionConfig; secret: SecretChange }
+  | { success: true; config: ConnectionConfig; secret: SecretChange; sshSecret: SecretChange }
   | { success: false; errors: FormErrors };
 
 export const EMPTY_FORM: ConnectionFormValues = {
   name: "",
+  group: "",
   engine: "postgres",
   environment: "",
   readOnly: false,
@@ -74,7 +80,9 @@ export const EMPTY_FORM: ConnectionFormValues = {
   sshHost: "",
   sshPort: "",
   sshUser: "",
-  sshIdentityFile: ""
+  sshIdentityFile: "",
+  sshPassword: "",
+  clearSshPassword: false
 };
 
 const CONNECTION_STRING = /^mongodb(\+srv)?:\/\//;
@@ -154,9 +162,13 @@ function isUriMode(values: ConnectionFormValues): boolean {
   return values.engine === "mongo" && values.mongoMode === "uri";
 }
 
+/** Left empty on a copy, the original's stored secret is copied by the backend. */
+function keepSecret(copyOf: string | undefined): SecretChange {
+  return copyOf ? { action: "copyFrom", value: copyOf } : { action: "keep" };
+}
+
 function secretChange(values: ConnectionFormValues, copyOf: string | undefined): SecretChange {
-  // left empty on a copy, the original's stored secret is copied by the backend
-  const keep: SecretChange = copyOf ? { action: "copyFrom", value: copyOf } : { action: "keep" };
+  const keep = keepSecret(copyOf);
   if (values.engine === "sqlite") {
     return { action: "keep" };
   }
@@ -223,6 +235,7 @@ export function parseForm(
     config: {
       id,
       name: common.name,
+      group: values.group.trim() || null,
       engine: values.engine,
       environment,
       readOnly: values.readOnly,
@@ -242,7 +255,15 @@ export function parseForm(
           }
         : null
     },
-    secret: secretChange(values, copyOf)
+    secret: secretChange(values, copyOf),
+    // without the tunnel the backend drops its password; nothing to send
+    sshSecret: !ssh
+      ? { action: "keep" }
+      : values.clearSshPassword
+        ? { action: "clear" }
+        : values.sshPassword !== ""
+          ? { action: "set", value: values.sshPassword }
+          : keepSecret(copyOf)
   };
 }
 
@@ -252,6 +273,7 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
   return {
     ...EMPTY_FORM,
     name: config.name,
+    group: config.group ?? "",
     engine: config.engine,
     environment: config.environment,
     readOnly: config.readOnly,

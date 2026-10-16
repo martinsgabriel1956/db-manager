@@ -17,13 +17,13 @@ export const commands = {
 	hideWindow: () => __TAURI_INVOKE<null>("hide_window"),
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
-	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),
+	saveConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret, sshSecret }),
 	deleteConnection: (id: string) => __TAURI_INVOKE<KeychainOutcome>("delete_connection", { id }),
 	/**
 	 *  Connects with the form's draft (saved or not) and closes right away, so wrong
 	 *  credentials are found before they are stored. Never touches open sessions.
 	 */
-	testConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret }),
+	testConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret, sshSecret }),
 	connectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("connect_database", { connectionId }),
 	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
 	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),
@@ -200,6 +200,8 @@ export type ConnectionConfig = {
 	keySeparator: string | null,
 	/**  absent in files saved before the tunnel existed */
 	ssh?: SshConfig | null,
+	/**  folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups */
+	group?: string | null,
 };
 
 export type CsvImport = {
