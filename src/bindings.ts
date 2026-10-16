@@ -51,6 +51,7 @@ export const commands = {
 	previewCsv: (path: string) => __TAURI_INVOKE<CsvPreview>("preview_csv", { path }),
 	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
 	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
+	exportKeys: (connectionId: string, runId: string, db: number, pattern: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_keys", { connectionId, runId, db, pattern, path }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	indexStatement: (index: NewIndex) => __TAURI_INVOKE<string>("index_statement", { index }),
