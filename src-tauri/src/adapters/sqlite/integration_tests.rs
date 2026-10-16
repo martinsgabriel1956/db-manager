@@ -396,6 +396,28 @@ async fn structure_changes_within_what_sqlite_alters() {
             .len(),
         1
     );
+    apply(SchemaChange::RenameTable {
+        new_name: "things".into(),
+    })
+    .await
+    .unwrap();
+    assert!(db.table_structure("main", "things").await.is_ok());
+    let drop = schema_sql(
+        SqliteAdapter::DIALECT,
+        "main",
+        "things",
+        &SchemaChange::DropTable,
+    )
+    .unwrap();
+    run(&db, &drop).await.unwrap();
+    assert!(db.table_structure("main", "things").await.is_err());
+    apply(SchemaChange::CreateTable {
+        columns: vec![column("id", "INTEGER", false, None)],
+        primary_key: vec!["id".into()],
+    })
+    .await
+    .unwrap();
+
     // the rest needs the table rebuilt: refused, with the reason
     let refused = apply(SchemaChange::SetNullable {
         column: "id".into(),

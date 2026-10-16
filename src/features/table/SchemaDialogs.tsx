@@ -1,7 +1,13 @@
 import { useId, useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { commands, type ColumnDefinition, type ColumnInfo, type SchemaChange } from "@/bindings";
+import {
+  commands,
+  type ColumnDefinition,
+  type ColumnInfo,
+  type ReferentialAction,
+  type SchemaChange
+} from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { connected } from "@/features/explorer/queries";
+import { NativeSelect } from "@/components/ui/native-select";
+import { connected, useSchemas, useStructure } from "@/features/explorer/queries";
 import { useSchemaChange } from "@/features/table/useSchemaChange";
 import { errorMessage } from "@/lib/errors";
 
@@ -198,15 +205,21 @@ function ColumnFields({
   );
 }
 
-export function RenameColumnDialog(props: ReviewProps & { column: string }) {
-  const [name, setName] = useState(props.column);
-  const changed = name.trim() !== "" && name !== props.column;
+/** Renames a column, an index or the table: `build` turns the new name into the change. */
+export function RenameDialog(
+  props: ReviewProps & {
+    title: string;
+    current: string;
+    build: (newName: string) => SchemaChange;
+  }
+) {
+  const [name, setName] = useState(props.current);
+  const changed = name.trim() !== "" && name !== props.current;
   return (
     <FormShell
       {...props}
-      title="Renomear coluna"
-      description={`A coluna ${props.column} passa a se chamar:`}
-      change={changed ? { kind: "renameColumn", column: props.column, newName: name } : null}
+      description={`${props.current} passa a se chamar:`}
+      change={changed ? props.build(name) : null}
     >
       <TextField label="Novo nome" autoFocus value={name} onChange={setName} />
     </FormShell>
@@ -345,6 +358,175 @@ export function CreateIndexDialog(props: ReviewProps & { table: string; columns:
         ))}
       </fieldset>
       <Check label="UNIQUE" checked={unique} onChange={setUnique} />
+    </FormShell>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <NativeSelect id={id} value={value} onChange={event => onChange(event.target.value)}>
+        {options.map(option => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </NativeSelect>
+    </div>
+  );
+}
+
+const NO_CHOICE = { value: "", label: "—" };
+
+/** One column to one column of a table of the same schema; composite keys go by the editor. */
+export function ForeignKeyDialog(
+  props: ReviewProps & { connectionId: string; schema: string; table: string; columns: string[] }
+) {
+  const { connectionId, schema, table } = props;
+  const [name, setName] = useState("");
+  const [column, setColumn] = useState("");
+  const [target, setTarget] = useState("");
+  const [targetColumn, setTargetColumn] = useState("");
+  const [onDelete, setOnDelete] = useState<ReferentialAction | "">("");
+  const tables =
+    useSchemas(connectionId, true)
+      .data?.find(candidate => candidate.name === schema)
+      ?.relations.filter(relation => relation.kind === "table")
+      .map(relation => relation.name) ?? [];
+  // the referenced table's columns, once one is picked
+  const targetColumns =
+    useStructure(connectionId, schema, target || table).data?.columns.map(c => c.name) ?? [];
+  const complete = name.trim() !== "" && column !== "" && target !== "" && targetColumn !== "";
+  return (
+    <FormShell
+      {...props}
+      title="Adicionar chave estrangeira"
+      description={`De uma coluna de ${table} para uma coluna de outra tabela de ${schema}.`}
+      change={
+        complete
+          ? {
+              kind: "addConstraint",
+              name,
+              constraint: {
+                kind: "foreignKey",
+                columns: [column],
+                referencedTable: target,
+                referencedColumns: [targetColumn],
+                onDelete: onDelete === "" ? null : onDelete
+              }
+            }
+          : null
+      }
+    >
+      <TextField label="Nome da constraint" autoFocus value={name} onChange={setName} />
+      <SelectField
+        label="Coluna"
+        value={column}
+        options={[NO_CHOICE, ...props.columns.map(c => ({ value: c, label: c }))]}
+        onChange={setColumn}
+      />
+      <SelectField
+        label="Tabela referenciada"
+        value={target}
+        options={[NO_CHOICE, ...tables.map(t => ({ value: t, label: t }))]}
+        onChange={value => {
+          setTarget(value);
+          setTargetColumn("");
+        }}
+      />
+      <SelectField
+        label="Coluna referenciada"
+        value={targetColumn}
+        options={[NO_CHOICE, ...(target ? targetColumns : []).map(c => ({ value: c, label: c }))]}
+        onChange={setTargetColumn}
+      />
+      <SelectField
+        label="Ao excluir a linha referenciada"
+        value={onDelete}
+        options={[
+          { value: "", label: "padrão do banco (recusa)" },
+          { value: "restrict", label: "RESTRICT" },
+          { value: "cascade", label: "CASCADE (exclui junto)" },
+          { value: "setNull", label: "SET NULL" }
+        ]}
+        onChange={value => setOnDelete(value as ReferentialAction | "")}
+      />
+    </FormShell>
+  );
+}
+
+/** UNIQUE over columns, or a CHECK expression. */
+export function ConstraintDialog(props: ReviewProps & { table: string; columns: string[] }) {
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<"unique" | "check">("check");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [expression, setExpression] = useState("");
+  const complete =
+    name.trim() !== "" && (kind === "unique" ? picked.length > 0 : expression.trim() !== "");
+  return (
+    <FormShell
+      {...props}
+      title="Adicionar constraint"
+      description={`Em ${props.table}. O banco confere as linhas existentes e recusa se alguma violar.`}
+      change={
+        complete
+          ? {
+              kind: "addConstraint",
+              name,
+              constraint:
+                kind === "unique"
+                  ? { kind: "unique", columns: picked }
+                  : { kind: "check", expression }
+            }
+          : null
+      }
+    >
+      <TextField label="Nome da constraint" autoFocus value={name} onChange={setName} />
+      <SelectField
+        label="Tipo"
+        value={kind}
+        options={[
+          { value: "check", label: "CHECK" },
+          { value: "unique", label: "UNIQUE" }
+        ]}
+        onChange={value => setKind(value as "unique" | "check")}
+      />
+      {kind === "check" ? (
+        <TextField
+          label="Expressão"
+          hint="SQL que precisa ser verdadeiro em cada linha: price >= 0"
+          value={expression}
+          onChange={setExpression}
+        />
+      ) : (
+        <fieldset className="grid gap-1.5">
+          <legend className="mb-1.5 text-sm font-medium">Colunas</legend>
+          {props.columns.map(column => (
+            <Check
+              key={column}
+              label={column}
+              checked={picked.includes(column)}
+              onChange={checked =>
+                setPicked(prev =>
+                  checked ? [...prev, column] : prev.filter(other => other !== column)
+                )
+              }
+            />
+          ))}
+        </fieldset>
+      )}
     </FormShell>
   );
 }

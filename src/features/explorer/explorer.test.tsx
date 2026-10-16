@@ -187,7 +187,8 @@ test("structure tab lists columns, indexes and foreign keys", async () => {
   expect(structure.getByText("jsonb")).toBeInTheDocument();
   expect(structure.getAllByText("PK")).toHaveLength(2); // header + the id column
   expect(structure.getByText("users_pkey")).toBeInTheDocument();
-  expect(structure.getByText("Nenhum.")).toBeInTheDocument();
+  // no foreign keys, no constraints
+  expect(structure.getAllByText("Nenhuma.")).toHaveLength(2);
 });
 
 test("browse errors are shown", async () => {

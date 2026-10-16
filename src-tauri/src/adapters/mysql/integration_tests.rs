@@ -497,7 +497,7 @@ async fn explain_returns_the_plan_as_a_tree() {
 #[tokio::test]
 async fn structure_changes_and_modify_from_the_whole_definition() {
     use crate::adapters::sql_builder::schema_sql;
-    use crate::domain::{ColumnDefinition, SchemaChange};
+    use crate::domain::{ColumnDefinition, Constraint, ReferentialAction, SchemaChange};
     let (_container, config) = start().await;
     let db = connect(&config, false).await;
     let apply = |change: SchemaChange| {
@@ -588,6 +588,76 @@ async fn structure_changes_and_modify_from_the_whole_definition() {
     let structure = db.table_structure("test", "items").await.unwrap();
     assert_eq!(structure.columns.len(), 1);
     assert_eq!(structure.indexes.len(), 1);
+
+    // constraints, index names and tables
+    run(&db, "CREATE TABLE teams (id INT PRIMARY KEY)")
+        .await
+        .unwrap();
+    apply(SchemaChange::AddColumn {
+        column: ColumnDefinition {
+            name: "team_id".into(),
+            data_type: "int".into(),
+            nullable: true,
+            default: None,
+        },
+    })
+    .await
+    .unwrap();
+    for change in [
+        SchemaChange::AddConstraint {
+            name: "items_team".into(),
+            constraint: Constraint::ForeignKey {
+                columns: vec!["team_id".into()],
+                referenced_table: "teams".into(),
+                referenced_columns: vec!["id".into()],
+                on_delete: Some(ReferentialAction::SetNull),
+            },
+        },
+        SchemaChange::AddConstraint {
+            name: "items_positive".into(),
+            constraint: Constraint::Check {
+                expression: "id > 0".into(),
+            },
+        },
+        SchemaChange::RenameIndex {
+            name: "items_team".into(),
+            new_name: "items_by_team".into(),
+        },
+    ] {
+        apply(change).await.unwrap();
+    }
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert_eq!(structure.foreign_keys[0].name, "items_team");
+    assert_eq!(structure.constraints.len(), 1);
+    assert_eq!(structure.constraints[0].name, "items_positive");
+    assert!(
+        structure.constraints[0].definition.starts_with("CHECK ("),
+        "{:?}",
+        structure.constraints
+    );
+    assert!(structure.indexes.iter().any(|i| i.name == "items_by_team"));
+    for name in ["items_positive", "items_team"] {
+        apply(SchemaChange::DropConstraint { name: name.into() })
+            .await
+            .unwrap();
+    }
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert!(structure.constraints.is_empty() && structure.foreign_keys.is_empty());
+
+    // renaming keeps the table in its database, whatever the session's default is
+    apply(SchemaChange::RenameTable {
+        new_name: "things".into(),
+    })
+    .await
+    .unwrap();
+    assert!(db.table_structure("test", "things").await.is_ok());
+    run(
+        &db,
+        &schema_sql(db.dialect(), "test", "things", &SchemaChange::DropTable).unwrap(),
+    )
+    .await
+    .unwrap();
+    assert!(db.table_structure("test", "things").await.is_err());
 
     // a READ ONLY session refuses DDL too
     let read_only = connect(&config, true).await;

@@ -15,7 +15,9 @@ import {
   AddColumnDialog,
   CreateIndexDialog,
   RedefineColumnDialog,
-  RenameColumnDialog,
+  ConstraintDialog,
+  ForeignKeyDialog,
+  RenameDialog,
   SetDefaultDialog,
   SetTypeDialog,
   type ReviewProps
@@ -37,15 +39,17 @@ type SectionProps = {
   children: ReactNode;
   empty: boolean;
   action?: ReactNode;
+  emptyText?: string;
 };
 
 /** The form open over the structure; a direct action (remove, NULL) has none. */
 type Form =
   | { kind: "addColumn" }
   | { kind: "rename" | "type" | "default" | "redefine"; column: ColumnInfo }
-  | { kind: "index" };
+  | { kind: "index" | "renameTable" | "foreignKey" | "constraint" }
+  | { kind: "renameIndex"; name: string };
 
-function Section({ title, headers, children, empty, action }: SectionProps) {
+function Section({ title, headers, children, empty, action, emptyText = "Nenhum." }: SectionProps) {
   return (
     <section className="grid gap-2">
       <div className="flex items-center gap-3">
@@ -53,7 +57,7 @@ function Section({ title, headers, children, empty, action }: SectionProps) {
         {action}
       </div>
       {empty ? (
-        <p className="text-sm text-muted-foreground">Nenhum.</p>
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
       ) : (
         <table className="w-full border-collapse text-sm">
           <thead>
@@ -80,7 +84,20 @@ export function StructureView({ connectionId, schema, table, readOnly }: Structu
     state => (state.pending[tableKey({ connectionId, schema, table })] ?? 0) > 0
   );
   const [form, setForm] = useState<Form | null>(null);
-  const change = useSchemaChange(connectionId, schema, () => setForm(null));
+  const change = useSchemaChange(connectionId, schema, ({ change: done }) => {
+    setForm(null);
+    // the tab named the old table: it follows the rename, and closes with the table
+    const tabs = useTabs.getState();
+    const tab = tabs.tabs.find(
+      open => open.kind === "table" && tableKey(open) === tableKey({ connectionId, schema, table })
+    );
+    if (done.kind === "renameTable") {
+      tabs.openTable({ connectionId, schema, table: done.newName });
+    }
+    if (tab && (done.kind === "renameTable" || done.kind === "dropTable")) {
+      tabs.close(tab.id);
+    }
+  });
 
   if (structure.isPending) {
     return <p className="p-4 text-sm text-muted-foreground">Carregando estrutura…</p>;
@@ -108,7 +125,10 @@ export function StructureView({ connectionId, schema, table, readOnly }: Structu
     onCancel: () => setForm(null)
   };
 
-  const { columns, indexes, foreignKeys } = structure.data;
+  const { columns, indexes, foreignKeys, constraints } = structure.data;
+  // SQLite keeps constraints in its CREATE TABLE text only: no adding or dropping them
+  const constraintsEditable = editable && engine !== "sqlite";
+  const columnNames = columns.map(column => column.name);
   return (
     <div className="grid gap-6 overflow-auto p-4">
       {readOnly && (
@@ -136,6 +156,21 @@ export function StructureView({ connectionId, schema, table, readOnly }: Structu
         <p role="alert" className="text-sm text-destructive">
           {change.runError}
         </p>
+      )}
+      {editable && (
+        <div className="flex items-center gap-2">
+          <Button size="xs" variant="outline" onClick={() => open({ kind: "renameTable" })}>
+            Renomear tabela…
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            className="text-destructive"
+            onClick={() => review({ kind: "dropTable" })}
+          >
+            <Trash2 /> Remover tabela
+          </Button>
+        </div>
       )}
       <Section
         title="Colunas"
@@ -243,14 +278,27 @@ export function StructureView({ connectionId, schema, table, readOnly }: Structu
               <td className="py-1 pr-4">
                 {/* SQLite's automatic indexes belong to their PRIMARY KEY/UNIQUE: not droppable */}
                 {!index.name.startsWith("sqlite_autoindex_") && (
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    aria-label={`Remover índice ${index.name}`}
-                    onClick={() => review({ kind: "dropIndex", name: index.name })}
-                  >
-                    <Trash2 /> Remover
-                  </Button>
+                  <span className="flex gap-1.5">
+                    {/* SQLite cannot rename an index (drop and create it again) */}
+                    {engine !== "sqlite" && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        aria-label={`Renomear índice ${index.name}`}
+                        onClick={() => open({ kind: "renameIndex", name: index.name })}
+                      >
+                        Renomear
+                      </Button>
+                    )}
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      aria-label={`Remover índice ${index.name}`}
+                      onClick={() => review({ kind: "dropIndex", name: index.name })}
+                    >
+                      <Trash2 /> Remover
+                    </Button>
+                  </span>
                 )}
               </td>
             )}
@@ -259,18 +307,116 @@ export function StructureView({ connectionId, schema, table, readOnly }: Structu
       </Section>
       <Section
         title="Chaves estrangeiras"
-        headers={["Nome", "Definição"]}
+        headers={["Nome", "Definição", ...(constraintsEditable ? ["Ações"] : [])]}
         empty={foreignKeys.length === 0}
+        emptyText="Nenhuma."
+        action={
+          constraintsEditable && (
+            <Button size="xs" variant="outline" onClick={() => open({ kind: "foreignKey" })}>
+              <Plus /> Adicionar chave estrangeira
+            </Button>
+          )
+        }
       >
         {foreignKeys.map(foreignKey => (
           <tr key={foreignKey.name} className="h-7 border-b">
             <td className="py-1.5 pr-4 font-semibold">{foreignKey.name}</td>
             <td className="py-1.5 pr-4">{foreignKey.definition}</td>
+            {constraintsEditable && (
+              <td className="py-1 pr-4">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  aria-label={`Remover chave estrangeira ${foreignKey.name}`}
+                  onClick={() => review({ kind: "dropConstraint", name: foreignKey.name })}
+                >
+                  <Trash2 /> Remover
+                </Button>
+              </td>
+            )}
           </tr>
         ))}
       </Section>
+      {engine === "sqlite" ? (
+        editable && (
+          <p className="text-xs text-muted-foreground">
+            O SQLite só declara constraints (chave estrangeira, CHECK, UNIQUE) no CREATE TABLE:
+            adicionar ou remover uma exige recriar a tabela pelo editor SQL. Para UNIQUE, um índice
+            UNIQUE faz o mesmo papel.
+          </p>
+        )
+      ) : (
+        <Section
+          // MySQL lists UNIQUE as an index, so only its CHECKs show here
+          title={engine === "mysql" ? "Constraints CHECK" : "Constraints UNIQUE e CHECK"}
+          headers={["Nome", "Definição", ...(constraintsEditable ? ["Ações"] : [])]}
+          empty={constraints.length === 0}
+          emptyText="Nenhuma."
+          action={
+            constraintsEditable && (
+              <Button size="xs" variant="outline" onClick={() => open({ kind: "constraint" })}>
+                <Plus /> Adicionar constraint
+              </Button>
+            )
+          }
+        >
+          {constraints.map(constraint => (
+            <tr key={constraint.name} className="h-7 border-b">
+              <td className="py-1.5 pr-4 font-semibold">{constraint.name}</td>
+              <td className="py-1.5 pr-4">{constraint.definition}</td>
+              {constraintsEditable && (
+                <td className="py-1 pr-4">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    aria-label={`Remover constraint ${constraint.name}`}
+                    onClick={() => review({ kind: "dropConstraint", name: constraint.name })}
+                  >
+                    <Trash2 /> Remover
+                  </Button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </Section>
+      )}
       {form?.kind === "addColumn" && <AddColumnDialog {...formProps} table={table} />}
-      {form?.kind === "rename" && <RenameColumnDialog {...formProps} column={form.column.name} />}
+      {form?.kind === "rename" && (
+        <RenameDialog
+          {...formProps}
+          title="Renomear coluna"
+          current={form.column.name}
+          build={newName => ({ kind: "renameColumn", column: form.column.name, newName })}
+        />
+      )}
+      {form?.kind === "renameIndex" && (
+        <RenameDialog
+          {...formProps}
+          title="Renomear índice"
+          current={form.name}
+          build={newName => ({ kind: "renameIndex", name: form.name, newName })}
+        />
+      )}
+      {form?.kind === "renameTable" && (
+        <RenameDialog
+          {...formProps}
+          title="Renomear tabela"
+          current={table}
+          build={newName => ({ kind: "renameTable", newName })}
+        />
+      )}
+      {form?.kind === "foreignKey" && (
+        <ForeignKeyDialog
+          {...formProps}
+          connectionId={connectionId}
+          schema={schema}
+          table={table}
+          columns={columnNames}
+        />
+      )}
+      {form?.kind === "constraint" && (
+        <ConstraintDialog {...formProps} table={table} columns={columnNames} />
+      )}
       {form?.kind === "type" && <SetTypeDialog {...formProps} column={form.column} />}
       {form?.kind === "default" && <SetDefaultDialog {...formProps} column={form.column} />}
       {form?.kind === "redefine" && (
@@ -283,11 +429,7 @@ export function StructureView({ connectionId, schema, table, readOnly }: Structu
         />
       )}
       {form?.kind === "index" && (
-        <CreateIndexDialog
-          {...formProps}
-          table={table}
-          columns={columns.map(column => column.name)}
-        />
+        <CreateIndexDialog {...formProps} table={table} columns={columnNames} />
       )}
       <ConfirmDialog
         connectionId={connectionId}

@@ -1140,6 +1140,142 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn tables_index_names_and_constraints_change_through_the_guard() {
+        use crate::domain::{Constraint, ReferentialAction, SchemaChange};
+        let (_container, config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        exec(
+            &registry,
+            &history,
+            "t1",
+            r"CREATE TABLE teams (id int PRIMARY KEY);
+              CREATE TABLE people (id int PRIMARY KEY, team_id int, email text, age int);
+              CREATE INDEX people_email ON people (email)",
+        )
+        .await;
+        let alter = |table: &'static str, change: SchemaChange, confirmed: bool| {
+            alter_schema(
+                &registry, &history, "it", "public", table, change, confirmed,
+            )
+        };
+        let shown = |response: RunResponse| match response {
+            RunResponse::NeedsConfirmation { confirmation } => confirmation,
+            RunResponse::Executed { .. } => panic!("ran without showing the command"),
+        };
+        let add = |name: &str, constraint: Constraint| SchemaChange::AddConstraint {
+            name: name.into(),
+            constraint,
+        };
+
+        for change in [
+            add(
+                "people_team",
+                Constraint::ForeignKey {
+                    columns: vec!["team_id".into()],
+                    referenced_table: "teams".into(),
+                    referenced_columns: vec!["id".into()],
+                    on_delete: Some(ReferentialAction::Cascade),
+                },
+            ),
+            add(
+                "people_adult",
+                Constraint::Check {
+                    expression: "age >= 18".into(),
+                },
+            ),
+            add(
+                "people_email_key",
+                Constraint::Unique {
+                    columns: vec!["email".into()],
+                },
+            ),
+            SchemaChange::RenameIndex {
+                name: "people_email".into(),
+                new_name: "people_by_email".into(),
+            },
+        ] {
+            executed(alter("people", change, true).await.unwrap());
+        }
+        let structure = table_structure(&registry, "it", "public", "people")
+            .await
+            .unwrap();
+        assert_eq!(
+            structure.foreign_keys[0].definition,
+            "FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE"
+        );
+        let constraints: Vec<_> = structure
+            .constraints
+            .iter()
+            .map(|c| (c.name.as_str(), c.definition.as_str()))
+            .collect();
+        assert_eq!(
+            constraints,
+            [
+                ("people_adult", "CHECK ((age >= 18))"),
+                ("people_email_key", "UNIQUE (email)")
+            ]
+        );
+        assert!(
+            structure
+                .indexes
+                .iter()
+                .any(|i| i.name == "people_by_email")
+        );
+        // the database enforces what was added
+        let refused = run_script(
+            &registry,
+            &history,
+            "it",
+            "t2",
+            "INSERT INTO people VALUES (1, NULL, 'a', 10)",
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.to_string().contains("people_adult"), "{refused}");
+
+        // dropping a constraint or a table is destructive
+        let drop_check = SchemaChange::DropConstraint {
+            name: "people_adult".into(),
+        };
+        assert!(shown(alter("people", drop_check.clone(), false).await.unwrap()).destructive);
+        executed(alter("people", drop_check, true).await.unwrap());
+
+        let rename = SchemaChange::RenameTable {
+            new_name: "persons".into(),
+        };
+        assert!(!shown(alter("people", rename.clone(), false).await.unwrap()).destructive);
+        executed(alter("people", rename, true).await.unwrap());
+        let drop = shown(
+            alter("persons", SchemaChange::DropTable, false)
+                .await
+                .unwrap(),
+        );
+        assert!(drop.destructive);
+        assert_eq!(drop.statements, [r#"DROP TABLE "public"."persons""#]);
+        executed(
+            alter("persons", SchemaChange::DropTable, true)
+                .await
+                .unwrap(),
+        );
+        let tables: Vec<String> = list_schemas(&registry, "it")
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|schema| schema.name == "public")
+            .unwrap()
+            .relations
+            .into_iter()
+            .map(|relation| relation.name)
+            .collect();
+        assert_eq!(tables, ["teams"]);
+    }
+
+    #[tokio::test]
     async fn staged_changes_apply_in_one_transaction() {
         let (_container, mut config) = start().await;
         let registry = Registry::default();
