@@ -1,5 +1,6 @@
 use crate::domain::{
-    AppError, ConnectionConfig, Engine, KeychainOutcome, SecretChange, SshConfig, Target, TlsMode,
+    AppError, ConnectionConfig, Engine, KeychainOutcome, NodeAddress, SecretChange, SshConfig,
+    Target, TlsMode,
 };
 use crate::storage::connections::ConnectionStore;
 use crate::storage::secrets::{SecretStore, ssh_key};
@@ -137,6 +138,16 @@ fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
         Target::Uri { database } => Target::Uri {
             database: database.trim().to_string(),
         },
+        Target::RedisCluster { nodes, username } => Target::RedisCluster {
+            nodes: nodes
+                .into_iter()
+                .map(|node| NodeAddress {
+                    host: node.host.trim().to_string(),
+                    ..node
+                })
+                .collect(),
+            username: username.trim().to_string(),
+        },
     };
     config.tls.ca_cert_path = non_empty(config.tls.ca_cert_path);
     // the separator is meaningful with spaces (" | "), so it is not trimmed
@@ -247,6 +258,20 @@ fn validate_target(
         (_, Target::Uri { .. }) => {
             return invalid("URI de conexão só se aplica ao MongoDB");
         }
+        (Engine::Redis, Target::RedisCluster { nodes, .. }) => {
+            if nodes.is_empty() {
+                return invalid("informe ao menos um nó do cluster");
+            }
+            if nodes
+                .iter()
+                .any(|node| node.host.is_empty() || node.port == 0)
+            {
+                return invalid("cada nó do cluster precisa de host e porta");
+            }
+        }
+        (_, Target::RedisCluster { .. }) => {
+            return invalid("cluster só se aplica ao Redis");
+        }
         (_, Target::File { .. }) => {
             return invalid("este banco precisa de host/porta, não de arquivo");
         }
@@ -272,6 +297,12 @@ fn validate_target(
     }
 
     if let Some(ssh) = &config.ssh {
+        if matches!(config.target, Target::RedisCluster { .. }) {
+            // the client follows the addresses the nodes announce, which bypass the tunnel
+            return invalid(
+                "túnel SSH não funciona com cluster: os nós anunciam os próprios endereços",
+            );
+        }
         if !matches!(config.target, Target::Network { .. }) {
             return invalid("túnel SSH só se aplica a conexões por host e porta");
         }
@@ -875,6 +906,78 @@ mod tests {
                 &MemorySecrets::default(),
                 config,
                 secret,
+                SecretChange::Keep,
+            ));
+            assert_eq!(msg, expected);
+        }
+    }
+
+    fn redis_cluster(id: &str, nodes: &[(&str, u16)]) -> ConnectionConfig {
+        ConnectionConfig {
+            target: Target::RedisCluster {
+                nodes: nodes
+                    .iter()
+                    .map(|(host, port)| NodeAddress {
+                        host: (*host).into(),
+                        port: *port,
+                    })
+                    .collect(),
+                username: String::new(),
+            },
+            ..redis(id)
+        }
+    }
+
+    #[test]
+    fn redis_cluster_validation() {
+        let (_dir, saved) = store();
+        let secrets = MemorySecrets::default();
+        save(
+            &saved,
+            &secrets,
+            redis_cluster("1", &[(" a ", 7000), ("b", 7001)]),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        let Target::RedisCluster { nodes, .. } = &list(&saved).unwrap()[0].target else {
+            panic!("cluster target");
+        };
+        assert_eq!(nodes[0].host, "a");
+
+        let mut with_ssh = redis_cluster("1", &[("a", 7000)]);
+        with_ssh.ssh = Some(SshConfig {
+            host: "bastion".into(),
+            port: None,
+            user: None,
+            identity_file: None,
+        });
+        let mut on_postgres = redis_cluster("1", &[("a", 7000)]);
+        on_postgres.engine = Engine::Postgres;
+        on_postgres.key_separator = None;
+        let cases = [
+            (redis_cluster("1", &[]), "informe ao menos um nó do cluster"),
+            (
+                redis_cluster("1", &[("a", 7000), (" ", 7001)]),
+                "cada nó do cluster precisa de host e porta",
+            ),
+            (
+                redis_cluster("1", &[("a", 0)]),
+                "cada nó do cluster precisa de host e porta",
+            ),
+            (
+                with_ssh,
+                "túnel SSH não funciona com cluster: os nós anunciam os próprios endereços",
+            ),
+            (on_postgres, "cluster só se aplica ao Redis"),
+        ];
+        for (config, expected) in cases {
+            let (_dir, store) = store();
+            let msg = validation_message(save(
+                &store,
+                &secrets,
+                config,
+                SecretChange::Keep,
                 SecretChange::Keep,
             ));
             assert_eq!(msg, expected);
