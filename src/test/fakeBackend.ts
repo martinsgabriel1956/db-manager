@@ -282,6 +282,8 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     table_structure: () => usersStructure,
     completion_tables: () => completion,
     browse_table: () => usersPage,
+    estimate_rows: () => "12345",
+    count_rows: () => "12346",
     run_script: () => executed(rowsOutcome),
     apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
     copy_as_insert: () => 'INSERT INTO "public"."users" ("id", "profile") VALUES (\'2\', NULL);\n',
