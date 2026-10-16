@@ -215,6 +215,8 @@ export const usersStructure: TableStructure = {
   foreignKeys: []
 };
 
+export const usersDdl = 'CREATE TABLE "public"."users" (\n    "id" integer NOT NULL\n);';
+
 export const usersPage: RowBatch = {
   columns: [
     { name: "id", typeName: "int4", editable: true },
@@ -280,6 +282,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     disconnect_database: () => null,
     list_schemas: () => schemas,
     table_structure: () => usersStructure,
+    table_ddl: () => ({ sql: usersDdl, reconstructed: true }),
     completion_tables: () => completion,
     browse_table: () => usersPage,
     estimate_rows: () => "12345",
@@ -290,11 +293,19 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     search_history: () => [],
     browse_collection: () => ({ documents: mongoDocuments, hasMore: true }),
     collection_indexes: () => [{ name: "_id_", definition: '{"_id":1}' }],
+    index_statement: args => {
+      const { index } = args as { index: { collection: string; keys: { field: string }[] } };
+      return `shop.runCommand({"createIndexes":"${index.collection}","keys":"${index.keys.map(k => k.field).join(",")}"})`;
+    },
+    create_index: () => ({ status: "applied" }),
+    drop_index: () => ({ status: "applied" }),
     run_aggregation: () => ({
       status: "executed",
       outcome: { documents: ['{"_id":"even","total":110}'], truncated: false, durationMs: 4 }
     }),
     write_document: () => ({ status: "written", id: '{"$oid":"65a1b2c3d4e5f60718293a4b"}' }),
+    watch_collection: () => null,
+    stop_watch: () => null,
     redis_databases: () => [
       { index: 0, keys: 4 },
       { index: 1, keys: 0 }
@@ -327,6 +338,37 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     export_table: () => ({ rows: 1234, durationMs: 3 }),
     export_collection: () => ({ rows: 2, durationMs: 3 }),
     "plugin:dialog|save": () => "/tmp/export.csv",
+    "plugin:dialog|open": () => "/tmp/users.csv",
+    preview_csv: () => ({
+      columns: ["ID", "perfil"],
+      rows: [
+        ["1", '{"a": 1}'],
+        ["2", null]
+      ],
+      delimiter: ";"
+    }),
+    import_documents: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "imported", rows: 2, durationMs: 4 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Importar 2 documentos de customers.ndjson em shop.customers",
+              statements: [`shop.customers.insertMany([${mongoDocuments[0]}, …])`],
+              destructive: false
+            }
+          },
+    import_csv: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "imported", rows: 1200, durationMs: 9 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Importar 1200 linhas de users.csv em public.users",
+              statements: ['INSERT INTO "public"."users" ("id") VALUES (\'1\'), (\'2\')'],
+              destructive: false
+            }
+          },
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
     // the launch check finds nothing new unless a test says otherwise

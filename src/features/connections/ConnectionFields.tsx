@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 import {
+  formatNodes,
   parseConnectionUrl,
   type ConnectionFormValues,
   type FormErrors
 } from "@/features/connections/form";
 import {
+  DEFAULT_PORT,
   ENGINE_LABEL,
   ENGINES,
   ENVIRONMENT_STYLE,
@@ -22,7 +24,10 @@ import {
 type ConnectionFieldsProps = {
   values: ConnectionFormValues;
   errors: FormErrors;
-  isEditing: boolean;
+  /** what an empty secret field keeps: the connection's own, or the original's on a copy */
+  storedSecret: "own" | "copy" | null;
+  /** the groups already in use, offered as the group field's suggestions */
+  groups: string[];
   onChange: (patch: Partial<ConnectionFormValues>) => void;
   onEngineChange: (engine: Engine) => void;
 };
@@ -72,6 +77,12 @@ function Field({ id, label, error, hint, children }: FieldProps) {
   );
 }
 
+const REDIS_MODE_LABEL: Record<ConnectionFormValues["redisMode"], string> = {
+  standalone: "Servidor único",
+  cluster: "Cluster",
+  sentinel: "Sentinel"
+};
+
 /** How "somente leitura" is enforced, said for the engine being set up. */
 const READ_ONLY_HINT: Record<Engine, string> = {
   postgres: "O próprio Postgres recusa escritas: a sessão abre em somente leitura.",
@@ -84,7 +95,8 @@ const READ_ONLY_HINT: Record<Engine, string> = {
 export function ConnectionFields({
   values,
   errors,
-  isEditing,
+  storedSecret,
+  groups,
   onChange,
   onEngineChange
 }: ConnectionFieldsProps) {
@@ -92,6 +104,10 @@ export function ConnectionFields({
   const isRedis = values.engine === "redis";
   const isMongo = values.engine === "mongo";
   const isUri = isMongo && values.mongoMode === "uri";
+  const isCluster = isRedis && values.redisMode === "cluster";
+  const isSentinel = isRedis && values.redisMode === "sentinel";
+  // the nodes stand in for host and port
+  const hasNodes = isCluster || isSentinel;
   // TLS comes from the URI itself, and a file has none
   const hasTls = !isSqlite && !isUri;
   const advancedError = Boolean(errors.timeoutSecs || errors.caCertPath || errors.tlsMode);
@@ -134,8 +150,57 @@ export function ConnectionFields({
           {textInput("name", { placeholder: `ex.: ${ENGINE_LABEL[values.engine]} prod` })}
         </Field>
       </div>
+      <Field
+        id="group"
+        label="Grupo (opcional)"
+        hint="Pasta na lateral: escolha uma existente ou digite um nome novo. Sem grupo, a conexão fica no topo."
+      >
+        <Input
+          id="group"
+          list="group-suggestions"
+          autoComplete="off"
+          value={values.group}
+          aria-describedby="group-hint"
+          onChange={event => onChange({ group: event.target.value })}
+        />
+        <datalist id="group-suggestions">
+          {groups.map(group => (
+            <option key={group} value={group} />
+          ))}
+        </datalist>
+      </Field>
 
-      {!isSqlite && !isMongo && <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />}
+      {!isSqlite && !isMongo && !hasNodes && (
+        <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />
+      )}
+
+      {isRedis && (
+        <fieldset className="flex gap-4 text-sm">
+          <legend className="sr-only">Topologia do Redis</legend>
+          {(["standalone", "cluster", "sentinel"] as const).map(mode => (
+            <label key={mode} className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="redisMode"
+                checked={values.redisMode === mode}
+                onChange={() =>
+                  onChange({
+                    redisMode: mode,
+                    // the server already typed is the natural first seed (not a sentinel)
+                    redisNodes:
+                      mode === "cluster" && values.redisNodes === "" && values.host !== ""
+                        ? formatNodes([
+                            { host: values.host, port: Number(values.port) || DEFAULT_PORT.redis }
+                          ])
+                        : values.redisNodes
+                  })
+                }
+              />
+              {REDIS_MODE_LABEL[mode]}
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       {isMongo && (
         <fieldset className="flex gap-4 text-sm">
@@ -169,9 +234,11 @@ export function ConnectionFields({
               aria-invalid={errors.uri ? true : undefined}
               aria-describedby={errors.uri ? "uri-error" : undefined}
               placeholder={
-                isEditing
+                storedSecret === "own"
                   ? "Deixe vazio para manter a salva"
-                  : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
+                  : storedSecret === "copy"
+                    ? "Deixe vazio para copiar a da conexão original"
+                    : "mongodb+srv://usuário:senha@cluster.exemplo.net/"
               }
               onChange={event => onChange({ uri: event.target.value })}
             />
@@ -185,29 +252,60 @@ export function ConnectionFields({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-[1fr_8rem] gap-4">
-            <Field id="host" label="Host" error={errors.host}>
-              {textInput("host")}
-            </Field>
-            <Field id="port" label="Porta" error={errors.port}>
-              {textInput("port", { type: "number" })}
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          {hasNodes ? (
             <Field
-              id="database"
-              label={isRedis ? "Banco (0–15)" : "Banco de dados"}
-              error={errors.database}
+              id="redisNodes"
+              label={isSentinel ? "Sentinels" : "Nós semente"}
+              error={errors.redisNodes}
+              hint={
+                isSentinel
+                  ? "host:porta (padrão 26379), separados por vírgula. O endereço do master vem deles a cada conexão."
+                  : "host:porta, separados por vírgula. Um basta: os outros nós vêm dele. O cluster só tem o banco 0."
+              }
             >
-              {textInput("database")}
+              <Input
+                id="redisNodes"
+                value={values.redisNodes}
+                placeholder={
+                  isSentinel ? "10.0.0.1:26379, 10.0.0.2:26379" : "10.0.0.1:7000, 10.0.0.2:7000"
+                }
+                aria-invalid={errors.redisNodes ? true : undefined}
+                aria-describedby={describedBy("redisNodes", errors.redisNodes, true)}
+                onChange={event => onChange({ redisNodes: event.target.value })}
+              />
             </Field>
+          ) : (
+            <div className="grid grid-cols-[1fr_8rem] gap-4">
+              <Field id="host" label="Host" error={errors.host}>
+                {textInput("host")}
+              </Field>
+              <Field id="port" label="Porta" error={errors.port}>
+                {textInput("port", { type: "number" })}
+              </Field>
+            </div>
+          )}
+          {isSentinel && (
+            <Field id="redisMasterName" label="Nome do master" error={errors.redisMasterName}>
+              {textInput("redisMasterName", { placeholder: "mymaster" })}
+            </Field>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            {!isCluster && (
+              <Field
+                id="database"
+                label={isRedis ? "Banco (0–15)" : "Banco de dados"}
+                error={errors.database}
+              >
+                {textInput("database")}
+              </Field>
+            )}
             <Field id="username" label="Usuário" error={errors.username}>
               {textInput("username")}
             </Field>
           </div>
           <Field
             id="password"
-            label="Senha"
+            label={isSentinel ? "Senha do Redis" : "Senha"}
             error={errors.password}
             hint="Guardada no keychain do sistema (no Linux, o Secret Service: GNOME Keyring ou KWallet), não no arquivo de conexões."
           >
@@ -218,36 +316,92 @@ export function ConnectionFields({
               disabled={values.clearPassword}
               aria-invalid={errors.password ? true : undefined}
               aria-describedby={errors.password ? "password-hint password-error" : "password-hint"}
-              placeholder={isEditing ? "Deixe vazio para manter a senha salva" : ""}
+              placeholder={
+                storedSecret === "own"
+                  ? "Deixe vazio para manter a senha salva"
+                  : storedSecret === "copy"
+                    ? "Deixe vazio para copiar a senha da conexão original"
+                    : ""
+              }
               onChange={event => onChange({ password: event.target.value })}
             />
           </Field>
-          {isEditing && (
+          {storedSecret && (
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={values.clearPassword}
                 onChange={event => onChange({ clearPassword: event.target.checked, password: "" })}
               />
-              Remover senha salva
+              {storedSecret === "own" ? "Remover senha salva" : "Não copiar a senha salva"}
             </label>
           )}
-          <div className="grid gap-1">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={values.sshEnabled}
-                aria-describedby="sshEnabled-hint"
-                onChange={event => onChange({ sshEnabled: event.target.checked })}
-              />
-              Conectar por túnel SSH
-            </label>
-            <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
-              Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Só chave ou
-              agente, sem senha. Host e porta acima são vistos a partir do servidor SSH.
+          {isSentinel && (
+            <>
+              <Field
+                id="sentinelPassword"
+                label="Senha do sentinel (opcional)"
+                hint="Só se os sentinels pedem senha própria (requirepass do sentinel). Também vai para o keychain."
+              >
+                <Input
+                  id="sentinelPassword"
+                  type="password"
+                  value={values.sentinelPassword}
+                  disabled={values.clearSentinelPassword}
+                  aria-describedby="sentinelPassword-hint"
+                  placeholder={
+                    storedSecret === "own"
+                      ? "Deixe vazio para manter a senha salva"
+                      : storedSecret === "copy"
+                        ? "Deixe vazio para copiar a da conexão original"
+                        : ""
+                  }
+                  onChange={event => onChange({ sentinelPassword: event.target.value })}
+                />
+              </Field>
+              {storedSecret && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={values.clearSentinelPassword}
+                    onChange={event =>
+                      onChange({
+                        clearSentinelPassword: event.target.checked,
+                        sentinelPassword: ""
+                      })
+                    }
+                  />
+                  {storedSecret === "own"
+                    ? "Remover senha do sentinel salva"
+                    : "Não copiar a senha do sentinel salva"}
+                </label>
+              )}
+            </>
+          )}
+          {hasNodes ? (
+            <p className="text-xs text-muted-foreground">
+              {isCluster
+                ? "Sem túnel SSH no cluster: os nós anunciam os próprios endereços, e o túnel só alcança um host e porta."
+                : "Sem túnel SSH com sentinel: o master vem pelo endereço que o sentinel anuncia, e o túnel só alcança um host e porta."}
             </p>
-          </div>
-          {values.sshEnabled && (
+          ) : (
+            <div className="grid gap-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={values.sshEnabled}
+                  aria-describedby="sshEnabled-hint"
+                  onChange={event => onChange({ sshEnabled: event.target.checked })}
+                />
+                Conectar por túnel SSH
+              </label>
+              <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
+                Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Host e porta
+                acima são vistos a partir do servidor SSH.
+              </p>
+            </div>
+          )}
+          {values.sshEnabled && !hasNodes && (
             <>
               <div className="grid grid-cols-[1fr_8rem] gap-4">
                 <Field id="sshHost" label="Host SSH" error={errors.sshHost}>
@@ -265,6 +419,42 @@ export function ConnectionFields({
                   {textInput("sshIdentityFile", { placeholder: "~/.ssh/id_ed25519" })}
                 </Field>
               </div>
+              <Field
+                id="sshPassword"
+                label="Senha SSH ou passphrase da chave (opcional)"
+                hint="Vai para o keychain, separada da senha do banco, e chega ao ssh só pelo ambiente do processo, nunca pela linha de comando. Vazia: só chave sem passphrase ou agente."
+              >
+                <Input
+                  id="sshPassword"
+                  type="password"
+                  autoComplete="off"
+                  value={values.sshPassword}
+                  disabled={values.clearSshPassword}
+                  aria-describedby="sshPassword-hint"
+                  placeholder={
+                    storedSecret === "own"
+                      ? "Deixe vazio para manter a salva"
+                      : storedSecret === "copy"
+                        ? "Deixe vazio para copiar a da conexão original"
+                        : ""
+                  }
+                  onChange={event => onChange({ sshPassword: event.target.value })}
+                />
+              </Field>
+              {storedSecret && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={values.clearSshPassword}
+                    onChange={event =>
+                      onChange({ clearSshPassword: event.target.checked, sshPassword: "" })
+                    }
+                  />
+                  {storedSecret === "own"
+                    ? "Remover senha SSH salva"
+                    : "Não copiar a senha SSH salva"}
+                </label>
+              )}
             </>
           )}
         </>

@@ -16,7 +16,7 @@ use crate::domain::{
     FilterOp, KeyValue, RelationKind, RowChange, Sort, SortDirection, Target, TlsConfig, TlsMode,
 };
 
-async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
+pub(crate) async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
     let container = Mysql::default()
         .start()
         .await
@@ -41,6 +41,7 @@ async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     };
     (container, config)
 }
@@ -509,4 +510,31 @@ async fn explain_returns_the_plan_as_a_tree() {
     assert!(labels.contains(&"nested_loop".to_string()), "{labels:?}");
     assert!(labels.iter().any(|l| l.starts_with("o (")), "{labels:?}");
     assert!(labels.iter().any(|l| l.starts_with("u (")), "{labels:?}");
+}
+
+#[tokio::test]
+async fn ddl_is_the_servers_show_create_table() {
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+    run(
+        &db,
+        "CREATE TABLE `we``ird` (id INT PRIMARY KEY, name VARCHAR(10) NOT NULL DEFAULT 'a', KEY by_name (name));
+         CREATE VIEW names AS SELECT name FROM `we``ird`",
+    )
+    .await
+    .unwrap();
+
+    let ddl = db.ddl("test", "we`ird").await.unwrap();
+    assert!(!ddl.reconstructed);
+    assert!(
+        ddl.sql
+            .starts_with("CREATE TABLE `we``ird` (\n  `id` int NOT NULL,"),
+        "{}",
+        ddl.sql
+    );
+    assert!(ddl.sql.contains("KEY `by_name` (`name`)"), "{}", ddl.sql);
+    assert!(ddl.sql.ends_with(';'));
+    let view = db.ddl("test", "names").await.unwrap();
+    assert!(view.sql.contains("VIEW `names` AS select"), "{}", view.sql);
+    assert!(db.ddl("test", "missing").await.is_err());
 }

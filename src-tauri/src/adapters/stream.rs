@@ -180,6 +180,19 @@ where
     Ok(u32::try_from(statements.len()).unwrap_or(u32::MAX))
 }
 
+/// A transaction on its own connection, with that session's id so it can be cancelled.
+pub async fn begin<E>(
+    engine: &E,
+    pool: &Pool<E::Db>,
+) -> Result<(sqlx::Transaction<'static, E::Db>, i64), AppError>
+where
+    E: Engine,
+{
+    let mut tx = pool.begin().await?;
+    let session = engine.session_id(&mut tx).await?;
+    Ok((tx, session))
+}
+
 async fn with_timeout<E: Engine, T>(
     engine: &E,
     session: i64,

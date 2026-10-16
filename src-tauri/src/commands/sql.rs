@@ -5,7 +5,7 @@ use tauri::{AppHandle, State};
 use crate::AppState;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, ExplainResponse,
-    HistoryEntry, RowBatch, RunResponse, SchemaInfo, TableChanges, TableStructure,
+    HistoryEntry, RowBatch, RunResponse, SchemaInfo, TableChanges, TableDdl, TableStructure,
 };
 use crate::tray;
 use crate::use_cases::{connections, sql};
@@ -60,6 +60,17 @@ pub async fn table_structure(
     table: String,
 ) -> Result<TableStructure, AppError> {
     sql::table_structure(&state.registry, &connection_id, &schema, &table).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn table_ddl(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+) -> Result<TableDdl, AppError> {
+    sql::table_ddl(&state.registry, &connection_id, &schema, &table).await
 }
 
 #[tauri::command]
