@@ -6,6 +6,7 @@ import { App } from "@/App";
 import type { ConnectionConfig, FindRequest, WriteRequest } from "@/bindings";
 import { aggregationSummary } from "@/features/mongo/AggregationPanel";
 import { invalidQueryFields } from "@/features/mongo/DocumentsPanel";
+import { presence, sampleSummary } from "@/features/mongo/SchemaPanel";
 import { callsTo, devMongo, fakeBackend } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
@@ -339,6 +340,94 @@ test("the stage builder writes the pipeline text and previews up to a stage", as
     "A prévia não executa $out nem $merge"
   );
   expect(callsTo(calls, "run_aggregation")).toHaveLength(runs);
+});
+
+test("the schema tab samples documents and says it is only a sample", async () => {
+  let release: (value: unknown) => void = () => undefined;
+  const calls = fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    sample_schema: args =>
+      (args as { size: number }).size === 7
+        ? new Promise(resolve => {
+            release = resolve;
+          })
+        : {
+            sampled: 2,
+            durationMs: 3,
+            fields: [
+              {
+                path: "_id",
+                documents: 2,
+                types: [{ name: "objectId", count: 2 }],
+                example: '{"$oid":"65a1b2c3d4e5f60718293a4b"}',
+                exampleTruncated: false
+              },
+              {
+                path: "tags",
+                documents: 1,
+                types: [{ name: "array", count: 1 }],
+                example: null,
+                exampleTruncated: false
+              },
+              {
+                path: "tags[]",
+                documents: 1,
+                types: [
+                  { name: "string", count: 2 },
+                  { name: "null", count: 1 }
+                ],
+                example: '"a"',
+                exampleTruncated: true
+              }
+            ]
+          }
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Schema" }));
+
+  expect(screen.getByText(/não o schema da coleção/)).toBeInTheDocument();
+  const size = screen.getByRole("spinbutton", { name: "Documentos na amostra" });
+  await user.clear(size);
+  await user.type(size, "50");
+  expect(
+    screen.getByText('shop.customers.aggregate([{ "$sample": { "size": 50 } }])')
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Amostrar" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "2 documentos amostrados · 3 caminhos · 3 ms"
+  );
+  expect(callsTo(calls, "sample_schema")).toEqual([
+    {
+      connectionId: "mongo-1",
+      runId: expect.any(String),
+      database: "shop",
+      collection: "customers",
+      size: 50
+    }
+  ]);
+  const tags = screen.getByText("tags[]").closest("tr") as HTMLElement;
+  expect(tags).toHaveTextContent("string 2 · null 1");
+  expect(tags).toHaveTextContent("1 de 2 (50%)");
+  expect(tags).toHaveTextContent('"a" … (cortado)');
+  expect(screen.getByText('{"$oid":"65a1b2c3d4e5f60718293a4b"}')).toBeInTheDocument();
+
+  await user.clear(size);
+  await user.type(size, "0");
+  expect(screen.getByRole("button", { name: "Amostrar" })).toBeDisabled();
+
+  await user.clear(size);
+  await user.type(size, "7{Enter}");
+  await user.click(await screen.findByRole("button", { name: "Cancelar" }));
+  const runId = (callsTo(calls, "sample_schema").at(-1) as { runId: string }).runId;
+  expect(callsTo(calls, "cancel_run")).toEqual([{ runId }]);
+  act(() => release({ sampled: 0, durationMs: 1, fields: [] }));
+  expect(await screen.findByRole("status")).toHaveTextContent("0 documentos amostrados");
+});
+
+test("schema sample wording", () => {
+  expect(sampleSummary(1, 1, 2)).toBe("1 documento amostrado · 1 caminho · 2 ms");
+  expect(presence(1, 3)).toBe("1 de 3 (33%)");
 });
 
 test("indexes are listed", async () => {
