@@ -606,6 +606,166 @@ impl RedisAdapter {
         Ok(KeyPage { keys, cursor })
     }
 
+    /// One SCAN MATCH call: the next cursor and the key names, as bytes. In a
+    /// cluster the cursor is "<primary index>:<cursor>" as in `scan`, moving to
+    /// the next primary when one is done; "0" means every node was scanned.
+    pub async fn scan_names(
+        &self,
+        db: u8,
+        pattern: &str,
+        cursor: &str,
+    ) -> Result<(String, Vec<Vec<u8>>), AppError> {
+        let primaries = self.primaries().await?;
+        let (node, cursor) = match cursor.split_once(':') {
+            Some((node, cursor)) => (
+                node.parse::<usize>()
+                    .map_err(|_| AppError::validation("cursor de SCAN inválido"))?,
+                cursor,
+            ),
+            None => (0, cursor),
+        };
+        let target =
+            if primaries.is_empty() {
+                None
+            } else {
+                Some(primaries.get(node).ok_or_else(|| {
+                    AppError::validation("o cluster mudou durante a busca: recomece")
+                })?)
+            };
+        let (next, names): (String, Vec<Vec<u8>>) = self
+            .query_on(
+                db,
+                target,
+                redis::cmd("SCAN")
+                    .arg(cursor)
+                    .arg("MATCH")
+                    .arg(pattern)
+                    .arg("COUNT")
+                    .arg(SCAN_COUNT),
+            )
+            .await?;
+        let next = match (next == "0", primaries.len()) {
+            (_, 0) => next,
+            (true, count) if node + 1 >= count => "0".to_string(),
+            (true, _) => format!("{}:0", node + 1),
+            (false, _) => format!("{node}:{next}"),
+        };
+        Ok((next, names))
+    }
+
+    /// The key as one export line: name, type, PTTL (ms, null = no expiry) and the
+    /// whole value; None if it was deleted after SCAN. Text that is not UTF-8
+    /// (names, values, fields, members) becomes `{"$base64": …}`; types without
+    /// a model (modules) go as their DUMP in `dump` instead of `value`.
+    // ponytail: one key's whole value is held in memory while its line is written
+    pub async fn export_key(
+        &self,
+        db: u8,
+        key: &[u8],
+    ) -> Result<Option<serde_json::Value>, AppError> {
+        use serde_json::{Value as Json, json};
+
+        let mut connection = self.connection(db).await?;
+        let (kind, pttl): (String, i64) = redis::pipe()
+            .cmd("TYPE")
+            .arg(key)
+            .cmd("PTTL")
+            .arg(key)
+            .query_async(&mut connection)
+            .await
+            .map_err(|err| self.fail(db, err))?;
+        let texts = |items: Vec<Vec<u8>>| Json::Array(items.iter().map(|i| json_text(i)).collect());
+        let pairs_of = |items: Vec<Vec<u8>>| {
+            Json::Array(
+                pairs(items)
+                    .map(|(a, b)| json!([json_text(&a), json_text(&b)]))
+                    .collect(),
+            )
+        };
+        let mut value_field = "value";
+        let value = match kind.as_str() {
+            "none" => return Ok(None),
+            "string" => {
+                let bytes: Vec<u8> = self.query(db, redis::cmd("GET").arg(key)).await?;
+                json_text(&bytes)
+            }
+            "hash" => pairs_of(
+                self.scan_collection(db, "HSCAN", key, 2, usize::MAX)
+                    .await?,
+            ),
+            "set" => texts(
+                self.scan_collection(db, "SSCAN", key, 1, usize::MAX)
+                    .await?,
+            ),
+            "list" => texts(self.range_all(db, key, false).await?),
+            // scores as Redis prints them ("1.5", "inf"): no float round trip
+            "zset" => pairs_of(self.range_all(db, key, true).await?),
+            "stream" => {
+                let mut entries = Vec::new();
+                let mut start = "-".to_string();
+                loop {
+                    let batch: Vec<(String, Vec<Vec<u8>>)> = self
+                        .query(
+                            db,
+                            redis::cmd("XRANGE")
+                                .arg(key)
+                                .arg(&start)
+                                .arg("+")
+                                .arg("COUNT")
+                                .arg(SCAN_COUNT),
+                        )
+                        .await?;
+                    let done = batch.len() < SCAN_COUNT;
+                    if let Some((id, _)) = batch.last() {
+                        start = format!("({id}");
+                    }
+                    entries.extend(
+                        batch
+                            .into_iter()
+                            .map(|(id, fields)| json!({"id": id, "fields": pairs_of(fields)})),
+                    );
+                    if done {
+                        break;
+                    }
+                }
+                Json::Array(entries)
+            }
+            _ => {
+                value_field = "dump";
+                let bytes: Vec<u8> = self.query(db, redis::cmd("DUMP").arg(key)).await?;
+                base64_text(&bytes)
+            }
+        };
+        let mut line = json!({
+            "key": json_text(key),
+            "type": kind,
+            "pttl": (pttl >= 0).then_some(pttl),
+        });
+        line[value_field] = value;
+        Ok(Some(line))
+    }
+
+    /// LRANGE (or ZRANGE … WITHSCORES) in pages until the end.
+    async fn range_all(&self, db: u8, key: &[u8], zset: bool) -> Result<Vec<Vec<u8>>, AppError> {
+        let width = if zset { 2 } else { 1 };
+        let mut items = Vec::new();
+        let mut start = 0;
+        loop {
+            let mut command = redis::cmd(if zset { "ZRANGE" } else { "LRANGE" });
+            command.arg(key).arg(start).arg(start + SCAN_COUNT - 1);
+            if zset {
+                command.arg("WITHSCORES");
+            }
+            let batch: Vec<Vec<u8>> = self.query(db, &command).await?;
+            let done = batch.len() < SCAN_COUNT * width;
+            items.extend(batch);
+            start += SCAN_COUNT;
+            if done {
+                return Ok(items);
+            }
+        }
+    }
+
     /// The key's type, TTL and value (the first `MAX_ELEMENTS` of a collection).
     pub async fn read_key(&self, db: u8, key: &str) -> Result<KeyDetail, AppError> {
         let mut connection = self.connection(db).await?;
@@ -648,7 +808,9 @@ impl RedisAdapter {
                 });
             }
             "hash" => {
-                let items = self.scan_collection(db, "HSCAN", key, 2).await?;
+                let items = self
+                    .scan_collection(db, "HSCAN", key.as_bytes(), 2, MAX_ELEMENTS)
+                    .await?;
                 let fields: BTreeMap<Vec<u8>, Vec<u8>> = pairs(items).collect();
                 let entries = fields
                     .iter()
@@ -667,7 +829,9 @@ impl RedisAdapter {
                 (length_of("LLEN").await?, RedisValue::List { items })
             }
             "set" => {
-                let items = self.scan_collection(db, "SSCAN", key, 1).await?;
+                let items = self
+                    .scan_collection(db, "SSCAN", key.as_bytes(), 1, MAX_ELEMENTS)
+                    .await?;
                 let members: BTreeSet<Vec<u8>> = items.into_iter().collect();
                 let members = members.iter().map(|member| reply::text(member)).collect();
                 (length_of("SCARD").await?, RedisValue::Set { members })
@@ -758,13 +922,14 @@ impl RedisAdapter {
         Ok(u32::try_from(length).unwrap_or(u32::MAX))
     }
 
-    /// HSCAN/SSCAN until `MAX_ELEMENTS` (each `width` items: field+value = 2) or the end.
+    /// HSCAN/SSCAN until `limit` elements (each `width` items: field+value = 2) or the end.
     async fn scan_collection(
         &self,
         db: u8,
         command: &str,
-        key: &str,
+        key: &[u8],
         width: usize,
+        limit: usize,
     ) -> Result<Vec<Vec<u8>>, AppError> {
         let mut cursor = "0".to_string();
         let mut items = Vec::new();
@@ -781,8 +946,9 @@ impl RedisAdapter {
                 .await?;
             items.extend(batch);
             cursor = next;
-            if cursor == "0" || items.len() >= MAX_ELEMENTS * width {
-                items.truncate(MAX_ELEMENTS * width);
+            let max = limit.saturating_mul(width);
+            if cursor == "0" || items.len() >= max {
+                items.truncate(max);
                 return Ok(items);
             }
         }
@@ -895,6 +1061,19 @@ fn settings(username: &str, password: Option<&str>) -> RedisConnectionInfo {
         settings = settings.set_password(password);
     }
     settings
+}
+
+/// UTF-8 as a JSON string; anything else as `{"$base64": …}`, so nothing is lost.
+fn json_text(bytes: &[u8]) -> serde_json::Value {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => serde_json::Value::String(text.to_string()),
+        Err(_) => base64_text(bytes),
+    }
+}
+
+fn base64_text(bytes: &[u8]) -> serde_json::Value {
+    use base64::Engine;
+    serde_json::json!({ "$base64": base64::engine::general_purpose::STANDARD.encode(bytes) })
 }
 
 fn pairs(items: Vec<Vec<u8>>) -> impl Iterator<Item = (Vec<u8>, Vec<u8>)> {
@@ -1063,6 +1242,15 @@ mod tests {
         );
         assert_eq!(keys_in(&sections[1].entries[0].1), 12);
         assert_eq!(keys_in("garbage"), 0);
+    }
+
+    #[test]
+    fn export_text_is_lossless() {
+        assert_eq!(json_text("São".as_bytes()), serde_json::json!("São"));
+        assert_eq!(
+            json_text(&[0xff, 0x00, b'a']),
+            serde_json::json!({"$base64": "/wBh"})
+        );
     }
 
     #[test]

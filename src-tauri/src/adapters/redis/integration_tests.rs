@@ -384,6 +384,24 @@ async fn cluster_scans_every_primary_and_routes_by_key() {
     assert!(pages > 1);
     assert_eq!(found, names);
 
+    // the export walks the same primaries, one SCAN at a time, and reads each key
+    // on its node
+    let mut exported = HashSet::new();
+    let mut cursor = "0".to_string();
+    loop {
+        let (next, batch) = redis.scan_names(0, "k:*", &cursor).await.unwrap();
+        for name in batch {
+            let line = redis.export_key(0, &name).await.unwrap().unwrap();
+            assert_eq!(line["value"], "v");
+            exported.insert(line["key"].as_str().unwrap().to_string());
+        }
+        cursor = next;
+        if cursor == "0" {
+            break;
+        }
+    }
+    assert_eq!(exported, names);
+
     // reads and edits go to the key's node
     redis
         .atomic(

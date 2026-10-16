@@ -362,6 +362,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     export_query: () => ({ rows: 1, durationMs: 3 }),
     export_table: () => ({ rows: 1234, durationMs: 3 }),
     export_collection: () => ({ rows: 2, durationMs: 3 }),
+    export_keys: () => ({ rows: 4, durationMs: 3 }),
     "plugin:dialog|save": () => "/tmp/export.csv",
     "plugin:dialog|open": () => "/tmp/users.csv",
     preview_csv: () => ({
