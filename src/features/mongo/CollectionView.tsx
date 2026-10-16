@@ -4,8 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { AggregationPanel } from "@/features/mongo/AggregationPanel";
 import { DocumentsPanel } from "@/features/mongo/DocumentsPanel";
-import { useIndexes } from "@/features/mongo/queries";
-import { errorMessage } from "@/lib/errors";
+import { IndexesPanel } from "@/features/mongo/IndexesPanel";
 
 type CollectionViewProps = {
   connectionId: string;
@@ -63,44 +62,13 @@ export function CollectionView({
         <AggregationPanel connectionId={connectionId} database={database} collection={collection} />
       </TabsContent>
       <TabsContent value="indexes" className="min-h-0 flex-1 overflow-auto">
-        <IndexesPanel connectionId={connectionId} database={database} collection={collection} />
+        <IndexesPanel
+          connectionId={connectionId}
+          database={database}
+          collection={collection}
+          readOnly={readOnly}
+        />
       </TabsContent>
     </Tabs>
-  );
-}
-
-function IndexesPanel({
-  connectionId,
-  database,
-  collection
-}: Omit<CollectionViewProps, "readOnly">) {
-  const indexes = useIndexes(connectionId, database, collection);
-  if (indexes.isPending) {
-    return <p className="p-4 text-sm text-muted-foreground">Carregando índices…</p>;
-  }
-  if (indexes.isError) {
-    return (
-      <p role="alert" className="p-4 text-sm text-destructive">
-        {errorMessage(indexes.error)}
-      </p>
-    );
-  }
-  return (
-    <table className="m-4 border-collapse text-sm">
-      <thead>
-        <tr className="h-7 border-b text-left legend text-muted-foreground">
-          <th className="py-1.5 pr-6 font-medium">Nome</th>
-          <th className="py-1.5 font-medium">Chaves</th>
-        </tr>
-      </thead>
-      <tbody className="font-mono text-xs">
-        {indexes.data.map(index => (
-          <tr key={index.name} className="h-7 border-b">
-            <td className="py-1.5 pr-6 font-semibold">{index.name}</td>
-            <td className="py-1.5">{index.definition}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }

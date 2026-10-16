@@ -44,6 +44,9 @@ export const commands = {
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
+	indexStatement: (index: NewIndex) => __TAURI_INVOKE<string>("index_statement", { index }),
+	createIndex: (connectionId: string, index: NewIndex, confirmed: boolean) => __TAURI_INVOKE<IndexResponse>("create_index", { connectionId, index, confirmed }),
+	dropIndex: (connectionId: string, database: string, collection: string, name: string, confirmed: boolean) => __TAURI_INVOKE<IndexResponse>("drop_index", { connectionId, database, collection, name, confirmed }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
 	writeDocument: (connectionId: string, request: WriteRequest, confirmed: boolean) => __TAURI_INVOKE<WriteResponse>("write_document", { connectionId, request, confirmed }),
 	redisDatabases: (connectionId: string) => __TAURI_INVOKE<RedisDatabase[]>("redis_databases", { connectionId }),
@@ -269,6 +272,16 @@ export type IndexInfo = {
 	definition: string,
 };
 
+export type IndexKey = {
+	field: string,
+	kind: IndexKind,
+};
+
+/**  How a field is indexed: ascending/descending, or a special index type. */
+export type IndexKind = "asc" | "desc" | "text" | "hashed" | "2dsphere" | "2d";
+
+export type IndexResponse = { status: "applied" } | { status: "needsConfirmation"; confirmation: Confirmation };
+
 export type InfoSection = {
 	name: string,
 	/**  (field, value) in server order */
@@ -333,6 +346,21 @@ export type KeyValue = {
  */
 export type KeychainOutcome = {
 	keychainWarning: string | null,
+};
+
+export type NewIndex = {
+	database: string,
+	collection: string,
+	/**  in order: the order of a compound index matters */
+	keys: IndexKey[],
+	/**  empty: generated from the keys, as the drivers do (`email_1`) */
+	name: string,
+	unique: boolean,
+	sparse: boolean,
+	/**  TTL */
+	expireAfterSeconds: number | null,
+	/**  Extended JSON; empty means none */
+	partialFilter: string,
 };
 
 /**  A logical database (SELECT index) and how many keys it holds. */
