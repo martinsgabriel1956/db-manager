@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { ConnectionConfig } from "@/bindings";
 import {
   changeEngine,
+  duplicateForm,
   EMPTY_FORM,
   fromConfig,
   parseConnectionUrl,
@@ -24,7 +25,8 @@ const postgresConfig: ConnectionConfig = {
   target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
   tls: { mode: "verifyFull", caCertPath: "/ca.pem" },
   keySeparator: null,
-  ssh: null
+  ssh: null,
+  group: null
 };
 
 test("a new connection has no environment until one is chosen", () => {
@@ -61,9 +63,11 @@ describe("parseForm", () => {
         target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
         tls: { mode: "prefer", caCertPath: null },
         keySeparator: null,
-        ssh: null
+        ssh: null,
+        group: null
       },
-      secret: { action: "set", value: "pw" }
+      secret: { action: "set", value: "pw" },
+      sshSecret: { action: "keep" }
     });
   });
 
@@ -185,6 +189,25 @@ describe("ssh tunnel", () => {
     expect(sqlite.success && sqlite.config.ssh).toBeNull();
   });
 
+  test("the ssh password is its own secret change, sent only with the tunnel", () => {
+    const tunnel = form({ name: "pg", sshEnabled: true, sshHost: "bastion" });
+    const sshSecret = (values: ConnectionFormValues, copyOf?: string) => {
+      const result = parseForm(values, "2", false, copyOf);
+      return result.success && result.sshSecret;
+    };
+
+    expect(sshSecret({ ...tunnel, sshPassword: "pw" })).toEqual({ action: "set", value: "pw" });
+    expect(sshSecret(tunnel)).toEqual({ action: "keep" });
+    expect(sshSecret({ ...tunnel, clearSshPassword: true })).toEqual({ action: "clear" });
+    expect(sshSecret(tunnel, "1")).toEqual({ action: "copyFrom", value: "1" });
+    expect(sshSecret({ ...tunnel, sshEnabled: false, sshPassword: "pw" })).toEqual({
+      action: "keep"
+    });
+    // never mixed with the database's password
+    const both = parseForm({ ...tunnel, password: "db", sshPassword: "ssh" }, "2");
+    expect(both.success && both.secret).toEqual({ action: "set", value: "db" });
+  });
+
   test("round-trips through fromConfig", () => {
     const config: ConnectionConfig = {
       ...postgresConfig,
@@ -212,6 +235,46 @@ describe("fromConfig", () => {
     });
 
     expect(values).toMatchObject({ filePath: "/a.db", host: "", port: "", caCertPath: "" });
+  });
+});
+
+test("the group is trimmed, blank means none, and round-trips through fromConfig", () => {
+  const grouped = { ...postgresConfig, group: "Cliente X" };
+  const group = (value: string) => {
+    const result = parseForm(form({ name: "pg", group: value }), "1");
+    return result.success && result.config.group;
+  };
+
+  expect(group(" Cliente X ")).toBe("Cliente X");
+  expect(group("  ")).toBeNull();
+  expect(parseForm(fromConfig(grouped), "1")).toMatchObject({ success: true, config: grouped });
+  // a copy lands in the same folder
+  expect(duplicateForm(grouped).group).toBe("Cliente X");
+});
+
+describe("duplicateForm", () => {
+  test("copies every field but the name and the environment, which is chosen again", () => {
+    const values = duplicateForm(postgresConfig);
+
+    expect(values).toEqual({ ...fromConfig(postgresConfig), name: "pg (cópia)", environment: "" });
+    expect(parseForm(values, "2", false, "1")).toMatchObject({
+      success: false,
+      errors: { environment: expect.any(String) }
+    });
+  });
+
+  test("an empty secret copies the original's; a typed or cleared one wins", () => {
+    const copy = { ...duplicateForm(postgresConfig), environment: "dev" as const };
+    const secret = (values: ConnectionFormValues) => {
+      const result = parseForm(values, "2", false, "1");
+      return result.success && result.secret;
+    };
+
+    expect(secret(copy)).toEqual({ action: "copyFrom", value: "1" });
+    expect(secret({ ...copy, password: "new" })).toEqual({ action: "set", value: "new" });
+    expect(secret({ ...copy, clearPassword: true })).toEqual({ action: "clear" });
+    const uri = { ...copy, engine: "mongo" as const, mongoMode: "uri" as const };
+    expect(secret(uri)).toEqual({ action: "copyFrom", value: "1" });
   });
 });
 

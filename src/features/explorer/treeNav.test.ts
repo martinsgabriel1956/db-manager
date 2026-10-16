@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { treeMove, type TreeRow } from "@/features/explorer/treeNav";
+import { byGroup, treeMove, type TreeRow } from "@/features/explorer/treeNav";
 
 // connection (open) > schema (open) > two tables, then a closed connection
 const rows: TreeRow[] = [
@@ -37,4 +37,22 @@ test("left collapses an open row and climbs from a leaf to its parent", () => {
 test("other keys and a missing row do nothing", () => {
   expect(treeMove(rows, 0, "Enter")).toBeNull();
   expect(treeMove(rows, 9, "ArrowDown")).toBeNull();
+});
+
+test("ungrouped connections come first, then groups in alphabetical order", () => {
+  const connections = [
+    { name: "a", group: "Zeta" },
+    { name: "b", group: null },
+    { name: "c", group: "Água" },
+    { name: "d", group: "Zeta" },
+    { name: "e" }
+  ];
+
+  expect(byGroup(connections)).toEqual({
+    ungrouped: [connections[1], connections[4]],
+    groups: [
+      { name: "Água", connections: [connections[2]] },
+      { name: "Zeta", connections: [connections[0], connections[3]] }
+    ]
+  });
 });

@@ -254,10 +254,102 @@ pub fn insert_sql(
         .collect())
 }
 
+/// One INSERT for many rows (`None` is NULL), with the literals the grid edits use.
+pub fn insert_rows_sql(
+    dialect: Dialect,
+    schema: &str,
+    table: &str,
+    columns: &[String],
+    rows: &[Vec<Option<String>>],
+) -> Result<String, AppError> {
+    let names: Vec<String> = columns.iter().map(|c| dialect.quote_ident(c)).collect();
+    let rows = rows
+        .iter()
+        .map(|row| Ok(format!("({})", row_literals(dialect, row)?.join(", "))))
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(format!(
+        "INSERT INTO {} ({}) VALUES {}",
+        table_ref(dialect, schema, table),
+        names.join(", "),
+        rows.join(", ")
+    ))
+}
+
+/// Which value of a one-row `insert_rows_sql` statement holds `position`, the
+/// 1-based character offset PostgreSQL reports for a value it cannot convert.
+pub fn value_at(
+    dialect: Dialect,
+    statement: &str,
+    row: &[Option<String>],
+    position: usize,
+) -> Option<usize> {
+    let lengths: Vec<usize> = row_literals(dialect, row)
+        .ok()?
+        .iter()
+        .map(|literal| literal.chars().count())
+        .collect();
+    // the statement ends with `(literal, literal)`
+    let values = lengths.iter().sum::<usize>() + 2 * lengths.len().saturating_sub(1);
+    let mut start = statement.chars().count().checked_sub(values)?;
+    for (index, length) in lengths.into_iter().enumerate() {
+        if (start..start + length).contains(&position) {
+            return Some(index);
+        }
+        start += length + 2;
+    }
+    None
+}
+
+fn row_literals(dialect: Dialect, row: &[Option<String>]) -> Result<Vec<String>, AppError> {
+    row.iter()
+        .map(|value| match value {
+            Some(text) => dialect.quote_literal(text),
+            None => Ok("NULL".to_string()),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::{Filter, Sort};
+
+    #[test]
+    fn inserts_many_rows_and_finds_a_value_by_position() {
+        let columns = vec!["id".to_string(), "name".to_string()];
+        let rows = vec![
+            vec![Some("1".to_string()), Some(r"c:\temp".to_string())],
+            vec![Some("2".to_string()), None],
+        ];
+        assert_eq!(
+            insert_rows_sql(Dialect::Postgres, "app", "users", &columns, &rows).unwrap(),
+            r#"INSERT INTO "app"."users" ("id", "name") VALUES ('1', E'c:\\temp'), ('2', NULL)"#
+        );
+        assert_eq!(
+            insert_rows_sql(MYSQL, "app", "users", &columns, &rows[1..]).unwrap(),
+            "INSERT INTO `app`.`users` (`id`, `name`) VALUES ('2', NULL)"
+        );
+
+        // 1-based, in characters: "ç" is one
+        let row = vec![Some("ç".to_string()), Some("x".to_string())];
+        let one = insert_rows_sql(
+            Dialect::Postgres,
+            "s",
+            "t",
+            &columns,
+            std::slice::from_ref(&row),
+        )
+        .unwrap();
+        let first = one
+            .find("'ç'")
+            .map(|byte| one[..byte].chars().count() + 1)
+            .unwrap();
+        assert_eq!(value_at(Dialect::Postgres, &one, &row, first), Some(0));
+        assert_eq!(value_at(Dialect::Postgres, &one, &row, first + 2), Some(0));
+        assert_eq!(value_at(Dialect::Postgres, &one, &row, first + 3), None);
+        assert_eq!(value_at(Dialect::Postgres, &one, &row, first + 5), Some(1));
+        assert_eq!(value_at(Dialect::Postgres, &one, &row, 1), None);
+    }
 
     const MYSQL: Dialect = Dialect::Mysql {
         backslash_escapes: true,

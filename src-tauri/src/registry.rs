@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use tokio::task::AbortHandle;
+
 use crate::adapters::SqlConnection;
 use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
@@ -85,6 +87,9 @@ impl OpenConnection {
 struct Run {
     connection: Arc<OpenConnection>,
     session: i64,
+    /// set by `cancel_run`: an import stops before its next batch (SQLite has no
+    /// server-side cancel)
+    cancelled: bool,
 }
 
 struct OpenCursor {
@@ -92,12 +97,19 @@ struct OpenCursor {
     cursor: Arc<Cursor>,
 }
 
-/// Open connections, running scripts (for cancel) and open result cursors.
+/// A MongoDB change stream read by a background task; aborting the task drops the stream.
+struct OpenWatch {
+    connection_id: String,
+    task: AbortHandle,
+}
+
+/// Open connections, running scripts (for cancel), open result cursors and change streams.
 #[derive(Default)]
 pub struct Registry {
     connections: Mutex<HashMap<String, Arc<OpenConnection>>>,
     runs: Mutex<HashMap<String, Run>>,
     cursors: Mutex<HashMap<String, OpenCursor>>,
+    watches: Mutex<HashMap<String, OpenWatch>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -138,6 +150,13 @@ impl Registry {
     /// connection, and closing the pool waits for all of them to come back.
     pub fn remove_connection(&self, connection_id: &str) -> Option<Arc<OpenConnection>> {
         lock(&self.cursors).retain(|_, open| open.connection_id != connection_id);
+        lock(&self.watches).retain(|_, watch| {
+            let keep = watch.connection_id != connection_id;
+            if !keep {
+                watch.task.abort();
+            }
+            keep
+        });
         lock(&self.connections).remove(connection_id)
     }
 
@@ -147,12 +166,25 @@ impl Registry {
             Run {
                 connection,
                 session,
+                cancelled: false,
             },
         );
     }
 
     pub fn finish_run(&self, run_id: &str) {
         lock(&self.runs).remove(run_id);
+    }
+
+    pub fn request_cancel(&self, run_id: &str) {
+        if let Some(run) = lock(&self.runs).get_mut(run_id) {
+            run.cancelled = true;
+        }
+    }
+
+    pub fn cancel_requested(&self, run_id: &str) -> bool {
+        lock(&self.runs)
+            .get(run_id)
+            .is_some_and(|run| run.cancelled)
     }
 
     pub fn running(&self, run_id: &str) -> Option<(Arc<OpenConnection>, i64)> {
@@ -180,5 +212,32 @@ impl Registry {
 
     pub fn remove_cursor(&self, cursor_id: &str) {
         lock(&self.cursors).remove(cursor_id);
+    }
+
+    pub fn insert_watch(&self, watch_id: &str, connection_id: &str, task: AbortHandle) {
+        let previous = lock(&self.watches).insert(
+            watch_id.to_string(),
+            OpenWatch {
+                connection_id: connection_id.to_string(),
+                task,
+            },
+        );
+        if let Some(previous) = previous {
+            previous.task.abort();
+        }
+    }
+
+    /// Closes the change stream; unknown ids (already closed) are fine.
+    pub fn stop_watch(&self, watch_id: &str) {
+        if let Some(watch) = lock(&self.watches).remove(watch_id) {
+            watch.task.abort();
+        }
+    }
+
+    #[cfg(test)]
+    pub fn is_watching(&self, watch_id: &str) -> bool {
+        lock(&self.watches)
+            .get(watch_id)
+            .is_some_and(|watch| !watch.task.is_finished())
     }
 }

@@ -102,6 +102,9 @@ pub struct ConnectionConfig {
     /// absent in files saved before the tunnel existed
     #[serde(default)]
     pub ssh: Option<SshConfig>,
+    /// folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// What to do with the stored password when saving a connection.
@@ -112,6 +115,9 @@ pub enum SecretChange {
     Keep,
     Set(String),
     Clear,
+    /// The stored secret of another connection (the id), copied on save when duplicating
+    /// it: the front never reads a stored secret, not even to copy it.
+    CopyFrom(String),
 }
 
 /// Result of an operation that touches the keychain. Metadata is saved even when the

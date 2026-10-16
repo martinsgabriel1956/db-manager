@@ -7,14 +7,16 @@ import { DEFAULT_REDIS_SEPARATOR } from "@/features/connections/options";
 import { ConsolePanel } from "@/features/redis/ConsolePanel";
 import { InfoPanel } from "@/features/redis/InfoPanel";
 import { KeyBrowser } from "@/features/redis/KeyBrowser";
+import { PubSubPanel } from "@/features/redis/PubSubPanel";
 
 type RedisViewProps = { connection: ConnectionConfig; db: number };
 
-type Section = "keys" | "console" | "info";
+type Section = "keys" | "console" | "pubsub" | "info";
 
 const SECTION_LABEL: Record<Section, string> = {
   keys: "Chaves",
   console: "Console",
+  pubsub: "Pub/sub",
   info: "Servidor"
 };
 
@@ -54,6 +56,10 @@ export function RedisView({ connection, db }: RedisViewProps) {
       </TabsContent>
       <TabsContent value="console" forceMount className="min-h-0 flex-1">
         <ConsolePanel connectionId={connection.id} db={db} promptRef={promptRef} />
+      </TabsContent>
+      {/* mounted while the tab is open: the subscription survives switching sections */}
+      <TabsContent value="pubsub" forceMount className="min-h-0 flex-1">
+        <PubSubPanel connectionId={connection.id} db={db} readOnly={connection.readOnly} />
       </TabsContent>
       <TabsContent value="info" className="min-h-0 flex-1">
         <InfoPanel connectionId={connection.id} />
