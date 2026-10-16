@@ -190,3 +190,17 @@ pub struct InfoSection {
     /// (field, value) in server order
     pub entries: Vec<(String, String)>,
 }
+
+/// What a pub/sub subscription sends to the panel, one at a time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PubSubEvent {
+    Message {
+        channel: RedisText,
+        /// the PSUBSCRIBE pattern that matched; None for SUBSCRIBE
+        pattern: Option<RedisText>,
+        payload: RedisText,
+    },
+    /// the subscription is over (server closed the connection, or it was stopped)
+    Ended { reason: String },
+}

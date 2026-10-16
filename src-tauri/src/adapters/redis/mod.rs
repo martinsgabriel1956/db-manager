@@ -7,14 +7,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use redis::aio::MultiplexedConnection;
 use redis::{
     AsyncConnectionConfig, Client, Cmd, ConnectionAddr, ConnectionInfo, FromRedisValue,
     IntoConnectionInfo, RedisConnectionInfo, RedisError, TlsCertificates, Value,
 };
+use tokio::sync::oneshot;
 
 use crate::domain::{
-    AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage,
+    AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage, PubSubEvent,
     RedisDatabase, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
 };
 
@@ -38,6 +40,9 @@ pub struct RedisAdapter {
     timeout_secs: u32,
     // never held across an await
     connections: Mutex<HashMap<u8, MultiplexedConnection>>,
+    /// live sessions on dedicated connections (pub/sub), by id; dropping the
+    /// sender ends the session
+    streams: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 impl RedisAdapter {
@@ -81,6 +86,7 @@ impl RedisAdapter {
             default_db,
             timeout_secs: config.timeout_secs,
             connections: Mutex::new(HashMap::new()),
+            streams: Mutex::new(HashMap::new()),
         };
         // the handshake authenticates; PING catches servers that require a password we lack
         adapter
@@ -92,6 +98,63 @@ impl RedisAdapter {
 
     pub fn close(&self) {
         lock(&self.connections).clear();
+        lock(&self.streams).clear();
+    }
+
+    /// Subscribes on a dedicated connection (one in subscribe mode runs nothing
+    /// else) and forwards each message to `send` until `stop(id)`, `close`, the
+    /// server closing it, or `send` returning false (the panel is gone).
+    pub async fn subscribe(
+        &self,
+        id: &str,
+        channels: &[String],
+        patterns: &[String],
+        send: impl Fn(PubSubEvent) -> bool + Send + 'static,
+    ) -> Result<(), AppError> {
+        let client = Client::open(self.info.clone()).map_err(|err| self.error(err))?;
+        let mut pubsub = tokio::time::timeout(CONNECT_TIMEOUT, client.get_async_pubsub())
+            .await
+            .map_err(|_| AppError::Timeout("falha ao conectar: tempo esgotado".into()))?
+            .map_err(|err| self.error(err))?;
+        if !channels.is_empty() {
+            pubsub
+                .subscribe(channels)
+                .await
+                .map_err(|err| self.error(err))?;
+        }
+        if !patterns.is_empty() {
+            pubsub
+                .psubscribe(patterns)
+                .await
+                .map_err(|err| self.error(err))?;
+        }
+        let (stop, mut stopped) = oneshot::channel();
+        lock(&self.streams).insert(id.to_string(), stop);
+        tokio::spawn(async move {
+            let mut messages = pubsub.into_on_message();
+            let reason = loop {
+                tokio::select! {
+                    _ = &mut stopped => break "assinatura encerrada",
+                    message = messages.next() => match message {
+                        Some(message) => {
+                            if !send(pubsub_event(&message)) {
+                                return;
+                            }
+                        }
+                        None => break "o servidor encerrou a conexão",
+                    },
+                }
+            };
+            send(PubSubEvent::Ended {
+                reason: reason.to_string(),
+            });
+        });
+        Ok(())
+    }
+
+    /// Ends a live session; unknown ids (already ended) are ignored.
+    pub fn stop(&self, id: &str) {
+        lock(&self.streams).remove(id);
     }
 
     async fn connection(&self, db: u8) -> Result<MultiplexedConnection, AppError> {
@@ -419,6 +482,15 @@ fn command_of(args: &[String]) -> Cmd {
         command.arg(arg);
     }
     command
+}
+
+fn pubsub_event(message: &redis::Msg) -> PubSubEvent {
+    let bytes = |value: redis::RedisResult<Vec<u8>>| reply::text(&value.unwrap_or_default());
+    PubSubEvent::Message {
+        channel: bytes(message.get_channel()),
+        pattern: message.from_pattern().then(|| bytes(message.get_pattern())),
+        payload: reply::text(message.get_payload_bytes()),
+    }
 }
 
 fn pairs(items: Vec<Vec<u8>>) -> impl Iterator<Item = (Vec<u8>, Vec<u8>)> {

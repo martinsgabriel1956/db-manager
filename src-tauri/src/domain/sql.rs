@@ -209,6 +209,40 @@ pub enum RunResponse {
     NeedsConfirmation { confirmation: Confirmation },
 }
 
+/// One step of a query plan, in the engine's own words and units. Costs are the
+/// planner's estimate for the node including its children (SQLite has none).
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanNode {
+    /// "Seq Scan on users", "users (ALL)", "SCAN users"
+    pub label: String,
+    /// conditions, keys and sort keys, as "Filter: (id > 1)"
+    pub details: Vec<String>,
+    pub cost: Option<f64>,
+    pub rows: Option<f64>,
+    /// EXPLAIN ANALYZE only: rows per loop, time per loop and loops
+    pub actual_rows: Option<f64>,
+    pub actual_ms: Option<f64>,
+    pub loops: Option<f64>,
+    pub children: Vec<PlanNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplainPlan {
+    /// the exact EXPLAIN that ran
+    pub sql: String,
+    pub root: PlanNode,
+    pub duration_ms: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum ExplainResponse {
+    Explained { plan: ExplainPlan },
+    NeedsConfirmation { confirmation: Confirmation },
+}
+
 /// Original value of a primary-key column, identifying the row to change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

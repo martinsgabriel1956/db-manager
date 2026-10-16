@@ -37,7 +37,25 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Local, sem publicar: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
+O release leva, além do `.deb` e do AppImage, um `.sig` de cada (assinatura do updater), o `latest.json` que o app consulta ao abrir e em "Procurar atualizações" (bandeja), e um `SHA256SUMS` dos pacotes (`sha256sum -c SHA256SUMS --ignore-missing` confere o que você baixou). O app atualiza sozinho o AppImage e o `.deb` (este pede a senha de administrador pelo `pkexec`), sempre depois de você confirmar.
+
+### Chave de assinatura
+
+O updater só instala um pacote assinado pela chave cuja parte pública está em `plugins.updater.pubkey` do `src-tauri/tauri.conf.json`. A chave privada **nunca** entra no repositório: fica fora dele e nos secrets do GitHub.
+
+```bash
+pnpm tauri signer generate -w ~/.tauri/ordo.key
+```
+
+O comando pede uma senha e grava `~/.tauri/ordo.key` (privada) e `~/.tauri/ordo.key.pub` (pública). Depois:
+
+1. Em **Settings → Secrets and variables → Actions** do repositório, crie `TAURI_SIGNING_PRIVATE_KEY` com o conteúdo de `~/.tauri/ordo.key` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` com a senha.
+2. A pública atual (id `90B7C4B184F0ED9A`) já está no `tauri.conf.json`; com um par novo, cole ali o conteúdo de `~/.tauri/ordo.key.pub` e faça o commit.
+3. Guarde a chave privada e a senha num cofre: sem elas, as versões já instaladas não aceitam mais nenhuma atualização (trocar a chave obriga cada usuário a baixar a próxima versão à mão).
+
+Sem o secret, o workflow falha antes de compilar.
+
+Local, sem publicar e sem chave: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
 
 ## Bancos de demonstração
 
