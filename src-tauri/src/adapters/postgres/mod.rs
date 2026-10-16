@@ -437,6 +437,12 @@ impl PostgresAdapter {
         stream::apply::<PgEngine>(&self.pool, statements).await
     }
 
+    pub async fn begin(
+        &self,
+    ) -> Result<(sqlx::Transaction<'static, sqlx::Postgres>, i64), AppError> {
+        stream::begin(&self.engine, &self.pool).await
+    }
+
     pub async fn cancel(&self, session: i64) {
         self.engine.cancel(session).await;
     }
