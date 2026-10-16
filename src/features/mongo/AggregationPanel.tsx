@@ -5,6 +5,17 @@ import { Button } from "@/components/ui/button";
 import { DocumentCard } from "@/features/mongo/DocumentCard";
 import { isValidJson } from "@/features/mongo/ejson";
 import { JsonEditor } from "@/features/mongo/JsonEditor";
+import {
+  isStageText,
+  mergeStages,
+  PREVIEW_LIMIT,
+  pipelineOf,
+  previewPipeline,
+  splitPipeline,
+  stageOperator,
+  type Stage
+} from "@/features/mongo/pipeline";
+import { PipelineStages } from "@/features/mongo/PipelineStages";
 import { useAggregation } from "@/features/mongo/useAggregation";
 import { RUN_SHORTCUT } from "@/lib/platform";
 
@@ -14,21 +25,71 @@ const INITIAL_PIPELINE = '[\n  { "$match": {} },\n  { "$limit": 20 }\n]';
 
 export function AggregationPanel({ connectionId, database, collection }: AggregationPanelProps) {
   const [pipeline, setPipeline] = useState(INITIAL_PIPELINE);
-  const [syntaxError, setSyntaxError] = useState(false);
+  const [stages, setStages] = useState(() => mergeStages([], splitPipeline(INITIAL_PIPELINE)!));
+  const [problem, setProblem] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ id: string; position: number; operator: string } | null>(
+    null
+  );
   const aggregation = useAggregation(connectionId, database, collection);
   const { state } = aggregation;
   const isRunning = state.status === "running";
+  const isStageList = splitPipeline(pipeline) !== null;
+
+  function editPipeline(text: string) {
+    // the echo of a text the stages just wrote
+    if (text === pipeline) {
+      return;
+    }
+    setPipeline(text);
+    const texts = splitPipeline(text);
+    if (texts) {
+      setStages(current => mergeStages(current, texts));
+    }
+  }
+
+  function changeStages(next: Stage[]) {
+    setStages(next);
+    const text = pipelineOf(next);
+    if (text !== null) {
+      setPipeline(text);
+    }
+  }
+
+  function invalidStage(upTo: number): string | null {
+    const index = stages.findIndex(
+      (stage, i) => i <= upTo && stage.enabled && !isStageText(stage.text)
+    );
+    return index < 0 ? null : `Estágio ${index + 1}: JSON inválido`;
+  }
 
   function run() {
     if (isRunning) {
       return;
     }
-    if (!isValidJson(pipeline)) {
-      setSyntaxError(true);
+    const problem = isValidJson(pipeline) ? invalidStage(stages.length) : "JSON inválido";
+    setProblem(problem);
+    if (problem === null) {
+      setPreview(null);
+      aggregation.run(pipeline);
+    }
+  }
+
+  function runPreview(index: number) {
+    if (isRunning) {
       return;
     }
-    setSyntaxError(false);
-    aggregation.run(pipeline);
+    const text = previewPipeline(stages, index);
+    if (text === null) {
+      setProblem(invalidStage(index) ?? "A prévia não executa $out nem $merge: use Executar");
+      return;
+    }
+    setProblem(null);
+    setPreview({
+      id: stages[index].id,
+      position: index + 1,
+      operator: stageOperator(stages[index].text)!
+    });
+    aggregation.run(text);
   }
 
   return (
@@ -49,13 +110,27 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
           )}
         </div>
       </div>
-      <div className="h-48 shrink-0 p-2">
-        <JsonEditor label="Pipeline" value={pipeline} onChange={setPipeline} onRun={run} />
+      <div className="grid h-80 shrink-0 grid-cols-2 gap-2 p-2">
+        <section aria-label="Estágios" className="min-h-0 overflow-auto">
+          {isStageList ? (
+            <PipelineStages
+              stages={stages}
+              onChange={changeStages}
+              onPreview={runPreview}
+              previewId={preview && state.status !== "idle" ? preview.id : null}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Os estágios aparecem quando o pipeline for um array JSON de objetos.
+            </p>
+          )}
+        </section>
+        <JsonEditor label="Pipeline" value={pipeline} onChange={editPipeline} onRun={run} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto border-t bg-muted/30 p-3">
-        {syntaxError && (
+        {problem && (
           <p role="alert" className="text-sm text-destructive">
-            JSON inválido
+            {problem}
           </p>
         )}
         {state.status === "running" && <p className="text-sm text-muted-foreground">Executando…</p>}
@@ -67,6 +142,8 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
         {state.status === "done" && (
           <>
             <p role="status" className="mb-2 text-xs text-muted-foreground">
+              {preview &&
+                `Prévia até o estágio ${preview.position} (${preview.operator}), com { "$limit": ${PREVIEW_LIMIT} } no fim · `}
               {aggregationSummary(
                 state.outcome.documents.length,
                 state.outcome.truncated,

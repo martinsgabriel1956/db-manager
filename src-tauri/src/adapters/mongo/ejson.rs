@@ -7,6 +7,8 @@
 //! precision in JavaScript when big. With that rule a bare integer is an Int32 and a
 //! number with a decimal point is a Double, both safe for `JSON.parse`.
 
+use std::io::BufRead;
+
 use mongodb::bson::{Bson, Document};
 use serde_json::{Value, json};
 
@@ -71,8 +73,162 @@ pub fn parse_value(text: &str, what: &str) -> Result<Bson, AppError> {
         .map_err(|err| AppError::validation(format!("{what}: Extended JSON inválido ({err})")))
 }
 
+/// Reads documents one at a time from NDJSON (one per line) or a JSON array, so a
+/// file of any size streams. Each document's text is handed over as written, to be
+/// parsed by `parse_document`: Extended JSON wrappers keep their types.
+pub struct DocumentReader<R> {
+    input: R,
+    /// lines read so far, for errors
+    line: u64,
+    /// the file is one `[…]` array; `None` until the first value is seen
+    array: Option<bool>,
+    closed: bool,
+}
+
+impl<R: BufRead> DocumentReader<R> {
+    pub fn new(input: R) -> Self {
+        DocumentReader {
+            input,
+            line: 1,
+            array: None,
+            closed: false,
+        }
+    }
+
+    /// The next document's line (where it starts) and text.
+    pub fn next_document(&mut self) -> Result<Option<(u64, String)>, AppError> {
+        // between documents: whitespace, and in an array `[`, `,` and `]`
+        loop {
+            let Some(byte) = self.peek()? else {
+                return match self.array {
+                    Some(true) if !self.closed => Err(AppError::validation(format!(
+                        "linha {}: o array JSON não fecha com ]",
+                        self.line
+                    ))),
+                    _ => Ok(None),
+                };
+            };
+            match byte {
+                b'\n' => self.line += 1,
+                b' ' | b'\t' | b'\r' => {}
+                b'[' if self.array.is_none() => self.array = Some(true),
+                b',' if self.array == Some(true) && !self.closed => {}
+                b']' if self.array == Some(true) && !self.closed => self.closed = true,
+                b'{' if !self.closed => break,
+                _ => {
+                    return Err(AppError::validation(format!(
+                        "linha {}: esperado um documento JSON ({{…}})",
+                        self.line
+                    )));
+                }
+            }
+            self.input.consume(1);
+        }
+        self.array.get_or_insert(false);
+
+        let start = self.line;
+        let mut text = Vec::new();
+        let (mut depth, mut in_string, mut escaped) = (0u32, false, false);
+        loop {
+            let Some(byte) = self.peek()? else {
+                return Err(AppError::validation(format!(
+                    "linha {start}: o documento não fecha até o fim do arquivo"
+                )));
+            };
+            self.input.consume(1);
+            text.push(byte);
+            match byte {
+                b'\n' => self.line += 1,
+                _ if escaped => escaped = false,
+                b'\\' if in_string => escaped = true,
+                b'"' => in_string = !in_string,
+                b'{' | b'[' if !in_string => depth += 1,
+                b'}' | b']' if !in_string => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let text = String::from_utf8(text).map_err(|_| {
+            AppError::validation(format!("linha {start}: o arquivo não está em UTF-8"))
+        })?;
+        Ok(Some((start, text)))
+    }
+
+    fn peek(&mut self) -> Result<Option<u8>, AppError> {
+        Ok(self.input.fill_buf()?.first().copied())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    fn documents(text: &str) -> Result<Vec<(u64, String)>, AppError> {
+        let mut reader = DocumentReader::new(text.as_bytes());
+        let mut out = Vec::new();
+        while let Some(document) = reader.next_document()? {
+            out.push(document);
+        }
+        Ok(out)
+    }
+
+    #[test]
+    fn reads_ndjson_and_arrays_as_written() {
+        let ndjson = "{\"a\": \"}{\\\"\"}\n\n{\"b\": [1, {\"c\": 2}]}\r\n";
+        assert_eq!(
+            documents(ndjson).unwrap(),
+            [
+                (1, "{\"a\": \"}{\\\"\"}".to_string()),
+                (3, "{\"b\": [1, {\"c\": 2}]}".to_string())
+            ]
+        );
+        let array = "[\n  {\"_id\": 1},\n  {\n    \"_id\": 2\n  }\n]\n";
+        assert_eq!(
+            documents(array).unwrap(),
+            [
+                (2, "{\"_id\": 1}".to_string()),
+                (3, "{\n    \"_id\": 2\n  }".to_string())
+            ]
+        );
+        assert!(documents("[]").unwrap().is_empty());
+        assert!(documents("  \n").unwrap().is_empty());
+    }
+
+    #[test]
+    fn says_which_line_is_wrong() {
+        let error = |text: &str| documents(text).unwrap_err().to_string();
+        assert_eq!(
+            error("{\"a\": 1}\n2\n"),
+            "linha 2: esperado um documento JSON ({…})"
+        );
+        assert_eq!(
+            error("{\"a\": 1},\n"),
+            "linha 1: esperado um documento JSON ({…})"
+        );
+        assert_eq!(
+            error("[{\"a\": 1}\n"),
+            "linha 2: o array JSON não fecha com ]"
+        );
+        assert_eq!(
+            error("[{}] {}"),
+            "linha 1: esperado um documento JSON ({…})"
+        );
+        assert_eq!(
+            error("\n{\"a\": \"x\n"),
+            "linha 2: o documento não fecha até o fim do arquivo"
+        );
+        let latin1: &[u8] = b"{\"a\": \"S\xe3o\"}";
+        assert_eq!(
+            DocumentReader::new(latin1)
+                .next_document()
+                .unwrap_err()
+                .to_string(),
+            "linha 1: o arquivo não está em UTF-8"
+        );
+    }
     use super::*;
     use mongodb::bson::spec::BinarySubtype;
     use mongodb::bson::{Binary, DateTime, Decimal128, doc, oid::ObjectId};

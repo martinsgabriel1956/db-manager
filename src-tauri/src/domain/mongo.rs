@@ -76,3 +76,106 @@ pub enum WriteResponse {
         confirmation: Confirmation,
     },
 }
+
+/// One change stream event, values as Extended JSON text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeEvent {
+    /// insert, update, replace, delete, drop, invalidate…
+    pub operation: String,
+    /// documentKey._id
+    pub id: Option<String>,
+    /// fullDocument (insert, replace)
+    pub document: Option<String>,
+    /// updateDescription (update): updatedFields, removedFields, truncatedArrays
+    pub diff: Option<String>,
+    /// wallTime, or clusterTime (seconds) on servers before 6.0; RFC 3339
+    pub at: Option<String>,
+}
+
+/// What a watch sends to the UI: events, then at most one error that ends it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum WatchMessage {
+    Change { event: ChangeEvent },
+    Error { message: String },
+}
+
+/// How a field is indexed: ascending/descending, or a special index type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub enum IndexKind {
+    #[serde(rename = "asc")]
+    Asc,
+    #[serde(rename = "desc")]
+    Desc,
+    #[serde(rename = "text")]
+    Text,
+    #[serde(rename = "hashed")]
+    Hashed,
+    #[serde(rename = "2dsphere")]
+    Sphere2d,
+    #[serde(rename = "2d")]
+    Flat2d,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexKey {
+    pub field: String,
+    pub kind: IndexKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NewIndex {
+    pub database: String,
+    pub collection: String,
+    /// in order: the order of a compound index matters
+    pub keys: Vec<IndexKey>,
+    /// empty: generated from the keys, as the drivers do (`email_1`)
+    pub name: String,
+    pub unique: bool,
+    pub sparse: bool,
+    /// TTL
+    pub expire_after_seconds: Option<u32>,
+    /// Extended JSON; empty means none
+    pub partial_filter: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum IndexResponse {
+    Applied,
+    NeedsConfirmation { confirmation: Confirmation },
+}
+
+/// What a `$sample` of the collection holds: a sample, not the collection's schema.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaSample {
+    /// documents that came back (fewer than asked when the collection is smaller)
+    pub sampled: u32,
+    pub fields: Vec<FieldSummary>,
+    pub duration_ms: u32,
+}
+
+/// One field path: `address.city` inside objects, `tags[]` for array elements.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldSummary {
+    pub path: String,
+    /// sampled documents where the path occurs
+    pub documents: u32,
+    /// BSON types by the `$type` alias, most frequent first; array elements count one by one
+    pub types: Vec<TypeCount>,
+    /// Extended JSON of the first scalar value seen; none for paths that only hold objects/arrays
+    pub example: Option<String>,
+    pub example_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeCount {
+    pub name: String,
+    pub count: u32,
+}

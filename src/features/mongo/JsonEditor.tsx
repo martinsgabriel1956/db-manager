@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { basicSetup } from "codemirror";
 import { json } from "@codemirror/lang-json";
-import { EditorState, Prec } from "@codemirror/state";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { editorLabel, editorTheme } from "@/lib/codemirror";
 
@@ -19,6 +19,7 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const labelRef = useRef(new Compartment());
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -50,7 +51,7 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
             }
           }),
           editorTheme,
-          editorLabel(label)
+          labelRef.current.of(editorLabel(label))
         ]
       })
     });
@@ -65,6 +66,11 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
     }
   }, [value]);
+
+  // a stage's label carries its position, which changes when stages move
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: labelRef.current.reconfigure(editorLabel(label)) });
+  }, [label]);
 
   return <div ref={hostRef} className="h-full overflow-hidden border border-input" />;
 }

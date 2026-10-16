@@ -36,8 +36,8 @@ pub struct TlsConfig {
     pub ca_cert_path: Option<String>,
 }
 
-/// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite)
-/// or a connection string (MongoDB).
+/// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
+/// a connection string (MongoDB), a Redis Cluster or Redis behind Sentinel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Target {
@@ -55,6 +55,31 @@ pub enum Target {
     /// database to open by default is stored here.
     #[serde(rename_all = "camelCase")]
     Uri { database: String },
+    /// Redis Cluster: the seed nodes; the client discovers the rest from them.
+    /// A cluster only has database 0.
+    #[serde(rename_all = "camelCase")]
+    RedisCluster {
+        nodes: Vec<NodeAddress>,
+        username: String,
+    },
+    /// Redis behind Sentinel: the sentinels and the name they know the master by.
+    /// The master's address is asked to them on every connect. `username` and the
+    /// connection's secret are the master's; a sentinel password, when needed, is a
+    /// second keychain entry.
+    #[serde(rename_all = "camelCase")]
+    RedisSentinel {
+        nodes: Vec<NodeAddress>,
+        master_name: String,
+        database: String,
+        username: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeAddress {
+    pub host: String,
+    pub port: u16,
 }
 
 /// SSH tunnel to reach a network target through a bastion. Runs the system `ssh`,
@@ -88,6 +113,9 @@ pub struct ConnectionConfig {
     /// absent in files saved before the tunnel existed
     #[serde(default)]
     pub ssh: Option<SshConfig>,
+    /// folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// What to do with the stored password when saving a connection.
@@ -98,6 +126,18 @@ pub enum SecretChange {
     Keep,
     Set(String),
     Clear,
+    /// The stored secret of another connection (the id), copied on save when duplicating
+    /// it: the front never reads a stored secret, not even to copy it.
+    CopyFrom(String),
+}
+
+/// The keychain secrets one connection attempt uses.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Secrets {
+    /// the database's password (MongoDB: possibly a whole connection string)
+    pub password: Option<String>,
+    pub ssh_password: Option<String>,
+    pub sentinel_password: Option<String>,
 }
 
 /// Result of an operation that touches the keychain. Metadata is saved even when the
