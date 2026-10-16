@@ -39,6 +39,8 @@ export const commands = {
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
+	alterSchema: (connectionId: string, schema: string, table: string, change: SchemaChange, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("alter_schema", { connectionId, schema, table, change, confirmed }),
+	columnDefinition: (connectionId: string, schema: string, table: string, column: string) => __TAURI_INVOKE<string>("column_definition", { connectionId, schema, table, column }),
 	copyAsInsert: (connectionId: string, schema: string, table: string, columns: string[], rows: Cell[][]) => __TAURI_INVOKE<string>("copy_as_insert", { connectionId, schema, table, columns, rows }),
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
@@ -156,6 +158,18 @@ export type ChangeEvent = {
 	at: string | null,
 };
 
+/**
+ *  A column of a new table or one being added. `data_type` and `default` are SQL as
+ *  the user types it (`varchar(20)`, `now()`, `'a'`): it goes into the DDL as is, and
+ *  the exact command is shown before it runs.
+ */
+export type ColumnDefinition = {
+	name: string,
+	dataType: string,
+	nullable: boolean,
+	default: string | null,
+};
+
 export type ColumnInfo = {
 	name: string,
 	dataType: string,
@@ -227,6 +241,18 @@ export type ConnectionConfig = {
 	ssh?: SshConfig | null,
 	/**  folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups */
 	group?: string | null,
+};
+
+/**  A constraint added to an existing table. */
+export type Constraint = { kind: "unique"; columns: string[] } | 
+/**  the boolean SQL expression, as typed */
+{ kind: "check"; expression: string } | 
+/**  to a table of the same schema */
+{ kind: "foreignKey"; columns: string[]; referencedTable: string; referencedColumns: string[]; onDelete: ReferentialAction | null };
+
+export type ConstraintInfo = {
+	name: string,
+	definition: string,
 };
 
 export type CsvImport = {
@@ -509,6 +535,9 @@ export type RedisValue = { kind: "string"; value: RedisText } | { kind: "hash"; 
 /**  module types (RedisJSON, …): shown by name only */
 { kind: "unsupported"; typeName: string };
 
+/**  What a foreign key does when the referenced row is deleted: a closed list, not SQL text. */
+export type ReferentialAction = "restrict" | "cascade" | "setNull";
+
 export type Relation = {
 	name: string,
 	kind: RelationKind,
@@ -532,6 +561,23 @@ export type RowBatch = {
 export type RowChange = { kind: "update"; key: KeyValue[]; values: ColumnValue[] } | { kind: "insert"; values: ColumnValue[] } | { kind: "delete"; key: KeyValue[] };
 
 export type RunResponse = { status: "executed"; outcome: ScriptOutcome } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+/**  One change of a table's structure; each becomes a single DDL statement. */
+export type SchemaChange = { kind: "createTable"; columns: ColumnDefinition[]; primaryKey: string[] } | { kind: "addColumn"; column: ColumnDefinition } | { kind: "renameColumn"; column: string; newName: string } | { kind: "dropColumn"; column: string } | 
+/**  Postgres; `using` converts values the server cannot cast by itself */
+{ kind: "setType"; column: string; dataType: string; using: string | null } | 
+/**  Postgres and MySQL; `None` drops the default */
+{ kind: "setDefault"; column: string; default: string | null } | 
+/**  Postgres */
+{ kind: "setNullable"; column: string; nullable: boolean } | 
+/**  MySQL: `MODIFY COLUMN` rewrites the whole column, so its whole definition is given */
+{ kind: "redefineColumn"; column: string; definition: string } | { kind: "createIndex"; name: string; columns: string[]; unique: boolean } | { kind: "dropIndex"; name: string } | 
+/**  Postgres and MySQL; SQLite cannot rename an index */
+{ kind: "renameIndex"; name: string; newName: string } | 
+/**  stays in the same schema */
+{ kind: "renameTable"; newName: string } | { kind: "dropTable" } | 
+/**  Postgres and MySQL; SQLite only declares constraints in CREATE TABLE */
+{ kind: "addConstraint"; name: string; constraint: Constraint } | { kind: "dropConstraint"; name: string };
 
 export type SchemaInfo = {
 	name: string,
@@ -612,6 +658,11 @@ export type TableStructure = {
 	columns: ColumnInfo[],
 	indexes: IndexInfo[],
 	foreignKeys: ForeignKeyInfo[],
+	/**
+	 *  UNIQUE and CHECK constraints (Postgres), CHECKs (MySQL, where UNIQUE is an index);
+	 *  none on SQLite, which keeps them only in the CREATE TABLE text
+	 */
+	constraints: ConstraintInfo[],
 };
 
 /**

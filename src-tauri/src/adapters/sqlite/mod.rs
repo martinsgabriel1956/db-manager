@@ -243,6 +243,7 @@ impl SqliteAdapter {
         }
 
         Ok(TableStructure {
+            constraints: Vec::new(),
             columns: columns
                 .into_iter()
                 .map(|(name, data_type, not_null, default, pk)| ColumnInfo {

@@ -38,7 +38,8 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 ## Capabilities and Constraints
 
 - Decisões e escopo de cada marco (M0–M6) em `docs/decisions.md`; é a fonte de verdade técnica.
-- **Fora da v1:** edição de schema pela UI, MONITOR, módulos, export no Redis. Edição de schema está prevista para v2+. O builder visual de agregação e a inferência de schema por amostra no Mongo também saíram da lista depois da v1. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
+- **Fora da v1:** MONITOR, módulos, export no Redis. O builder visual de agregação, a inferência de schema por amostra no Mongo e a edição de schema também saíram da lista depois da v1. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
+- **Edição de schema (SQL), depois da v1:** criar, renomear e remover tabela; adicionar, renomear e remover coluna; mudar tipo, default e NULL; criar, renomear e remover índice; adicionar e remover chave estrangeira, CHECK e UNIQUE. A UI gera o DDL e sempre mostra o comando exato antes de rodar; remover tabela, coluna, índice ou constraint é destrutivo; o que a engine não faz (o SQLite não altera coluna nem constraint sem recriar a tabela) é dito na tela, não escondido.
 - Edição inline só em tabela com chave primária editável; senão a tabela é somente leitura. Mongo e Redis editam na hora, sem stage.
 - Redis: sempre `SCAN`, nunca `KEYS`. Sem cancelamento no Redis e no SQLite (só timeout).
 - Distribuição só Linux (AppImage + `.deb`) via GitHub Releases; sem builds de macOS/Windows por enquanto.

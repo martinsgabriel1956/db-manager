@@ -116,6 +116,7 @@ export function TableView(props: TableViewProps) {
           connectionId={props.connectionId}
           schema={props.schema}
           table={props.table}
+          readOnly={props.readOnly}
         />
       </TabsContent>
     </Tabs>

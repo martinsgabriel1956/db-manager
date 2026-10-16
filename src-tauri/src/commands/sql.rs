@@ -5,7 +5,8 @@ use tauri::{AppHandle, State};
 use crate::AppState;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, ExplainResponse,
-    HistoryEntry, RowBatch, RunResponse, SchemaInfo, TableChanges, TableDdl, TableStructure,
+    HistoryEntry, RowBatch, RunResponse, SchemaChange, SchemaInfo, TableChanges, TableDdl,
+    TableStructure,
 };
 use crate::tray;
 use crate::use_cases::{connections, sql};
@@ -192,6 +193,40 @@ pub async fn apply_changes(
         confirmed,
     )
     .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn alter_schema(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+    change: SchemaChange,
+    confirmed: bool,
+) -> Result<RunResponse, AppError> {
+    sql::alter_schema(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        &schema,
+        &table,
+        change,
+        confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn column_definition(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+    column: String,
+) -> Result<String, AppError> {
+    sql::column_definition(&state.registry, &connection_id, &schema, &table, &column).await
 }
 
 #[tauri::command]

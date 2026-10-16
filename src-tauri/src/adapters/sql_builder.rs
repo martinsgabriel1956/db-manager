@@ -4,8 +4,8 @@
 
 use crate::adapters::dialect::Dialect;
 use crate::domain::{
-    AppError, BrowseRequest, Cell, ColumnValue, Filter, FilterOp, KeyValue, RowChange,
-    SortDirection,
+    AppError, BrowseRequest, Cell, ColumnDefinition, ColumnValue, Constraint, Filter, FilterOp,
+    KeyValue, ReferentialAction, RowChange, SchemaChange, SortDirection,
 };
 
 fn table_ref(dialect: Dialect, schema: &str, table: &str) -> String {
@@ -107,6 +107,281 @@ fn where_clause(dialect: Dialect, filters: &[Filter]) -> Result<String, AppError
     } else {
         format!(" WHERE {}", conditions.join(" AND "))
     })
+}
+
+const SQLITE_ALTER: &str = "O SQLite não muda o tipo, o default nem o NULL de uma coluna \
+     sem recriar a tabela: recrie-a pelo editor SQL";
+const SQLITE_CONSTRAINT: &str = "O SQLite só declara constraints no CREATE TABLE: \
+     adicionar ou remover uma exige recriar a tabela pelo editor SQL (UNIQUE: crie um índice UNIQUE)";
+const MYSQL_MODIFY: &str =
+    "No MySQL, tipo e NULL mudam redefinindo a coluna inteira (MODIFY COLUMN)";
+
+/// The DDL statement of one structure change. Types, defaults and definitions are the
+/// user's SQL, inlined as typed; names are quoted. Engine limits are errors that say
+/// what the engine cannot do, not a silent rewrite.
+pub fn schema_sql(
+    dialect: Dialect,
+    schema: &str,
+    table: &str,
+    change: &SchemaChange,
+) -> Result<String, AppError> {
+    let target = table_ref(dialect, schema, table);
+    let q = |name: &str| dialect.quote_ident(name);
+    let alter_column = |column: &str, action: &str| {
+        format!("ALTER TABLE {target} ALTER COLUMN {} {action}", q(column))
+    };
+    let is_mysql = matches!(dialect, Dialect::Mysql { .. });
+    let sql = match change {
+        SchemaChange::CreateTable {
+            columns,
+            primary_key,
+        } => {
+            required(table, "o nome da tabela")?;
+            if columns.is_empty() {
+                return Err(AppError::validation(
+                    "a tabela precisa de pelo menos uma coluna",
+                ));
+            }
+            let mut lines = columns
+                .iter()
+                .map(|column| column_sql(dialect, column))
+                .collect::<Result<Vec<_>, _>>()?;
+            if let Some(missing) = primary_key
+                .iter()
+                .find(|key| !columns.iter().any(|column| &column.name == *key))
+            {
+                return Err(AppError::validation(format!(
+                    "a chave primária usa {missing}, que não é uma coluna da tabela"
+                )));
+            }
+            if !primary_key.is_empty() {
+                lines.push(format!("PRIMARY KEY ({})", list(dialect, primary_key)));
+            }
+            format!("CREATE TABLE {target} (\n    {}\n)", lines.join(",\n    "))
+        }
+        SchemaChange::AddColumn { column } => {
+            format!(
+                "ALTER TABLE {target} ADD COLUMN {}",
+                column_sql(dialect, column)?
+            )
+        }
+        SchemaChange::RenameColumn { column, new_name } => {
+            required(new_name, "o novo nome")?;
+            format!(
+                "ALTER TABLE {target} RENAME COLUMN {} TO {}",
+                q(column),
+                q(new_name)
+            )
+        }
+        SchemaChange::DropColumn { column } => {
+            format!("ALTER TABLE {target} DROP COLUMN {}", q(column))
+        }
+        SchemaChange::SetType {
+            column,
+            data_type,
+            using,
+        } => match dialect {
+            Dialect::Postgres => {
+                let mut action = format!("TYPE {}", required(data_type, "o tipo")?);
+                if let Some(using) = using.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+                    action.push_str(&format!(" USING {using}"));
+                }
+                alter_column(column, &action)
+            }
+            Dialect::Mysql { .. } => return Err(AppError::validation(MYSQL_MODIFY)),
+            Dialect::Sqlite => return Err(AppError::validation(SQLITE_ALTER)),
+        },
+        SchemaChange::SetDefault { column, default } => {
+            if dialect == Dialect::Sqlite {
+                return Err(AppError::validation(SQLITE_ALTER));
+            }
+            match default.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+                Some(default) => alter_column(column, &format!("SET DEFAULT {default}")),
+                None => alter_column(column, "DROP DEFAULT"),
+            }
+        }
+        SchemaChange::SetNullable { column, nullable } => match dialect {
+            Dialect::Postgres => alter_column(
+                column,
+                if *nullable {
+                    "DROP NOT NULL"
+                } else {
+                    "SET NOT NULL"
+                },
+            ),
+            Dialect::Mysql { .. } => return Err(AppError::validation(MYSQL_MODIFY)),
+            Dialect::Sqlite => return Err(AppError::validation(SQLITE_ALTER)),
+        },
+        SchemaChange::RedefineColumn { column, definition } => {
+            if !is_mysql {
+                return Err(AppError::validation(
+                    "redefinir a coluna inteira (MODIFY COLUMN) é só do MySQL",
+                ));
+            }
+            format!(
+                "ALTER TABLE {target} MODIFY COLUMN {} {}",
+                q(column),
+                required(definition, "a definição")?
+            )
+        }
+        SchemaChange::CreateIndex {
+            name,
+            columns,
+            unique,
+        } => {
+            required(name, "o nome do índice")?;
+            if columns.is_empty() {
+                return Err(AppError::validation("escolha as colunas do índice"));
+            }
+            let unique = if *unique { "UNIQUE " } else { "" };
+            let columns = list(dialect, columns);
+            match dialect {
+                // the index lives in the table's schema: SQLite names it there, not the table
+                Dialect::Sqlite => format!(
+                    "CREATE {unique}INDEX {} ON {} ({columns})",
+                    table_ref(dialect, schema, name),
+                    q(table)
+                ),
+                _ => format!("CREATE {unique}INDEX {} ON {target} ({columns})", q(name)),
+            }
+        }
+        SchemaChange::DropIndex { name } => match dialect {
+            Dialect::Mysql { .. } => format!("DROP INDEX {} ON {target}", q(name)),
+            Dialect::Postgres | Dialect::Sqlite => {
+                format!("DROP INDEX {}", table_ref(dialect, schema, name))
+            }
+        },
+        SchemaChange::RenameIndex { name, new_name } => {
+            required(new_name, "o novo nome")?;
+            match dialect {
+                Dialect::Postgres => format!(
+                    "ALTER INDEX {} RENAME TO {}",
+                    table_ref(dialect, schema, name),
+                    q(new_name)
+                ),
+                Dialect::Mysql { .. } => format!(
+                    "ALTER TABLE {target} RENAME INDEX {} TO {}",
+                    q(name),
+                    q(new_name)
+                ),
+                Dialect::Sqlite => {
+                    return Err(AppError::validation(
+                        "O SQLite não renomeia índices: remova e crie de novo com o novo nome",
+                    ));
+                }
+            }
+        }
+        SchemaChange::RenameTable { new_name } => {
+            required(new_name, "o novo nome")?;
+            // MySQL would move a bare name to the session's database: keep it in this one
+            let renamed = if is_mysql {
+                table_ref(dialect, schema, new_name)
+            } else {
+                q(new_name)
+            };
+            format!("ALTER TABLE {target} RENAME TO {renamed}")
+        }
+        SchemaChange::DropTable => format!("DROP TABLE {target}"),
+        SchemaChange::AddConstraint { name, constraint } => {
+            if dialect == Dialect::Sqlite {
+                return Err(AppError::validation(SQLITE_CONSTRAINT));
+            }
+            required(name, "o nome da constraint")?;
+            let definition = match constraint {
+                Constraint::Unique { columns } => {
+                    if columns.is_empty() {
+                        return Err(AppError::validation("escolha as colunas da constraint"));
+                    }
+                    format!("UNIQUE ({})", list(dialect, columns))
+                }
+                Constraint::Check { expression } => {
+                    format!("CHECK ({})", required(expression, "a expressão do CHECK")?)
+                }
+                Constraint::ForeignKey {
+                    columns,
+                    referenced_table,
+                    referenced_columns,
+                    on_delete,
+                } => {
+                    required(referenced_table, "a tabela referenciada")?;
+                    if columns.is_empty() || columns.len() != referenced_columns.len() {
+                        return Err(AppError::validation(
+                            "a chave estrangeira liga o mesmo número de colunas dos dois lados",
+                        ));
+                    }
+                    let mut definition = format!(
+                        "FOREIGN KEY ({}) REFERENCES {} ({})",
+                        list(dialect, columns),
+                        table_ref(dialect, schema, referenced_table),
+                        list(dialect, referenced_columns)
+                    );
+                    if let Some(action) = on_delete {
+                        definition.push_str(match action {
+                            ReferentialAction::Restrict => " ON DELETE RESTRICT",
+                            ReferentialAction::Cascade => " ON DELETE CASCADE",
+                            ReferentialAction::SetNull => " ON DELETE SET NULL",
+                        });
+                    }
+                    definition
+                }
+            };
+            format!(
+                "ALTER TABLE {target} ADD CONSTRAINT {} {definition}",
+                q(name)
+            )
+        }
+        // MySQL takes the generic form from 8.0.19 (FOREIGN KEY, CHECK, UNIQUE alike)
+        SchemaChange::DropConstraint { name } => {
+            if dialect == Dialect::Sqlite {
+                return Err(AppError::validation(SQLITE_CONSTRAINT));
+            }
+            format!("ALTER TABLE {target} DROP CONSTRAINT {}", q(name))
+        }
+    };
+    // a type or default typed with a `;` would smuggle in a second command
+    if dialect.split(&sql).len() != 1 {
+        return Err(AppError::validation(
+            "a alteração gera mais de um comando: tipo, default e definição não podem ter `;`",
+        ));
+    }
+    Ok(sql)
+}
+
+fn column_sql(dialect: Dialect, column: &ColumnDefinition) -> Result<String, AppError> {
+    required(&column.name, "o nome da coluna")?;
+    let mut sql = format!(
+        "{} {}",
+        dialect.quote_ident(&column.name),
+        required(&column.data_type, &format!("o tipo de {}", column.name))?
+    );
+    if let Some(default) = column
+        .default
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+    {
+        sql.push_str(&format!(" DEFAULT {default}"));
+    }
+    if !column.nullable {
+        sql.push_str(" NOT NULL");
+    }
+    Ok(sql)
+}
+
+fn list(dialect: Dialect, names: &[String]) -> String {
+    names
+        .iter()
+        .map(|name| dialect.quote_ident(name))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn required<'a>(value: &'a str, what: &str) -> Result<&'a str, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::validation(format!("informe {what}")));
+    }
+    Ok(value)
 }
 
 /// The values of an IN filter: comma-separated, trimmed, blanks dropped.
@@ -393,6 +668,255 @@ mod tests {
             column: column.into(),
             value: value.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn schema_changes_per_dialect() {
+        use crate::domain::{ColumnDefinition, Constraint, ReferentialAction, SchemaChange as C};
+        let column =
+            |name: &str, data_type: &str, nullable: bool, default: Option<&str>| ColumnDefinition {
+                name: name.into(),
+                data_type: data_type.into(),
+                nullable,
+                default: default.map(str::to_string),
+            };
+        let sql = |dialect: Dialect, change: C| schema_sql(dialect, "app", "t", &change);
+        let create = C::CreateTable {
+            columns: vec![
+                column("id", "bigint", false, None),
+                column("we\"ird", "text", true, Some(" 'x' ")),
+            ],
+            primary_key: vec!["id".into()],
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, create.clone()).unwrap(),
+            "CREATE TABLE \"app\".\"t\" (\n    \"id\" bigint NOT NULL,\n    \"we\"\"ird\" text DEFAULT 'x',\n    PRIMARY KEY (\"id\")\n)"
+        );
+        assert!(
+            sql(MYSQL, create)
+                .unwrap()
+                .starts_with("CREATE TABLE `app`.`t` (\n    `id` bigint NOT NULL,")
+        );
+
+        let rename = || C::RenameColumn {
+            column: "a".into(),
+            new_name: "b".into(),
+        };
+        assert_eq!(
+            sql(MYSQL, rename()).unwrap(),
+            "ALTER TABLE `app`.`t` RENAME COLUMN `a` TO `b`"
+        );
+        assert_eq!(
+            sql(
+                Dialect::Sqlite,
+                C::AddColumn {
+                    column: column("c", "integer", false, Some("0"))
+                }
+            )
+            .unwrap(),
+            r#"ALTER TABLE "app"."t" ADD COLUMN "c" integer DEFAULT 0 NOT NULL"#
+        );
+        assert_eq!(
+            sql(Dialect::Postgres, C::DropColumn { column: "c".into() }).unwrap(),
+            r#"ALTER TABLE "app"."t" DROP COLUMN "c""#
+        );
+
+        // Postgres alters one attribute at a time
+        let set_type = || C::SetType {
+            column: "c".into(),
+            data_type: "integer".into(),
+            using: Some("c::integer".into()),
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, set_type()).unwrap(),
+            r#"ALTER TABLE "app"."t" ALTER COLUMN "c" TYPE integer USING c::integer"#
+        );
+        let nullable = |nullable| C::SetNullable {
+            column: "c".into(),
+            nullable,
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, nullable(false)).unwrap(),
+            r#"ALTER TABLE "app"."t" ALTER COLUMN "c" SET NOT NULL"#
+        );
+        assert_eq!(
+            sql(Dialect::Postgres, nullable(true)).unwrap(),
+            r#"ALTER TABLE "app"."t" ALTER COLUMN "c" DROP NOT NULL"#
+        );
+        let default = |value: Option<&str>| C::SetDefault {
+            column: "c".into(),
+            default: value.map(str::to_string),
+        };
+        assert_eq!(
+            sql(MYSQL, default(Some("(now())"))).unwrap(),
+            "ALTER TABLE `app`.`t` ALTER COLUMN `c` SET DEFAULT (now())"
+        );
+        assert_eq!(
+            sql(Dialect::Postgres, default(Some("  "))).unwrap(),
+            r#"ALTER TABLE "app"."t" ALTER COLUMN "c" DROP DEFAULT"#
+        );
+        // MySQL rewrites the whole column
+        let redefine = || C::RedefineColumn {
+            column: "c".into(),
+            definition: "varchar(20) NOT NULL COMMENT 'x'".into(),
+        };
+        assert_eq!(
+            sql(MYSQL, redefine()).unwrap(),
+            "ALTER TABLE `app`.`t` MODIFY COLUMN `c` varchar(20) NOT NULL COMMENT 'x'"
+        );
+
+        let index = || C::CreateIndex {
+            name: "t_ab".into(),
+            columns: vec!["a".into(), "b".into()],
+            unique: true,
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, index()).unwrap(),
+            r#"CREATE UNIQUE INDEX "t_ab" ON "app"."t" ("a", "b")"#
+        );
+        assert_eq!(
+            sql(Dialect::Sqlite, index()).unwrap(),
+            r#"CREATE UNIQUE INDEX "app"."t_ab" ON "t" ("a", "b")"#
+        );
+        let drop_index = || C::DropIndex {
+            name: "t_ab".into(),
+        };
+        assert_eq!(
+            sql(MYSQL, drop_index()).unwrap(),
+            "DROP INDEX `t_ab` ON `app`.`t`"
+        );
+        assert_eq!(
+            sql(Dialect::Postgres, drop_index()).unwrap(),
+            r#"DROP INDEX "app"."t_ab""#
+        );
+
+        // tables, index names and constraints
+        let rename_table = || C::RenameTable {
+            new_name: "u".into(),
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, rename_table()).unwrap(),
+            r#"ALTER TABLE "app"."t" RENAME TO "u""#
+        );
+        assert_eq!(
+            sql(MYSQL, rename_table()).unwrap(),
+            "ALTER TABLE `app`.`t` RENAME TO `app`.`u`"
+        );
+        assert_eq!(
+            sql(Dialect::Sqlite, C::DropTable).unwrap(),
+            r#"DROP TABLE "app"."t""#
+        );
+        let rename_index = || C::RenameIndex {
+            name: "i".into(),
+            new_name: "j".into(),
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, rename_index()).unwrap(),
+            r#"ALTER INDEX "app"."i" RENAME TO "j""#
+        );
+        assert_eq!(
+            sql(MYSQL, rename_index()).unwrap(),
+            "ALTER TABLE `app`.`t` RENAME INDEX `i` TO `j`"
+        );
+        let constraint = |constraint: Constraint| C::AddConstraint {
+            name: "c".into(),
+            constraint,
+        };
+        let foreign_key = || {
+            constraint(Constraint::ForeignKey {
+                columns: vec!["team_id".into()],
+                referenced_table: "teams".into(),
+                referenced_columns: vec!["id".into()],
+                on_delete: Some(ReferentialAction::SetNull),
+            })
+        };
+        assert_eq!(
+            sql(Dialect::Postgres, foreign_key()).unwrap(),
+            r#"ALTER TABLE "app"."t" ADD CONSTRAINT "c" FOREIGN KEY ("team_id") REFERENCES "app"."teams" ("id") ON DELETE SET NULL"#
+        );
+        assert_eq!(
+            sql(
+                MYSQL,
+                constraint(Constraint::Check {
+                    expression: "price >= 0".into()
+                })
+            )
+            .unwrap(),
+            "ALTER TABLE `app`.`t` ADD CONSTRAINT `c` CHECK (price >= 0)"
+        );
+        assert_eq!(
+            sql(
+                Dialect::Postgres,
+                constraint(Constraint::Unique {
+                    columns: vec!["a".into(), "b".into()]
+                })
+            )
+            .unwrap(),
+            r#"ALTER TABLE "app"."t" ADD CONSTRAINT "c" UNIQUE ("a", "b")"#
+        );
+        assert_eq!(
+            sql(MYSQL, C::DropConstraint { name: "c".into() }).unwrap(),
+            "ALTER TABLE `app`.`t` DROP CONSTRAINT `c`"
+        );
+
+        // what an engine cannot do is said, not rewritten
+        let refused = |dialect: Dialect, change: C| match sql(dialect, change) {
+            Err(AppError::Validation(message)) => message,
+            other => panic!("expected a refusal: {other:?}"),
+        };
+        assert!(refused(Dialect::Sqlite, set_type()).contains("sem recriar a tabela"));
+        assert!(refused(Dialect::Sqlite, default(Some("1"))).contains("sem recriar a tabela"));
+        assert!(refused(Dialect::Sqlite, nullable(true)).contains("sem recriar a tabela"));
+        assert!(refused(MYSQL, set_type()).contains("MODIFY COLUMN"));
+        assert!(refused(MYSQL, nullable(true)).contains("MODIFY COLUMN"));
+        assert!(refused(Dialect::Postgres, redefine()).contains("só do MySQL"));
+        assert!(refused(Dialect::Sqlite, rename_index()).contains("não renomeia índices"));
+        assert!(refused(Dialect::Sqlite, foreign_key()).contains("recriar a tabela"));
+        assert!(
+            refused(Dialect::Sqlite, C::DropConstraint { name: "c".into() })
+                .contains("recriar a tabela")
+        );
+        assert_eq!(
+            refused(
+                Dialect::Postgres,
+                constraint(Constraint::ForeignKey {
+                    columns: vec!["a".into(), "b".into()],
+                    referenced_table: "u".into(),
+                    referenced_columns: vec!["id".into()],
+                    on_delete: None,
+                })
+            ),
+            "a chave estrangeira liga o mesmo número de colunas dos dois lados"
+        );
+        // nor can a typed `;` smuggle in a second command
+        assert!(
+            refused(
+                Dialect::Postgres,
+                C::AddColumn {
+                    column: column("c", "int; DROP TABLE users", true, None)
+                }
+            )
+            .contains("mais de um comando")
+        );
+        assert_eq!(
+            refused(
+                Dialect::Postgres,
+                C::CreateTable {
+                    columns: vec![column("a", "int", true, None)],
+                    primary_key: vec!["id".into()]
+                }
+            ),
+            "a chave primária usa id, que não é uma coluna da tabela"
+        );
+        assert_eq!(
+            refused(
+                Dialect::Postgres,
+                C::AddColumn {
+                    column: column("c", " ", true, None)
+                }
+            ),
+            "informe o tipo de c"
+        );
     }
 
     #[test]

@@ -15,9 +15,9 @@ use crate::adapters::dialect::Dialect;
 use crate::adapters::sql_builder;
 use crate::adapters::stream::{self, Engine, ScriptRun};
 use crate::domain::{
-    AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableDdl,
-    TableStructure, Target, TlsMode,
+    AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ConstraintInfo,
+    ForeignKeyInfo, IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo,
+    TableDdl, TableStructure, Target, TlsMode,
 };
 
 const MAX_POOL_CONNECTIONS: u32 = 5;
@@ -323,12 +323,29 @@ impl PostgresAdapter {
         .bind(table)
         .fetch_all(&self.pool);
 
-        let (columns, indexes, foreign_keys) = tokio::try_join!(columns, indexes, foreign_keys)?;
+        let constraints = sqlx::query_as::<_, (String, String)>(
+            r"SELECT con.conname::text, pg_get_constraintdef(con.oid)
+              FROM pg_constraint con
+              JOIN pg_class c ON c.oid = con.conrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE con.contype IN ('u', 'c', 'x') AND n.nspname = $1 AND c.relname = $2
+              ORDER BY con.conname",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_all(&self.pool);
+
+        let (columns, indexes, foreign_keys, constraints) =
+            tokio::try_join!(columns, indexes, foreign_keys, constraints)?;
         if columns.is_empty() {
             return Err(AppError::not_found(&format!("tabela {schema}.{table}")));
         }
 
         Ok(TableStructure {
+            constraints: constraints
+                .into_iter()
+                .map(|(name, definition)| ConstraintInfo { name, definition })
+                .collect(),
             columns: columns
                 .into_iter()
                 .map(
