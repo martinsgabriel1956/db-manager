@@ -5,7 +5,7 @@ use mongodb::bson::Document;
 use crate::adapters::mongo::ejson;
 use crate::domain::{
     AggregateOutcome, AggregateResponse, AppError, Confirmation, DocumentPage, DocumentWrite,
-    Environment, FindRequest, IndexInfo, WriteRequest, WriteResponse,
+    Environment, FindRequest, IndexInfo, WatchMessage, WriteRequest, WriteResponse,
 };
 use crate::registry::Registry;
 use crate::storage::history::HistoryStore;
@@ -41,6 +41,51 @@ pub async fn collection_indexes(
         .mongo()?
         .indexes(database, collection)
         .await
+}
+
+/// Opens a change stream and hands each event to `send` from a background task,
+/// until `send` returns false (the UI is gone), the stream fails or ends, or
+/// `stop_watch` / closing the connection aborts it. A read: allowed on read-only
+/// connections. Failing to open (standalone server, bad pipeline) is returned here.
+#[allow(clippy::too_many_arguments)]
+pub async fn watch_collection(
+    registry: &Registry,
+    connection_id: &str,
+    watch_id: &str,
+    database: &str,
+    collection: &str,
+    pipeline_text: &str,
+    send: impl Fn(WatchMessage) -> bool + Send + 'static,
+) -> Result<(), AppError> {
+    let connection = registry.connection(connection_id)?;
+    let pipeline = if pipeline_text.trim().is_empty() {
+        Vec::new()
+    } else {
+        ejson::parse_pipeline(pipeline_text)?
+    };
+    let mut feed = connection
+        .mongo()?
+        .watch(database, collection, pipeline)
+        .await?;
+    let task = tokio::spawn(async move {
+        loop {
+            let message = match feed.next().await {
+                Ok(Some(event)) => WatchMessage::Change { event },
+                Ok(None) => return,
+                Err(err) => {
+                    send(WatchMessage::Error {
+                        message: err.to_string(),
+                    });
+                    return;
+                }
+            };
+            if !send(message) {
+                return;
+            }
+        }
+    });
+    registry.insert_watch(watch_id, connection_id, task.abort_handle());
+    Ok(())
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -469,6 +514,110 @@ mod integration_tests {
                 .unwrap(),
             AggregateResponse::Executed { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn change_streams_send_events_until_stopped_or_disconnected() {
+        use testcontainers_modules::mongo::Mongo;
+        use testcontainers_modules::testcontainers::runners::AsyncRunner;
+        use tokio::sync::mpsc;
+        use tokio::time::timeout;
+
+        // a standalone server cannot watch: say so plainly
+        let (_standalone, config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        open(&registry, &config).await;
+        let err = watch_collection(&registry, "mongo", "w", "shop", "items", "", |_| true)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, AppError::Validation(m) if m.contains("standalone") && m.contains("replica")),
+            "{err:?}"
+        );
+
+        // a replica set of one node; direct: its member address is the container's name
+        let replica = Mongo::repl_set().start().await.unwrap();
+        let port = replica.get_host_port_ipv4(27017).await.unwrap();
+        let rs = ConnectionConfig {
+            id: "rs".into(),
+            target: Target::Uri {
+                database: String::new(),
+            },
+            ..config
+        };
+        let uri = format!("mongodb://127.0.0.1:{port}/?directConnection=true");
+        sql::connect(&registry, &Secret(Some(uri)), rs.clone())
+            .await
+            .unwrap();
+        let watch = |id: &'static str| {
+            let (tx, rx) = mpsc::unbounded_channel();
+            let opened = watch_collection(
+                &registry,
+                "rs",
+                id,
+                "shop",
+                "items",
+                r#"[{"$match": {"operationType": {"$in": ["insert", "delete"]}}}]"#,
+                move |message| tx.send(message).is_ok(),
+            );
+            (opened, rx)
+        };
+        async fn next(rx: &mut mpsc::UnboundedReceiver<WatchMessage>) -> Option<WatchMessage> {
+            timeout(Duration::from_secs(10), rx.recv())
+                .await
+                .expect("no event in 10s")
+        }
+        let (opened, mut events) = watch("w");
+        opened.await.unwrap();
+        let (opened, mut stopped) = watch("w2");
+        opened.await.unwrap();
+
+        for write_one in [
+            DocumentWrite::Insert {
+                document: r#"{"_id": 1, "n": {"$numberLong": "5"}}"#.into(),
+            },
+            // filtered out by the pipeline
+            DocumentWrite::Replace {
+                id: "1".into(),
+                document: r#"{"n": 6}"#.into(),
+            },
+            DocumentWrite::Delete { id: "1".into() },
+        ] {
+            write_document(&registry, &history, "rs", write(write_one), false)
+                .await
+                .unwrap();
+        }
+
+        let Some(WatchMessage::Change { event: insert }) = next(&mut events).await else {
+            panic!("expected the insert");
+        };
+        assert_eq!(insert.operation, "insert");
+        assert_eq!(insert.id.as_deref(), Some("1"));
+        assert_eq!(
+            insert.document.as_deref(),
+            Some(r#"{"_id":1,"n":{"$numberLong":"5"}}"#)
+        );
+        assert!(insert.at.is_some());
+        let Some(WatchMessage::Change { event: delete }) = next(&mut events).await else {
+            panic!("expected the delete");
+        };
+        assert_eq!(
+            (delete.operation.as_str(), delete.document),
+            ("delete", None)
+        );
+
+        // stopping ends the task: its sender is dropped
+        assert!(registry.is_watching("w2"));
+        registry.stop_watch("w2");
+        while let Some(message) = next(&mut stopped).await {
+            assert!(matches!(message, WatchMessage::Change { .. }));
+        }
+        // closing the connection closes its streams
+        assert!(registry.is_watching("w"));
+        sql::disconnect(&registry, "rs").await;
+        assert!(!registry.is_watching("w"));
+        assert_eq!(next(&mut events).await, None);
     }
 
     #[tokio::test]

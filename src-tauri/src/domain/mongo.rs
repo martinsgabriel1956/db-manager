@@ -76,3 +76,27 @@ pub enum WriteResponse {
         confirmation: Confirmation,
     },
 }
+
+/// One change stream event, values as Extended JSON text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeEvent {
+    /// insert, update, replace, delete, drop, invalidate…
+    pub operation: String,
+    /// documentKey._id
+    pub id: Option<String>,
+    /// fullDocument (insert, replace)
+    pub document: Option<String>,
+    /// updateDescription (update): updatedFields, removedFields, truncatedArrays
+    pub diff: Option<String>,
+    /// wallTime, or clusterTime (seconds) on servers before 6.0; RFC 3339
+    pub at: Option<String>,
+}
+
+/// What a watch sends to the UI: events, then at most one error that ends it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum WatchMessage {
+    Change { event: ChangeEvent },
+    Error { message: String },
+}

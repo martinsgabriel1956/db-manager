@@ -293,6 +293,8 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       outcome: { documents: ['{"_id":"even","total":110}'], truncated: false, durationMs: 4 }
     }),
     write_document: () => ({ status: "written", id: '{"$oid":"65a1b2c3d4e5f60718293a4b"}' }),
+    watch_collection: () => null,
+    stop_watch: () => null,
     redis_databases: () => [
       { index: 0, keys: 4 },
       { index: 1, keys: 0 }
