@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { ChevronDown, ListTree, Play, Square } from "lucide-react";
+import { AlignLeft, ChevronDown, ListTree, Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { commands, type Engine } from "@/bindings";
 import { Receipt } from "@/components/Receipt";
@@ -20,7 +20,7 @@ import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { PlanView } from "@/features/results/PlanView";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
-import { EXPLAIN_SHORTCUT, RUN_SHORTCUT } from "@/lib/platform";
+import { EXPLAIN_SHORTCUT, FORMAT_SHORTCUT, RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
   connectionId: string;
@@ -78,6 +78,8 @@ export function SqlWorkspace({
   const runner = useScriptRunner(connectionId);
   const editorApi = useRef<SqlEditorApi | null>(null);
   const [lastSql, setLastSql] = useState("");
+  // why the last format changed nothing; gone with the next edit
+  const [formatError, setFormatError] = useState<string | null>(null);
   const isRunning = runner.state.status === "running";
 
   function runFromEditor(text: string) {
@@ -105,6 +107,23 @@ export function SqlWorkspace({
         </span>
         <div className="ml-auto flex min-w-0 items-center gap-4">
           <ConnectionContext connectionId={connectionId} />
+          {formatError && (
+            <span
+              role="alert"
+              className="max-w-96 truncate text-xs text-destructive"
+              title={formatError}
+            >
+              Não formatado: {formatError}
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            title={`${FORMAT_SHORTCUT} formata a seleção ou tudo`}
+            onClick={() => editorApi.current?.format()}
+          >
+            <AlignLeft /> Formatar
+          </Button>
           <div className="flex">
             <Button
               size="sm"
@@ -156,8 +175,12 @@ export function SqlWorkspace({
         <Panel defaultSize="45" minSize={80}>
           <SqlEditor
             value={sql}
-            onChange={onSqlChange}
+            onChange={text => {
+              setFormatError(null);
+              onSqlChange(text);
+            }}
             onRun={runFromEditor}
+            onFormatted={setFormatError}
             onExplain={explainFromEditor}
             completion={completion.data}
             engine={engine}

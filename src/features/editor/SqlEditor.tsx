@@ -14,10 +14,12 @@ import {
   type SQLNamespace
 } from "@codemirror/lang-sql";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, EditorState, Prec } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
+import { formatChange } from "@/features/editor/format";
 import { editorLabel, editorTheme } from "@/lib/codemirror";
+import { errorMessage } from "@/lib/errors";
 import { RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlEditorProps = {
@@ -25,6 +27,8 @@ type SqlEditorProps = {
   onChange: (value: string) => void;
   /** receives the selection, or the whole document when nothing is selected */
   onRun: (sql: string) => void;
+  /** after each format: null when it worked, otherwise why nothing changed */
+  onFormatted: (error: string | null) => void;
   /** receives the selection, or the statement under the cursor */
   onExplain: (sql: string) => void;
   completion: CompletionTable[] | undefined;
@@ -38,9 +42,14 @@ type SqlEditorProps = {
 
 /**
  * `prepareRun` closes a completion left open and returns what to run, as Mod-Enter does;
- * `prepareExplain` does the same for what to explain, as Mod-Shift-E does.
+ * `prepareExplain` does the same for what to explain, as Mod-Shift-E does; `format` formats
+ * the selection or everything, as Mod-Shift-F does.
  */
-export type SqlEditorApi = { prepareRun: () => string; prepareExplain: () => string };
+export type SqlEditorApi = {
+  prepareRun: () => string;
+  prepareExplain: () => string;
+  format: () => void;
+};
 
 /** `{ schema: { table: [columns] } }` for CodeMirror's schema-aware autocomplete. */
 export function toNamespace(tables: CompletionTable[]): SQLNamespace {
@@ -126,6 +135,7 @@ export function SqlEditor({
   value,
   onChange,
   onRun,
+  onFormatted,
   onExplain,
   completion,
   engine,
@@ -139,15 +149,36 @@ export function SqlEditor({
   // the editor is created once; callbacks are read through refs to stay current
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const onFormattedRef = useRef(onFormatted);
+  const engineRef = useRef(engine);
   const onExplainRef = useRef(onExplain);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     onRunRef.current = onRun;
     onExplainRef.current = onExplain;
-  }, [onChange, onRun, onExplain]);
+    onFormattedRef.current = onFormatted;
+    engineRef.current = engine;
+  }, [onChange, onRun, onExplain, onFormatted, engine]);
 
   useEffect(() => {
+    // one transaction, so Ctrl+Z brings the text back; a formatted selection stays selected
+    const format = (editor: EditorView) => {
+      try {
+        const change = formatChange(editor.state, engineRef.current);
+        const selected = !editor.state.selection.main.empty;
+        editor.dispatch({
+          changes: change,
+          selection: selected
+            ? EditorSelection.range(change.from, change.from + change.insert.length)
+            : undefined
+        });
+        onFormattedRef.current(null);
+      } catch (error) {
+        onFormattedRef.current(errorMessage(error));
+      }
+      return true;
+    };
     const view = new EditorView({
       parent: hostRef.current!,
       state: EditorState.create({
@@ -173,7 +204,8 @@ export function SqlEditor({
                   onExplainRef.current(statementAt(editor.state));
                   return true;
                 }
-              }
+              },
+              { key: "Mod-Shift-f", run: format }
             ])
           ),
           EditorView.updateListener.of(update => {
@@ -200,7 +232,8 @@ export function SqlEditor({
       prepareExplain: () => {
         closeCompletion(view);
         return statementAt(view.state);
-      }
+      },
+      format: () => format(view)
     };
     return () => {
       cancelAnimationFrame(focusFrame);
