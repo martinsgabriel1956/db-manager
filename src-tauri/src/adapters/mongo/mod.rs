@@ -10,7 +10,8 @@ use mongodb::Client;
 use mongodb::bson::{Bson, Document, doc};
 use mongodb::error::{Error as MongoError, ErrorKind};
 use mongodb::options::{
-    AggregateOptions, ClientOptions, Credential, FindOptions, ServerAddress, Tls, TlsOptions,
+    AggregateOptions, ClientOptions, Credential, FindOptions, InsertManyOptions, ServerAddress,
+    Tls, TlsOptions,
 };
 use mongodb::results::CollectionType;
 
@@ -26,6 +27,13 @@ const SYSTEM_DATABASES: [&str; 3] = ["admin", "config", "local"];
 /// server error codes
 const MAX_TIME_EXPIRED: i32 = 50;
 const INTERRUPTED: i32 = 11601;
+
+/// A failed `insert_many`: the index of the refused document, when the server named one.
+#[derive(Debug)]
+pub struct InsertFailure {
+    pub index: Option<usize>,
+    pub error: AppError,
+}
 
 pub struct MongoAdapter {
     client: Client,
@@ -292,6 +300,54 @@ impl MongoAdapter {
             .await
             .map_err(|err| self.error(err))?;
         Ok(ejson::value_to_text(result.inserted_id))
+    }
+
+    /// Inserts in order, tagged with `comment` so `kill` can stop it. When the server
+    /// refuses a document, the error carries its index: the ones before it went in.
+    pub async fn insert_many(
+        &self,
+        database: &str,
+        collection: &str,
+        documents: Vec<Document>,
+        comment: &str,
+    ) -> Result<(), InsertFailure> {
+        // ordered (the default): the server stops at the first refused document
+        let options = InsertManyOptions::builder()
+            .comment(Some(Bson::String(comment.to_string())))
+            .build();
+        let Err(err) = self
+            .collection(database, collection)
+            .insert_many(documents)
+            .with_options(options)
+            .await
+        else {
+            return Ok(());
+        };
+        let refused = match err.kind.as_ref() {
+            ErrorKind::InsertMany(failure) => failure
+                .write_errors
+                .as_ref()
+                .and_then(|errors| errors.iter().min_by_key(|error| error.index)),
+            _ => None,
+        };
+        Err(match refused {
+            Some(refused) => InsertFailure {
+                index: Some(refused.index),
+                error: if refused.code == INTERRUPTED {
+                    AppError::cancelled()
+                } else {
+                    AppError::Database(format!(
+                        "{} [{}]",
+                        refused.message,
+                        refused.code_name.as_deref().unwrap_or("")
+                    ))
+                },
+            },
+            None => InsertFailure {
+                index: None,
+                error: self.error(err),
+            },
+        })
     }
 
     /// Exactly one document must match the _id, otherwise it changed under us.

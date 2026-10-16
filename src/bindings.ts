@@ -44,6 +44,7 @@ export const commands = {
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
 	previewCsv: (path: string) => __TAURI_INVOKE<CsvPreview>("preview_csv", { path }),
 	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
+	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
@@ -219,6 +220,13 @@ export type DocumentFormat =
 /**  a JSON array of documents */
 "jsonArray";
 
+/**  An NDJSON or JSON array file of Extended JSON documents, into a collection. */
+export type DocumentImport = {
+	database: string,
+	collection: string,
+	path: string,
+};
+
 export type DocumentPage = {
 	documents: string[],
 	hasMore: boolean,
@@ -290,7 +298,10 @@ export type HistoryEntry = {
 };
 
 export type ImportResponse = 
-/**  always first: the sample INSERT and the row count, to confirm before anything runs */
+/**
+ *  always first: the sample INSERT (or first document) and the count, to confirm
+ *  before anything runs
+ */
 { status: "needsConfirmation"; confirmation: Confirmation } | { status: "imported"; rows: number; duration_ms: number };
 
 export type IndexInfo = {
