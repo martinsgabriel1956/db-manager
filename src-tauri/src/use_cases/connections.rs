@@ -42,6 +42,7 @@ pub fn save(
         SecretChange::Keep => Ok(()),
         SecretChange::Set(password) => secrets.set(&config.id, &password),
         SecretChange::Clear => secrets.delete(&config.id),
+        SecretChange::CopyFrom(source) => copy_secret(secrets, &source, &config.id),
     };
     Ok(KeychainOutcome {
         keychain_warning: keychain_result.err().map(|err| err.to_string()),
@@ -64,6 +65,14 @@ pub fn delete(
     Ok(KeychainOutcome {
         keychain_warning: secrets.delete(id).err().map(|err| err.to_string()),
     })
+}
+
+/// Nothing stored under `source` copies as nothing: the new connection has no secret yet.
+fn copy_secret(secrets: &dyn SecretStore, source: &str, id: &str) -> Result<(), AppError> {
+    match secrets.get(source)? {
+        Some(secret) => secrets.set(id, &secret),
+        None => Ok(()),
+    }
 }
 
 /// Trims text fields and turns empty optional strings into None.
@@ -125,6 +134,7 @@ pub fn prepare_test(
         (Engine::Sqlite, _) | (_, SecretChange::Clear) => None,
         (_, SecretChange::Set(value)) => Some(value),
         (_, SecretChange::Keep) => secrets.get(&config.id)?,
+        (_, SecretChange::CopyFrom(source)) => secrets.get(&source)?,
     };
     Ok((config, password))
 }
@@ -435,6 +445,67 @@ mod tests {
         save(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
 
         assert_eq!(secrets.stored("1"), None);
+    }
+
+    #[test]
+    fn save_copy_from_copies_the_stored_secret_to_the_new_id() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        save(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Set("pw".into()),
+        )
+        .unwrap();
+        save(&store, &secrets, postgres("2", "nada"), SecretChange::Keep).unwrap();
+
+        save(
+            &store,
+            &secrets,
+            postgres("3", "pg (cópia)"),
+            SecretChange::CopyFrom("1".into()),
+        )
+        .unwrap();
+        // a source without a secret copies as none
+        save(
+            &store,
+            &secrets,
+            postgres("4", "nada (cópia)"),
+            SecretChange::CopyFrom("2".into()),
+        )
+        .unwrap();
+
+        assert_eq!(secrets.stored("3").as_deref(), Some("pw"));
+        assert_eq!(secrets.stored("1").as_deref(), Some("pw"));
+        assert_eq!(secrets.stored("4"), None);
+        let (_, password) = prepare_test(
+            &store,
+            &secrets,
+            postgres("5", "draft"),
+            SecretChange::CopyFrom("1".into()),
+        )
+        .unwrap();
+        assert_eq!(password.as_deref(), Some("pw"));
+    }
+
+    #[test]
+    fn a_new_mongo_uri_connection_may_copy_the_uri() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        save(
+            &store,
+            &secrets,
+            mongo_uri("1"),
+            SecretChange::Set("mongodb://u:p@h/".into()),
+        )
+        .unwrap();
+        let mut copy = mongo_uri("2");
+        copy.name = "copy".into();
+
+        save(&store, &secrets, copy, SecretChange::CopyFrom("1".into())).unwrap();
+
+        assert_eq!(secrets.stored("2").as_deref(), Some("mongodb://u:p@h/"));
     }
 
     #[test]

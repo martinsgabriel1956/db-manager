@@ -154,13 +154,15 @@ function isUriMode(values: ConnectionFormValues): boolean {
   return values.engine === "mongo" && values.mongoMode === "uri";
 }
 
-function secretChange(values: ConnectionFormValues): SecretChange {
+function secretChange(values: ConnectionFormValues, copyOf: string | undefined): SecretChange {
+  // left empty on a copy, the original's stored secret is copied by the backend
+  const keep: SecretChange = copyOf ? { action: "copyFrom", value: copyOf } : { action: "keep" };
   if (values.engine === "sqlite") {
     return { action: "keep" };
   }
   if (isUriMode(values)) {
     const uri = values.uri.trim();
-    return uri === "" ? { action: "keep" } : { action: "set", value: uri };
+    return uri === "" ? keep : { action: "set", value: uri };
   }
   if (values.clearPassword) {
     return { action: "clear" };
@@ -168,11 +170,19 @@ function secretChange(values: ConnectionFormValues): SecretChange {
   if (values.password !== "") {
     return { action: "set", value: values.password };
   }
-  return { action: "keep" };
+  return keep;
 }
 
-/** `isEditing`: an existing connection may leave secrets empty to keep the stored ones. */
-export function parseForm(values: ConnectionFormValues, id: string, isEditing = false): ParsedForm {
+/**
+ * `isEditing`: an existing connection may leave secrets empty to keep the stored ones.
+ * `copyOf`: the id of the connection being duplicated, whose stored secrets an empty field copies.
+ */
+export function parseForm(
+  values: ConnectionFormValues,
+  id: string,
+  isEditing = false,
+  copyOf?: string
+): ParsedForm {
   const errors: FormErrors = {};
   const isSqlite = values.engine === "sqlite";
   const isRedis = values.engine === "redis";
@@ -189,7 +199,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
   }
   if (isUri) {
     const uri = values.uri.trim();
-    if (uri === "" && !isEditing) {
+    if (uri === "" && !isEditing && !copyOf) {
       errors.uri = "Informe a URI de conexão";
     } else if (uri !== "" && !CONNECTION_STRING.test(uri)) {
       errors.uri = "Use mongodb:// ou mongodb+srv://";
@@ -232,7 +242,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
           }
         : null
     },
-    secret: secretChange(values)
+    secret: secretChange(values, copyOf)
   };
 }
 
@@ -261,6 +271,14 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
     sshUser: config.ssh?.user ?? "",
     sshIdentityFile: config.ssh?.identityFile ?? ""
   };
+}
+
+/**
+ * A copy of a connection as a new one. The environment comes back empty: the protection
+ * regime is chosen again, never carried over silently.
+ */
+export function duplicateForm(config: ConnectionConfig): ConnectionFormValues {
+  return { ...fromConfig(config), name: `${config.name} (cópia)`, environment: "" };
 }
 
 /** Swaps the engine and carries over sensible defaults (port, TLS) without clobbering user input. */

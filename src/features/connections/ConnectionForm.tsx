@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ConnectionFields } from "@/features/connections/ConnectionFields";
 import {
   changeEngine,
+  duplicateForm,
   EMPTY_FORM,
   fromConfig,
   parseForm,
@@ -21,6 +22,8 @@ import { errorMessage } from "@/lib/errors";
 type ConnectionFormProps = {
   /** null = creating a new connection */
   connection: ConnectionConfig | null;
+  /** a new connection filled from this one ("Duplicar conexão") */
+  copyOf?: ConnectionConfig | null;
   onSaved: (id: string, keychainWarning: string | null) => void;
   onDeleted: (keychainWarning: string | null) => void;
   onCancel: () => void;
@@ -37,6 +40,7 @@ async function testDraft({ config, secret }: SaveConnectionInput): Promise<numbe
 
 export function ConnectionForm({
   connection,
+  copyOf = null,
   onSaved,
   onDeleted,
   onCancel,
@@ -46,8 +50,10 @@ export function ConnectionForm({
   // lazy init: the id must stay stable across re-renders of a new, unsaved connection
   const [id] = useState(() => connection?.id ?? crypto.randomUUID());
   const [initial] = useState<ConnectionFormValues>(() =>
-    connection ? fromConfig(connection) : EMPTY_FORM
+    connection ? fromConfig(connection) : copyOf ? duplicateForm(copyOf) : EMPTY_FORM
   );
+  // fixed with the id: the copy keeps pointing at the original's secrets until saved
+  const [copyOfId] = useState(() => copyOf?.id);
   const [values, setValues] = useState(initial);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   // typed but not saved: cancelling asks once instead of dropping it. On a new connection,
@@ -82,7 +88,8 @@ export function ConnectionForm({
         environment: values.environment || "local"
       },
       id,
-      isEditing
+      isEditing,
+      copyOfId
     );
     if (!parsed.success) {
       setErrors(parsed.errors);
@@ -96,7 +103,7 @@ export function ConnectionForm({
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    const parsed = parseForm(values, id, isEditing);
+    const parsed = parseForm(values, id, isEditing, copyOfId);
     if (!parsed.success) {
       setErrors(parsed.errors);
       focusFirstInvalid();
@@ -138,12 +145,12 @@ export function ConnectionForm({
       {/* editing names which connection: the identifier keeps its case, like a table name */}
       <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-3 border-b-2 border-foreground pb-2">
         <span className="display-caps text-[1.75rem]">
-          {isEditing ? "Editar conexão" : "Nova conexão"}
+          {isEditing ? "Editar conexão" : copyOf ? "Duplicar conexão" : "Nova conexão"}
         </span>
-        {connection && (
+        {(connection ?? copyOf) && (
           <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
             <span className="sr-only">: </span>
-            {connection.name}
+            {(connection ?? copyOf)?.name}
           </span>
         )}
       </h2>
@@ -151,7 +158,7 @@ export function ConnectionForm({
       <ConnectionFields
         values={values}
         errors={errors}
-        isEditing={isEditing}
+        storedSecret={isEditing ? "own" : copyOfId ? "copy" : null}
         onChange={patch => setValues(prev => ({ ...prev, ...patch }))}
         onEngineChange={engine => setValues(prev => changeEngine(prev, engine))}
       />

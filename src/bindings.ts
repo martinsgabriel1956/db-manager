@@ -439,7 +439,12 @@ export type ScriptOutcome = {
  *  What to do with the stored password when saving a connection.
  *  The front never receives the stored password, so editing needs an explicit "keep".
  */
-export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" };
+export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" } | 
+/**
+ *  The stored secret of another connection (the id), copied on save when duplicating
+ *  it: the front never reads a stored secret, not even to copy it.
+ */
+{ action: "copyFrom"; value: string };
 
 export type Sort = {
 	column: string,

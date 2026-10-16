@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { ConnectionConfig } from "@/bindings";
 import {
   changeEngine,
+  duplicateForm,
   EMPTY_FORM,
   fromConfig,
   parseConnectionUrl,
@@ -211,6 +212,32 @@ describe("fromConfig", () => {
     });
 
     expect(values).toMatchObject({ filePath: "/a.db", host: "", port: "", caCertPath: "" });
+  });
+});
+
+describe("duplicateForm", () => {
+  test("copies every field but the name and the environment, which is chosen again", () => {
+    const values = duplicateForm(postgresConfig);
+
+    expect(values).toEqual({ ...fromConfig(postgresConfig), name: "pg (cópia)", environment: "" });
+    expect(parseForm(values, "2", false, "1")).toMatchObject({
+      success: false,
+      errors: { environment: expect.any(String) }
+    });
+  });
+
+  test("an empty secret copies the original's; a typed or cleared one wins", () => {
+    const copy = { ...duplicateForm(postgresConfig), environment: "dev" as const };
+    const secret = (values: ConnectionFormValues) => {
+      const result = parseForm(values, "2", false, "1");
+      return result.success && result.secret;
+    };
+
+    expect(secret(copy)).toEqual({ action: "copyFrom", value: "1" });
+    expect(secret({ ...copy, password: "new" })).toEqual({ action: "set", value: "new" });
+    expect(secret({ ...copy, clearPassword: true })).toEqual({ action: "clear" });
+    const uri = { ...copy, engine: "mongo" as const, mongoMode: "uri" as const };
+    expect(secret(uri)).toEqual({ action: "copyFrom", value: "1" });
   });
 });
 
