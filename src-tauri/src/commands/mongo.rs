@@ -3,8 +3,8 @@ use tauri::ipc::Channel;
 
 use crate::AppState;
 use crate::domain::{
-    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, WatchMessage, WriteRequest,
-    WriteResponse,
+    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, SchemaSample, WatchMessage,
+    WriteRequest, WriteResponse,
 };
 use crate::use_cases::mongo;
 
@@ -99,4 +99,25 @@ pub async fn watch_collection(
 #[specta::specta]
 pub fn stop_watch(state: State<'_, AppState>, watch_id: String) {
     state.registry.stop_watch(&watch_id);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sample_schema(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    database: String,
+    collection: String,
+    size: u32,
+) -> Result<SchemaSample, AppError> {
+    mongo::sample_schema(
+        &state.registry,
+        &connection_id,
+        &run_id,
+        &database,
+        &collection,
+        size,
+    )
+    .await
 }
