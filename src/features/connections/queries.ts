@@ -3,7 +3,12 @@ import { commands, type ConnectionConfig, type SecretChange } from "@/bindings";
 
 const CONNECTIONS_KEY = ["connections"] as const;
 
-export type SaveConnectionInput = { config: ConnectionConfig; secret: SecretChange };
+export type SaveConnectionInput = {
+  config: ConnectionConfig;
+  secret: SecretChange;
+  sshSecret: SecretChange;
+  sentinelSecret: SecretChange;
+};
 
 export function useConnections() {
   return useQuery({ queryKey: CONNECTIONS_KEY, queryFn: commands.listConnections });
@@ -12,8 +17,8 @@ export function useConnections() {
 export function useSaveConnection() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ config, secret }: SaveConnectionInput) =>
-      commands.saveConnection(config, secret),
+    mutationFn: ({ config, secret, sshSecret, sentinelSecret }: SaveConnectionInput) =>
+      commands.saveConnection(config, secret, sshSecret, sentinelSecret),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: CONNECTIONS_KEY })
   });
 }

@@ -1,8 +1,10 @@
 use tauri::State;
+use tauri::ipc::Channel;
 
 use crate::AppState;
 use crate::domain::{
-    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, WriteRequest, WriteResponse,
+    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, IndexResponse, NewIndex,
+    SchemaSample, WatchMessage, WriteRequest, WriteResponse,
 };
 use crate::use_cases::mongo;
 
@@ -25,6 +27,52 @@ pub async fn collection_indexes(
     collection: String,
 ) -> Result<Vec<IndexInfo>, AppError> {
     mongo::collection_indexes(&state.registry, &connection_id, &database, &collection).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn index_statement(index: NewIndex) -> Result<String, AppError> {
+    mongo::index_statement(&index)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn create_index(
+    state: State<'_, AppState>,
+    connection_id: String,
+    index: NewIndex,
+    confirmed: bool,
+) -> Result<IndexResponse, AppError> {
+    mongo::create_index(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        index,
+        confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn drop_index(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    collection: String,
+    name: String,
+    confirmed: bool,
+) -> Result<IndexResponse, AppError> {
+    mongo::drop_index(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        &database,
+        &collection,
+        &name,
+        confirmed,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -66,6 +114,56 @@ pub async fn write_document(
         &connection_id,
         request,
         confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn watch_collection(
+    state: State<'_, AppState>,
+    connection_id: String,
+    watch_id: String,
+    database: String,
+    collection: String,
+    pipeline: String,
+    on_message: Channel<WatchMessage>,
+) -> Result<(), AppError> {
+    mongo::watch_collection(
+        &state.registry,
+        &connection_id,
+        &watch_id,
+        &database,
+        &collection,
+        &pipeline,
+        move |message| on_message.send(message).is_ok(),
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn stop_watch(state: State<'_, AppState>, watch_id: String) {
+    state.registry.stop_watch(&watch_id);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sample_schema(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    database: String,
+    collection: String,
+    size: u32,
+) -> Result<SchemaSample, AppError> {
+    mongo::sample_schema(
+        &state.registry,
+        &connection_id,
+        &run_id,
+        &database,
+        &collection,
+        size,
     )
     .await
 }

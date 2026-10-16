@@ -1,4 +1,5 @@
 pub mod ejson;
+pub mod schema;
 
 #[cfg(test)]
 pub(crate) mod integration_tests;
@@ -6,17 +7,19 @@ pub(crate) mod integration_tests;
 use std::time::Duration;
 
 use futures_util::TryStreamExt;
-use mongodb::Client;
 use mongodb::bson::{Bson, Document, doc};
+use mongodb::change_stream::ChangeStream;
 use mongodb::error::{Error as MongoError, ErrorKind};
 use mongodb::options::{
-    AggregateOptions, ClientOptions, Credential, FindOptions, ServerAddress, Tls, TlsOptions,
+    AggregateOptions, ClientOptions, Credential, FindOptions, InsertManyOptions, ServerAddress,
+    Tls, TlsOptions,
 };
 use mongodb::results::CollectionType;
+use mongodb::{Client, bson};
 
 use crate::domain::{
-    AppError, ConnectionConfig, DocumentPage, FindRequest, IndexInfo, Relation, RelationKind,
-    SchemaInfo, Target, TlsMode,
+    AppError, ChangeEvent, ConnectionConfig, DocumentPage, FindRequest, IndexInfo, Relation,
+    RelationKind, SchemaInfo, Target, TlsMode,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -26,6 +29,15 @@ const SYSTEM_DATABASES: [&str; 3] = ["admin", "config", "local"];
 /// server error codes
 const MAX_TIME_EXPIRED: i32 = 50;
 const INTERRUPTED: i32 = 11601;
+/// "The $changeStream stage is only supported on replica sets"
+const CHANGE_STREAM_STANDALONE: i32 = 40573;
+
+/// A failed `insert_many`: the index of the refused document, when the server named one.
+#[derive(Debug)]
+pub struct InsertFailure {
+    pub index: Option<usize>,
+    pub error: AppError,
+}
 
 pub struct MongoAdapter {
     client: Client,
@@ -79,7 +91,7 @@ impl MongoAdapter {
                 }
                 (options, non_empty(database))
             }
-            Target::File { .. } => {
+            Target::File { .. } | Target::RedisCluster { .. } | Target::RedisSentinel { .. } => {
                 return Err(AppError::validation(
                     "MongoDB precisa de host/porta ou URI de conexão",
                 ));
@@ -174,17 +186,38 @@ impl MongoAdapter {
             .into_iter()
             .map(|model| {
                 let options = model.options.unwrap_or_default();
-                let unique = if options.unique == Some(true) {
-                    " UNIQUE"
-                } else {
-                    ""
-                };
+                let mut definition = ejson::to_text(model.keys);
+                if options.unique == Some(true) {
+                    definition.push_str(" UNIQUE");
+                }
+                if options.sparse == Some(true) {
+                    definition.push_str(" SPARSE");
+                }
+                if let Some(ttl) = options.expire_after {
+                    definition.push_str(&format!(" expireAfterSeconds: {}", ttl.as_secs()));
+                }
+                if let Some(filter) = options.partial_filter_expression {
+                    definition.push_str(&format!(
+                        " partialFilterExpression: {}",
+                        ejson::to_text(filter)
+                    ));
+                }
                 IndexInfo {
                     name: options.name.unwrap_or_default(),
-                    definition: format!("{}{unique}", ejson::to_text(model.keys)),
+                    definition,
                 }
             })
             .collect())
+    }
+
+    /// createIndexes / dropIndexes, run as built so the confirmed command is the one that runs.
+    pub async fn run_command(&self, database: &str, command: Document) -> Result<(), AppError> {
+        self.client
+            .database(database)
+            .run_command(command)
+            .await
+            .map(drop)
+            .map_err(|err| self.error(err))
     }
 
     /// One page; `page_size + 1` documents are read to know whether more exist.
@@ -279,6 +312,28 @@ impl MongoAdapter {
         Ok((documents, false))
     }
 
+    /// `$sample` of `size` documents, tagged with `comment` so `kill` can stop it.
+    pub async fn sample(
+        &self,
+        database: &str,
+        collection: &str,
+        size: u32,
+        comment: &str,
+    ) -> Result<Vec<Document>, AppError> {
+        let options = AggregateOptions::builder()
+            .comment(Some(Bson::String(comment.to_string())))
+            .max_time(self.max_time())
+            .build();
+        self.collection(database, collection)
+            .aggregate(vec![doc! { "$sample": { "size": i64::from(size) } }])
+            .with_options(options)
+            .await
+            .map_err(|err| self.error(err))?
+            .try_collect()
+            .await
+            .map_err(|err| self.error(err))
+    }
+
     /// Returns the new document's _id as Extended JSON.
     pub async fn insert(
         &self,
@@ -292,6 +347,54 @@ impl MongoAdapter {
             .await
             .map_err(|err| self.error(err))?;
         Ok(ejson::value_to_text(result.inserted_id))
+    }
+
+    /// Inserts in order, tagged with `comment` so `kill` can stop it. When the server
+    /// refuses a document, the error carries its index: the ones before it went in.
+    pub async fn insert_many(
+        &self,
+        database: &str,
+        collection: &str,
+        documents: Vec<Document>,
+        comment: &str,
+    ) -> Result<(), InsertFailure> {
+        // ordered (the default): the server stops at the first refused document
+        let options = InsertManyOptions::builder()
+            .comment(Some(Bson::String(comment.to_string())))
+            .build();
+        let Err(err) = self
+            .collection(database, collection)
+            .insert_many(documents)
+            .with_options(options)
+            .await
+        else {
+            return Ok(());
+        };
+        let refused = match err.kind.as_ref() {
+            ErrorKind::InsertMany(failure) => failure
+                .write_errors
+                .as_ref()
+                .and_then(|errors| errors.iter().min_by_key(|error| error.index)),
+            _ => None,
+        };
+        Err(match refused {
+            Some(refused) => InsertFailure {
+                index: Some(refused.index),
+                error: if refused.code == INTERRUPTED {
+                    AppError::cancelled()
+                } else {
+                    AppError::Database(format!(
+                        "{} [{}]",
+                        refused.message,
+                        refused.code_name.as_deref().unwrap_or("")
+                    ))
+                },
+            },
+            None => InsertFailure {
+                index: None,
+                error: self.error(err),
+            },
+        })
     }
 
     /// Exactly one document must match the _id, otherwise it changed under us.
@@ -345,8 +448,78 @@ impl MongoAdapter {
         Ok(())
     }
 
+    /// Opens a change stream on the collection; `pipeline` filters or reshapes the events.
+    pub async fn watch(
+        &self,
+        database: &str,
+        collection: &str,
+        pipeline: Vec<Document>,
+    ) -> Result<ChangeFeed, AppError> {
+        let stream = self
+            .collection(database, collection)
+            .watch()
+            .pipeline(pipeline)
+            .await
+            .map_err(|err| match err.kind.as_ref() {
+                ErrorKind::Command(command) if command.code == CHANGE_STREAM_STANDALONE => {
+                    AppError::validation(format!(
+                        "change streams exigem um replica set ou cluster fragmentado; este servidor é standalone ({})",
+                        command.message
+                    ))
+                }
+                _ => self.error(err),
+            })?;
+        Ok(ChangeFeed {
+            // raw documents: a pipeline may reshape events beyond the typed form
+            stream: stream.with_type::<Document>(),
+            timeout_secs: self.timeout_secs,
+        })
+    }
+
     fn collection(&self, database: &str, collection: &str) -> mongodb::Collection<Document> {
         self.client.database(database).collection(collection)
+    }
+}
+
+/// An open change stream. Dropping it closes the cursor on the server.
+pub struct ChangeFeed {
+    stream: ChangeStream<Document>,
+    timeout_secs: u32,
+}
+
+impl ChangeFeed {
+    /// Waits for the next event; `None` when the stream ended (invalidated).
+    pub async fn next(&mut self) -> Result<Option<ChangeEvent>, AppError> {
+        let event = self
+            .stream
+            .try_next()
+            .await
+            .map_err(|err| map_error(&err, self.timeout_secs))?;
+        Ok(event.map(change_event))
+    }
+}
+
+fn change_event(event: Document) -> ChangeEvent {
+    let text = |key: &str| event.get_document(key).ok().cloned().map(ejson::to_text);
+    let at = match (
+        event.get_datetime("wallTime"),
+        event.get_timestamp("clusterTime"),
+    ) {
+        (Ok(wall), _) => Some(*wall),
+        (_, Ok(cluster)) => Some(bson::DateTime::from_millis(i64::from(cluster.time) * 1000)),
+        _ => None,
+    };
+    ChangeEvent {
+        operation: event.get_str("operationType").unwrap_or("?").to_string(),
+        id: event
+            .get_document("documentKey")
+            .ok()
+            .and_then(|key| key.get("_id"))
+            .cloned()
+            .map(ejson::value_to_text),
+        document: text("fullDocument"),
+        diff: text("updateDescription"),
+        at: at.and_then(|at| at.try_to_rfc3339_string().ok()),
     }
 }
 
@@ -415,6 +588,28 @@ mod tests {
         })
         .unwrap();
         MongoError::from(ErrorKind::Command(command))
+    }
+
+    #[test]
+    fn change_events_keep_their_values_as_extended_json() {
+        let update = change_event(doc! {
+            "operationType": "update",
+            "documentKey": { "_id": 7_i64 },
+            "updateDescription": { "updatedFields": { "n": 2 }, "removedFields": ["old"] },
+            "clusterTime": bson::Timestamp { time: 1_700_000_000, increment: 1 },
+        });
+        assert_eq!(
+            update,
+            ChangeEvent {
+                operation: "update".into(),
+                id: Some(r#"{"$numberLong":"7"}"#.into()),
+                document: None,
+                diff: Some(r#"{"updatedFields":{"n":2},"removedFields":["old"]}"#.into()),
+                at: Some("2023-11-14T22:13:20Z".into()),
+            }
+        );
+        // a pipeline may project fields away: nothing is invented
+        assert_eq!(change_event(doc! {}).operation, "?");
     }
 
     #[test]

@@ -5,7 +5,8 @@ use tauri::{AppHandle, State};
 use crate::AppState;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, ExplainResponse,
-    HistoryEntry, RowBatch, RunResponse, SchemaInfo, TableChanges, TableStructure,
+    HistoryEntry, RowBatch, RunResponse, SchemaChange, SchemaInfo, TableChanges, TableDdl,
+    TableStructure,
 };
 use crate::tray;
 use crate::use_cases::{connections, sql};
@@ -64,6 +65,17 @@ pub async fn table_structure(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn table_ddl(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+) -> Result<TableDdl, AppError> {
+    sql::table_ddl(&state.registry, &connection_id, &schema, &table).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn completion_tables(
     state: State<'_, AppState>,
     connection_id: String,
@@ -79,6 +91,28 @@ pub async fn browse_table(
     request: BrowseRequest,
 ) -> Result<RowBatch, AppError> {
     sql::browse(&state.registry, &connection_id, request).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn estimate_rows(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+) -> Result<Option<String>, AppError> {
+    sql::estimate_rows(&state.registry, &connection_id, &schema, &table).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn count_rows(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    request: BrowseRequest,
+) -> Result<String, AppError> {
+    sql::count_rows(&state.registry, &connection_id, &run_id, request).await
 }
 
 #[tauri::command]
@@ -159,6 +193,40 @@ pub async fn apply_changes(
         confirmed,
     )
     .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn alter_schema(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+    change: SchemaChange,
+    confirmed: bool,
+) -> Result<RunResponse, AppError> {
+    sql::alter_schema(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        &schema,
+        &table,
+        change,
+        confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn column_definition(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+    column: String,
+) -> Result<String, AppError> {
+    sql::column_definition(&state.registry, &connection_id, &schema, &table, &column).await
 }
 
 #[tauri::command]

@@ -45,8 +45,8 @@ const DiagramView = lazy(() =>
   import("@/features/diagram/DiagramView").then(module => ({ default: module.DiagramView }))
 );
 
-/** null connectionId = creating a new connection */
-type FormState = { connectionId: string | null };
+/** null connectionId = creating a new connection, from scratch or as a copy of `copyOf` */
+type FormState = { connectionId: string | null; copyOf?: string };
 
 type TabContentProps = {
   tab: Tab;
@@ -73,6 +73,7 @@ export function App() {
   } = useTabs();
   const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
   const setExpanded = useExplorer(state => state.setExpanded);
+  const setGroupOpen = useExplorer(state => state.setGroupOpen);
   // the open connection form: shown, or parked behind the tabs with its draft intact
   const [form, setForm] = useState<FormState | null>(null);
   const [formShown, setFormShown] = useState(false);
@@ -108,8 +109,13 @@ export function App() {
   const activeTab = tabs.find(tab => tab.id === activeId) ?? null;
   const tabConnectionId = activeTab && activeTab.kind !== "history" ? activeTab.connectionId : null;
   const formConnection = list.find(connection => connection.id === form?.connectionId) ?? null;
+  const formSource = list.find(connection => connection.id === form?.copyOf) ?? null;
   const formLabel =
-    form?.connectionId === null ? "Nova conexão" : `Editar ${formConnection?.name ?? "conexão"}`;
+    form?.connectionId !== null
+      ? `Editar ${formConnection?.name ?? "conexão"}`
+      : formSource
+        ? `Cópia de ${formSource.name}`
+        : "Nova conexão";
   const activeConnectionId = form && formShown ? form.connectionId : tabConnectionId;
   const active = list.find(connection => connection.id === activeConnectionId) ?? null;
   const isProd = active?.environment === "prod";
@@ -218,9 +224,10 @@ export function App() {
     setFormEdited(false);
   }
 
-  function openForm(connectionId: string | null) {
+  function openForm(connectionId: string | null, copyOf?: string) {
     setNotice(null);
-    if (form && formEdited && form.connectionId !== connectionId) {
+    const sameForm = form?.connectionId === connectionId && form.copyOf === copyOf;
+    if (form && formEdited && !sameForm) {
       // one draft at a time: the one typed into comes back instead of being replaced
       setFormShown(true);
       setNotice(
@@ -228,10 +235,10 @@ export function App() {
       );
       return;
     }
-    if (form?.connectionId !== connectionId) {
+    if (!sameForm) {
       setFormEdited(false);
     }
-    setForm({ connectionId });
+    setForm({ connectionId, copyOf });
     setFormShown(true);
   }
 
@@ -260,6 +267,11 @@ export function App() {
       // connecting is the user's pick here; the tree lists it and takes focus
       showTabs();
       setExpanded(target.connectionId, true);
+      // a folded group would hide the row that takes focus
+      const group = list.find(connection => connection.id === target.connectionId)?.group;
+      if (group) {
+        setGroupOpen(group, true);
+      }
       requestAnimationFrame(() =>
         document.getElementById(connectionRowId(target.connectionId))?.focus()
       );
@@ -441,6 +453,7 @@ export function App() {
                   activeTable={!formShown && activeTab?.kind === "table" ? activeTab : null}
                   activeRedis={!formShown && activeTab?.kind === "redis" ? activeTab : null}
                   onEdit={openForm}
+                  onDuplicate={connectionId => openForm(null, connectionId)}
                   onOpenTable={target => {
                     showTabs();
                     openTable(target);
@@ -538,8 +551,9 @@ export function App() {
             // parked, not unmounted: what was typed survives a trip to the tabs
             <div hidden={!formShown} className="overflow-auto p-6">
               <ConnectionForm
-                key={form.connectionId ?? "new"}
+                key={form.connectionId ?? `new:${form.copyOf ?? ""}`}
                 connection={formConnection}
+                copyOf={formSource}
                 onCancel={closeForm}
                 onEditedChange={setFormEdited}
                 onSaved={(id, keychainWarning) => {

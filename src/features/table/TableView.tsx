@@ -10,11 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { useConnections } from "@/features/connections/queries";
 import { ExportButton } from "@/features/export/ExportButton";
+import { ImportCsvButton } from "@/features/import/ImportCsvButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
+import { RowCount } from "@/features/table/RowCount";
 import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
 import { tableKey, useTabs } from "@/features/tabs/store";
@@ -63,6 +65,14 @@ export function TableView(props: TableViewProps) {
         {props.readOnly && <Badge variant="held">Somente leitura</Badge>}
         <div className="ml-auto flex min-w-0 items-center gap-4">
           <ConnectionContext connectionId={props.connectionId} />
+          {/* somente leitura: the database would refuse the INSERT anyway */}
+          {!props.readOnly && (
+            <ImportCsvButton
+              connectionId={props.connectionId}
+              schema={props.schema}
+              table={props.table}
+            />
+          )}
           <ExportButton
             baseName={props.table}
             formats={[
@@ -106,6 +116,7 @@ export function TableView(props: TableViewProps) {
           connectionId={props.connectionId}
           schema={props.schema}
           table={props.table}
+          readOnly={props.readOnly}
         />
       </TabsContent>
     </Tabs>
@@ -369,6 +380,12 @@ function TableData({
               <ChevronRight />
             </Button>
           </div>
+          {/* a new filter or a save makes the count speak of other rows: it starts over */}
+          <RowCount
+            key={`${JSON.stringify(filters)}|${edit.saves}`}
+            connectionId={connectionId}
+            request={request}
+          />
           {!dirty && browse.isFetching && (
             <span className="text-xs text-muted-foreground">atualizando…</span>
           )}

@@ -10,12 +10,15 @@ import {
   ChevronDown,
   Braces,
   ChevronRight,
+  Copy,
   Database,
   Ellipsis,
   Eye,
+  Folder,
   Lock,
   Network,
   Pencil,
+  Plus,
   SquareTerminal,
   Table2,
   Unplug
@@ -32,8 +35,9 @@ import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
 import { defaultSchemaFor, ENGINE_LABEL, isSqlEngine } from "@/features/connections/options";
 import { useDisconnect, useSchemas } from "@/features/explorer/queries";
 import { connectionRowId, useExplorer } from "@/features/explorer/store";
-import { treeMove } from "@/features/explorer/treeNav";
+import { byGroup, treeMove } from "@/features/explorer/treeNav";
 import { useRedisDatabases } from "@/features/redis/queries";
+import { NewTableFlow } from "@/features/table/SchemaDialogs";
 import type { DiagramTarget, RedisTarget, TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -44,6 +48,8 @@ type TreeActions = {
   activeTable: TableTarget | null;
   activeRedis: RedisTarget | null;
   onEdit: (connectionId: string) => void;
+  /** opens the form filled from this connection, as a new one */
+  onDuplicate: (connectionId: string) => void;
   onOpenTable: (target: TableTarget) => void;
   onOpenEditor: (connectionId: string) => void;
   onOpenRedis: (target: RedisTarget) => void;
@@ -52,16 +58,22 @@ type TreeActions = {
 
 type ConnectionTreeProps = TreeActions & { connections: ConnectionConfig[] };
 
-type ConnectionNodeProps = TreeActions & { connection: ConnectionConfig };
+/** `level`: the row's depth in the tree, 2 inside a group */
+type ConnectionNodeProps = TreeActions & { connection: ConnectionConfig; level: number };
+
+type GroupNodeProps = TreeActions & { name: string; connections: ConnectionConfig[] };
 
 type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   connectionId: string;
   schema: SchemaInfo;
+  level: number;
   /** what the count names: MongoDB lists collections */
   isMongo: boolean;
   openByDefault: boolean;
   /** SQL only: MongoDB has no foreign keys */
   onOpenDiagram?: (target: DiagramTarget) => void;
+  /** SQL on a writable connection */
+  canCreateTable: boolean;
 };
 
 type RowAction = { label: string; icon: ReactNode; onSelect: () => void };
@@ -93,6 +105,13 @@ export function targetSummary(connection: ConnectionConfig): string {
   }
   if (target.kind === "uri") {
     return "URI de conexão";
+  }
+  if (target.kind === "redisCluster" || target.kind === "redisSentinel") {
+    const [first, ...rest] = target.nodes;
+    const nodes = `${first.host}:${first.port}${rest.length > 0 ? ` +${rest.length}` : ""}`;
+    return target.kind === "redisCluster"
+      ? `cluster ${nodes}`
+      : `sentinel ${target.masterName} via ${nodes}`;
   }
   return `${target.host}:${target.port}`;
 }
@@ -190,6 +209,7 @@ function useRovingTabStop(treeRef: RefObject<HTMLUListElement | null>) {
 export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps) {
   const treeRef = useRef<HTMLUListElement>(null);
   const trackFocus = useRovingTabStop(treeRef);
+  const { ungrouped, groups } = byGroup(connections);
 
   if (connections.length === 0) {
     return (
@@ -212,10 +232,58 @@ export function ConnectionTree({ connections, ...actions }: ConnectionTreeProps)
       onFocus={event => trackFocus(event.target)}
       className="mx-4 mb-4 grid grid-cols-1 border border-foreground bg-background"
     >
-      {connections.map(connection => (
-        <ConnectionNode key={connection.id} connection={connection} {...actions} />
+      {/* without a group at the top, then each group as a folder */}
+      {ungrouped.map(connection => (
+        <ConnectionNode key={connection.id} connection={connection} level={1} {...actions} />
+      ))}
+      {groups.map(group => (
+        <GroupNode key={group.name} {...group} {...actions} />
       ))}
     </ul>
+  );
+}
+
+/** A folder of connections; folded or not, it stays folded across restarts. */
+function GroupNode({ name, connections, ...actions }: GroupNodeProps) {
+  const open = useExplorer(state => !state.collapsedGroups.includes(name));
+  const setGroupOpen = useExplorer(state => state.setGroupOpen);
+  const Chevron = open ? ChevronDown : ChevronRight;
+  const count = connections.length === 1 ? "1 conexão" : `${connections.length} conexões`;
+  return (
+    <li role="none" className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        role="treeitem"
+        aria-level={1}
+        aria-expanded={open}
+        tabIndex={-1}
+        onClick={() => setGroupOpen(name, !open)}
+        className={cn(TREE_ROW, "h-8 gap-2 px-2")}
+      >
+        <Chevron aria-hidden className="size-3.5 shrink-0" />
+        <Folder aria-hidden className="size-3.5 shrink-0" />
+        {/* the user's name for it, case kept, like a connection's */}
+        <span className="min-w-0 truncate font-semibold">{name}</span>
+        {/* read as "Cliente X · 3 conexões"; the bare number on screen */}
+        {/* the space between the spans, not inside one: names trim each span's own */}{" "}
+        <span className="sr-only">· {count}</span>
+        <span
+          aria-hidden
+          title={count}
+          className="ml-auto font-mono text-[11px] text-muted-foreground"
+        >
+          {connections.length}
+        </span>
+      </button>
+      {open && (
+        // indented under its folder by a rule, like the rows under an open connection
+        <ul role="group" className="ml-3.5 grid grid-cols-1 border-t border-l border-border">
+          {connections.map(connection => (
+            <ConnectionNode key={connection.id} connection={connection} level={2} {...actions} />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -265,10 +333,12 @@ function RowMenu({ label, actions, open, onOpenChange, rowRef, className }: RowM
 
 function ConnectionNode({
   connection,
+  level,
   editingId,
   activeTable,
   activeRedis,
   onEdit,
+  onDuplicate,
   onOpenTable,
   onOpenEditor,
   onOpenRedis,
@@ -298,6 +368,7 @@ function ConnectionNode({
         ]
       : []),
     { label: "Editar conexão", icon: <Pencil />, onSelect: () => onEdit(connection.id) },
+    { label: "Duplicar conexão", icon: <Copy />, onSelect: () => onDuplicate(connection.id) },
     ...(listing.isSuccess
       ? [
           {
@@ -334,7 +405,7 @@ function ConnectionNode({
           type="button"
           id={connectionRowId(connection.id)}
           role="treeitem"
-          aria-level={1}
+          aria-level={level}
           aria-expanded={expanded}
           aria-current={editingId === connection.id || undefined}
           // the row's actions; the "⋯" next to it is the mouse's copy of the same menu
@@ -404,7 +475,7 @@ function ConnectionNode({
               <button
                 type="button"
                 role="treeitem"
-                aria-level={2}
+                aria-level={level + 1}
                 tabIndex={-1}
                 onClick={() => onOpenEditor(connection.id)}
                 className={cn(TREE_ROW, "font-medium")}
@@ -437,7 +508,7 @@ function ConnectionNode({
               </div>
               <p className="text-xs text-muted-foreground">
                 Confira host, porta e senha em Editar conexão e use Testar conexão, que tenta sem
-                salvar. Banco atrás de bastion: abra um túnel antes (ssh -L).
+                salvar. Banco atrás de bastion: marque Conectar por túnel SSH.
               </p>
               {/* both ways out the text names, within reach of Tab */}
               <div className="flex flex-wrap gap-1.5">
@@ -458,7 +529,7 @@ function ConnectionNode({
                 <button
                   type="button"
                   role="treeitem"
-                  aria-level={2}
+                  aria-level={level + 1}
                   aria-selected={isActive || undefined}
                   tabIndex={-1}
                   onClick={() => onOpenRedis({ connectionId: connection.id, db: database.index })}
@@ -494,11 +565,13 @@ function ConnectionNode({
               key={schema.name}
               connectionId={connection.id}
               schema={schema}
+              level={level + 1}
               isMongo={connection.engine === "mongo"}
               openByDefault={schema.name === defaultSchemaFor(connection)}
               activeTable={activeTable}
               onOpenTable={onOpenTable}
               onOpenDiagram={hasSqlEditor ? onOpenDiagram : undefined}
+              canCreateTable={hasSqlEditor && !connection.readOnly}
             />
           ))}
         </ul>
@@ -510,26 +583,34 @@ function ConnectionNode({
 function SchemaNode({
   connectionId,
   schema,
+  level,
   isMongo,
   openByDefault,
   activeTable,
   onOpenTable,
-  onOpenDiagram
+  onOpenDiagram,
+  canCreateTable
 }: SchemaNodeProps) {
   const [expanded, setExpanded] = useState(openByDefault);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const rowRef = useRef<HTMLButtonElement>(null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
   const relationCount = countRelations(schema.relations, isMongo);
-  const actions: RowAction[] = onOpenDiagram
-    ? [
-        {
-          label: "Abrir diagrama ER",
-          icon: <Network />,
-          onSelect: () => onOpenDiagram({ connectionId, schema: schema.name })
-        }
-      ]
-    : [];
+  const actions: RowAction[] = [
+    ...(onOpenDiagram
+      ? [
+          {
+            label: "Abrir diagrama ER",
+            icon: <Network />,
+            onSelect: () => onOpenDiagram({ connectionId, schema: schema.name })
+          }
+        ]
+      : []),
+    ...(canCreateTable
+      ? [{ label: "Nova tabela…", icon: <Plus />, onSelect: () => setCreating(true) }]
+      : [])
+  ];
 
   return (
     <li role="none">
@@ -546,7 +627,7 @@ function SchemaNode({
           ref={rowRef}
           type="button"
           role="treeitem"
-          aria-level={2}
+          aria-level={level}
           aria-expanded={expanded}
           aria-keyshortcuts={actions.length > 0 ? "Shift+F10" : undefined}
           tabIndex={-1}
@@ -579,6 +660,17 @@ function SchemaNode({
           />
         )}
       </div>
+      {creating && (
+        <NewTableFlow
+          connectionId={connectionId}
+          schema={schema.name}
+          onCancel={() => setCreating(false)}
+          onCreated={table => {
+            setCreating(false);
+            onOpenTable({ connectionId, schema: schema.name, table });
+          }}
+        />
+      )}
       {expanded && (
         <ul role="group" className="grid grid-cols-1 pl-4">
           {schema.relations.length === 0 && (
@@ -598,7 +690,7 @@ function SchemaNode({
                 <button
                   type="button"
                   role="treeitem"
-                  aria-level={3}
+                  aria-level={level + 1}
                   aria-selected={isActive || undefined}
                   tabIndex={-1}
                   onClick={() =>

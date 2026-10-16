@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 use tauri_specta::{Builder, ErrorHandlingMode, collect_commands};
 
+pub use adapters::ssh::askpass_reply;
 use registry::Registry;
 use storage::connections::ConnectionStore;
 use storage::history::HistoryStore;
@@ -39,14 +40,19 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::disconnect_database,
             commands::sql::list_schemas,
             commands::sql::table_structure,
+            commands::sql::table_ddl,
             commands::sql::completion_tables,
             commands::sql::browse_table,
+            commands::sql::estimate_rows,
+            commands::sql::count_rows,
             commands::sql::run_script,
             commands::sql::explain,
             commands::sql::fetch_more,
             commands::sql::close_cursor,
             commands::sql::cancel_run,
             commands::sql::apply_changes,
+            commands::sql::alter_schema,
+            commands::sql::column_definition,
             commands::sql::copy_as_insert,
             commands::sql::search_history,
             commands::sql::star_history,
@@ -54,11 +60,20 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::export::export_query,
             commands::export::export_table,
             commands::export::export_collection,
+            commands::import::preview_csv,
+            commands::import::import_csv,
+            commands::import::import_documents,
             commands::export::export_keys,
             commands::mongo::browse_collection,
             commands::mongo::collection_indexes,
+            commands::mongo::index_statement,
+            commands::mongo::create_index,
+            commands::mongo::drop_index,
             commands::mongo::run_aggregation,
+            commands::mongo::sample_schema,
             commands::mongo::write_document,
+            commands::mongo::watch_collection,
+            commands::mongo::stop_watch,
             commands::redis::redis_databases,
             commands::redis::scan_keys,
             commands::redis::read_key,
@@ -71,6 +86,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::redis::redis_subscribe,
             commands::redis::stop_redis_session,
             commands::redis::redis_publish,
+            commands::redis::redis_master,
         ])
 }
 
@@ -95,7 +111,7 @@ pub fn run() {
         }))
         // UI state (open tabs, editor text), see src/features/tabs
         .plugin(tauri_plugin_store::Builder::new().build())
-        // "save as" for exports
+        // "save as" for exports, "open" for imports
         .plugin(tauri_plugin_dialog::init())
         // signed updates from GitHub Releases, see commands/update.rs
         .plugin(tauri_plugin_updater::Builder::new().build())

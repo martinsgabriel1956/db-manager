@@ -36,5 +36,5 @@ afterEach(async () => {
   await new Promise(resolve => setTimeout(resolve));
   clearMocks();
   useTabs.setState({ ...INITIAL_TABS, pending: {}, closeRequest: null, quitRequest: false });
-  useExplorer.setState({ expanded: [] });
+  useExplorer.setState({ expanded: [], collapsedGroups: [] });
 });

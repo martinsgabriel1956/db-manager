@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod integration_tests;
+pub(crate) mod integration_tests;
 
 use std::time::Duration;
 
@@ -15,7 +15,8 @@ use crate::adapters::sql_builder;
 use crate::adapters::stream::{self, Engine, ScriptRun};
 use crate::domain::{
     AppError, BrowseRequest, Cell, ColumnInfo, CompletionTable, ConnectionConfig, ForeignKeyInfo,
-    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableStructure, Target,
+    IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo, TableDdl,
+    TableStructure, Target,
 };
 
 const MAX_POOL_CONNECTIONS: u32 = 5;
@@ -242,6 +243,7 @@ impl SqliteAdapter {
         }
 
         Ok(TableStructure {
+            constraints: Vec::new(),
             columns: columns
                 .into_iter()
                 .map(|(name, data_type, not_null, default, pk)| ColumnInfo {
@@ -292,6 +294,31 @@ impl SqliteAdapter {
         })
     }
 
+    /// The text stored in `sqlite_master`, exactly as it was written: the table first,
+    /// then its indexes and triggers. Automatic indexes (PK, UNIQUE) have no text.
+    pub async fn ddl(&self, schema: &str, table: &str) -> Result<TableDdl, AppError> {
+        let statements: Vec<String> = sqlx::query_scalar(AssertSqlSafe(format!(
+            r"SELECT sql FROM {}.sqlite_master
+              WHERE tbl_name = ?1 AND sql IS NOT NULL
+              ORDER BY type NOT IN ('table', 'view'), type, name",
+            Self::DIALECT.quote_ident(schema)
+        )))
+        .bind(table)
+        .fetch_all(&self.pool)
+        .await?;
+        if statements.is_empty() {
+            return Err(AppError::not_found(&format!("tabela {schema}.{table}")));
+        }
+        Ok(TableDdl {
+            sql: statements
+                .iter()
+                .map(|statement| format!("{statement};"))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            reconstructed: false,
+        })
+    }
+
     pub async fn completion_tables(&self) -> Result<Vec<CompletionTable>, AppError> {
         let mut tables: Vec<CompletionTable> = Vec::new();
         for schema in self.schema_names().await? {
@@ -320,6 +347,15 @@ impl SqliteAdapter {
             }
         }
         Ok(tables)
+    }
+
+    /// SQLite keeps no row estimate (only `sqlite_stat1` after ANALYZE, per index).
+    pub async fn estimate_rows(
+        &self,
+        _schema: &str,
+        _table: &str,
+    ) -> Result<Option<String>, AppError> {
+        Ok(None)
     }
 
     /// Declared primary key only: a rowid table without one stays read-only.
@@ -358,6 +394,10 @@ impl SqliteAdapter {
 
     pub async fn apply(&self, statements: &[String]) -> Result<u32, AppError> {
         stream::apply::<SqliteEngine>(&self.pool, statements).await
+    }
+
+    pub async fn begin(&self) -> Result<(sqlx::Transaction<'static, sqlx::Sqlite>, i64), AppError> {
+        stream::begin(&self.engine, &self.pool).await
     }
 
     pub async fn cancel(&self, session: i64) {
