@@ -22,8 +22,8 @@ use redis::{
 use tokio::sync::oneshot;
 
 use crate::domain::{
-    AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage, NodeAddress,
-    PubSubEvent, RedisDatabase, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
+    AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage, MonitorEvent,
+    NodeAddress, PubSubEvent, RedisDatabase, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -37,6 +37,10 @@ const SCAN_TARGET: usize = 1000;
 const SCAN_ROUNDS: usize = 10;
 const SCAN_COUNT: usize = 1000;
 const DEFAULT_DATABASES: u8 = 16;
+/// MONITOR stops by itself after this long or this many lines: it costs the
+/// server on every command it runs.
+pub const MONITOR_MAX_DURATION: Duration = Duration::from_secs(60);
+pub const MONITOR_MAX_LINES: u32 = 10_000;
 
 pub struct RedisAdapter {
     server: Server,
@@ -305,6 +309,62 @@ impl RedisAdapter {
             send(PubSubEvent::Ended {
                 reason: reason.to_string(),
             });
+        });
+        Ok(())
+    }
+
+    /// MONITOR on a dedicated connection, each line forwarded to `send` until
+    /// `stop(id)`, `close`, the limits (`MONITOR_MAX_*`), the server closing it,
+    /// or `send` returning false.
+    pub async fn monitor(
+        &self,
+        id: &str,
+        send: impl Fn(MonitorEvent) -> bool + Send + 'static,
+    ) -> Result<(), AppError> {
+        let Server::Standalone { info, .. } = &self.server else {
+            return Err(AppError::validation(
+                "MONITOR mostra os comandos de um servidor só: num cluster, conecte-se direto a um nó",
+            ));
+        };
+        let info = lock(info).clone();
+        let client = Client::open(info).map_err(|err| self.error(err))?;
+        let monitor = tokio::time::timeout(CONNECT_TIMEOUT, client.get_async_monitor())
+            .await
+            .map_err(|_| AppError::Timeout("falha ao conectar: tempo esgotado".into()))?
+            .map_err(|err| self.error(err))?;
+        let (stop, mut stopped) = oneshot::channel();
+        lock(&self.streams).insert(id.to_string(), stop);
+        tokio::spawn(async move {
+            // Value, not String: a reply that fails to convert would end the stream
+            let mut lines = monitor.into_on_message::<Value>();
+            let deadline = tokio::time::sleep(MONITOR_MAX_DURATION);
+            tokio::pin!(deadline);
+            let mut count = 0;
+            let reason = loop {
+                tokio::select! {
+                    _ = &mut stopped => break "MONITOR encerrado".to_string(),
+                    () = &mut deadline => break format!(
+                        "parou sozinho após {} s", MONITOR_MAX_DURATION.as_secs()
+                    ),
+                    line = lines.next() => match line {
+                        Some(line) => {
+                            let text = match line {
+                                Value::SimpleString(text) => text,
+                                other => reply::format_reply(&other),
+                            };
+                            if !send(MonitorEvent::Line { text }) {
+                                return;
+                            }
+                            count += 1;
+                            if count >= MONITOR_MAX_LINES {
+                                break format!("parou sozinho após {MONITOR_MAX_LINES} linhas");
+                            }
+                        }
+                        None => break "o servidor encerrou a conexão".to_string(),
+                    },
+                }
+            };
+            send(MonitorEvent::Ended { reason });
         });
         Ok(())
     }

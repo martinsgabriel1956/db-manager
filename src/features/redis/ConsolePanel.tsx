@@ -98,7 +98,8 @@ export function ConsolePanel({ connectionId, db, promptRef }: ConsolePanelProps)
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">
         <span>
-          Executa no db{db}. Bloqueantes, MULTI e SELECT não são aceitos; pub/sub tem seção própria.
+          Executa no db{db}. Bloqueantes, MULTI e SELECT não são aceitos; pub/sub e MONITOR têm
+          seção própria.
         </span>
         <Button size="xs" variant="ghost" className="ml-auto" onClick={() => setLines([])}>
           Limpar

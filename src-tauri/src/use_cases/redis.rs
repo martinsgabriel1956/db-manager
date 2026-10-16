@@ -5,7 +5,8 @@ use redis::Value;
 use crate::adapters::redis::reply;
 use crate::domain::{
     AppError, CommandOutcome, CommandResponse, Confirmation, Environment, InfoSection, KeyDetail,
-    KeyEdit, KeyEditRequest, KeyEditResponse, KeyPage, PubSubEvent, RedisDatabase,
+    KeyEdit, KeyEditRequest, KeyEditResponse, KeyPage, LiveStart, MonitorEvent, PubSubEvent,
+    RedisDatabase,
 };
 use crate::registry::Registry;
 use crate::storage::history::HistoryStore;
@@ -195,7 +196,7 @@ const REFUSED_COMMANDS: &[(&str, &str)] = &[
         "SUNSUBSCRIBE",
         "o console não assina canais: use a seção Pub/sub",
     ),
-    ("MONITOR", "MONITOR não é suportado no console"),
+    ("MONITOR", "o console não roda MONITOR: use a seção Monitor"),
     ("MULTI", "transações não são suportadas no console"),
     ("EXEC", "transações não são suportadas no console"),
     ("DISCARD", "transações não são suportadas no console"),
@@ -589,6 +590,32 @@ pub async fn subscribe(
         .redis()?
         .subscribe(session_id, &channels, &patterns, send)
         .await
+}
+
+/// Starts MONITOR. It changes no data (allowed on read-only connections) but
+/// costs the server on every command, so prod asks first.
+pub async fn monitor(
+    registry: &Registry,
+    connection_id: &str,
+    session_id: &str,
+    confirmed: bool,
+    send: impl Fn(MonitorEvent) -> bool + Send + 'static,
+) -> Result<LiveStart, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let redis = connection.redis()?;
+    if connection.environment == Environment::Prod && !confirmed {
+        return Ok(LiveStart::NeedsConfirmation {
+            confirmation: Confirmation {
+                reason: "Conexão de produção: MONITOR envia a este app cada comando do \
+                         servidor e pesa no desempenho dele enquanto roda"
+                    .to_string(),
+                statements: vec!["MONITOR".to_string()],
+                destructive: false,
+            },
+        });
+    }
+    redis.monitor(session_id, send).await?;
+    Ok(LiveStart::Started)
 }
 
 /// Ends a live session. The connection may already be closed (which ended it).
@@ -1148,6 +1175,75 @@ mod integration_tests {
             entries
                 .iter()
                 .any(|e| e.sql == "SELECT 0\nPUBLISH news \"olá mundo\"")
+        );
+    }
+
+    #[tokio::test]
+    async fn monitor_streams_commands_and_asks_first_on_prod() {
+        use tokio::sync::mpsc;
+
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        config.environment = Environment::Prod;
+        config.read_only = true;
+        open(&registry, &config).await;
+
+        let (tx, mut events) = mpsc::unbounded_channel();
+        let send = move |event| tx.send(event).is_ok();
+        let LiveStart::NeedsConfirmation { confirmation } =
+            monitor(&registry, "redis", "m1", false, send.clone())
+                .await
+                .unwrap()
+        else {
+            panic!("confirmation expected");
+        };
+        assert_eq!(confirmation.statements, ["MONITOR"]);
+        // read-only does not stop it: MONITOR changes no data
+        assert_eq!(
+            monitor(&registry, "redis", "m1", true, send).await.unwrap(),
+            LiveStart::Started
+        );
+        output(
+            console(&registry, &history, "GET \"a b\"", false)
+                .await
+                .unwrap(),
+        );
+        let MonitorEvent::Line { text } = next(&mut events).await else {
+            panic!("line expected");
+        };
+        assert!(text.ends_with(r#""GET" "a b""#), "{text}");
+
+        stop_session(&registry, "redis", "m1");
+        assert_eq!(
+            next(&mut events).await,
+            MonitorEvent::Ended {
+                reason: "MONITOR encerrado".into()
+            }
+        );
+
+        // it stops by itself at the line limit
+        use crate::adapters::redis::MONITOR_MAX_LINES;
+        let (tx, mut events) = mpsc::unbounded_channel();
+        monitor(&registry, "redis", "m2", true, move |event| {
+            tx.send(event).is_ok()
+        })
+        .await
+        .unwrap();
+        let pings = vec![vec!["PING".to_string()]; MONITOR_MAX_LINES as usize + 10];
+        let connection = registry.connection("redis").unwrap();
+        connection.redis().unwrap().atomic(0, &pings).await.unwrap();
+        let mut lines = 0;
+        let reason = loop {
+            match next(&mut events).await {
+                MonitorEvent::Line { .. } => lines += 1,
+                MonitorEvent::Ended { reason } => break reason,
+            }
+        };
+        assert_eq!(lines, MONITOR_MAX_LINES);
+        assert_eq!(
+            reason,
+            format!("parou sozinho após {MONITOR_MAX_LINES} linhas")
         );
     }
 }
