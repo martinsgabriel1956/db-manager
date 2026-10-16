@@ -43,6 +43,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::table_ddl,
             commands::sql::completion_tables,
             commands::sql::browse_table,
+            commands::sql::estimate_rows,
+            commands::sql::count_rows,
             commands::sql::run_script,
             commands::sql::explain,
             commands::sql::fetch_more,

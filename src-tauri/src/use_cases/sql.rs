@@ -223,6 +223,46 @@ pub(crate) fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
     Ok(())
 }
 
+/// The database's cheap row estimate, when it keeps one (not SQLite).
+pub async fn estimate_rows(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Option<String>, AppError> {
+    registry
+        .connection(connection_id)?
+        .sql()?
+        .estimate_rows(schema, table)
+        .await
+}
+
+/// `COUNT(*)` under the browse filters, as exact text. Runs like an editor script:
+/// cancellable under `run_id` and bound by the connection's timeout.
+pub async fn count_rows(
+    registry: &Registry,
+    connection_id: &str,
+    run_id: &str,
+    request: BrowseRequest,
+) -> Result<String, AppError> {
+    validate_browse(&request)?;
+    let connection = registry.connection(connection_id)?;
+    let sql = connection.sql()?;
+    let statement = sql_builder::count_sql(sql.dialect(), &request)?;
+    let run = sql
+        .run_script(&[statement], 1, |pid| {
+            registry.start_run(run_id, connection.clone(), pid)
+        })
+        .await;
+    registry.finish_run(run_id);
+    match run?.first.batch.rows.first().and_then(|row| row.first()) {
+        Some(Cell::Int(count)) => Ok(count.clone()),
+        other => Err(AppError::validation(format!(
+            "contagem inesperada: {other:?}"
+        ))),
+    }
+}
+
 /// Splits the script and asks for confirmation when it is destructive (or writes on
 /// prod). Otherwise runs it, keeping the last statement's rows streaming under
 /// `run_id`, which is also the cursor id for `fetch_more`/`close_cursor`.
@@ -1302,6 +1342,92 @@ mod integration_tests {
             .map(|relation| relation.name)
             .collect();
         assert_eq!(tables, ["teams"]);
+    }
+
+    #[tokio::test]
+    async fn rows_are_estimated_and_counted_on_demand_cancellably() {
+        use crate::domain::{Filter, FilterOp};
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        exec(
+            &registry,
+            &history,
+            "c1",
+            r"CREATE TABLE items (id int PRIMARY KEY, kind text);
+              INSERT INTO items SELECT g, CASE WHEN g % 3 = 0 THEN 'x' END FROM generate_series(1, 3000) g;
+              CREATE VIEW slow AS SELECT 1 AS s FROM pg_sleep(30)",
+        )
+        .await;
+        let request = |table: &str, filters: Vec<Filter>| BrowseRequest {
+            schema: "public".into(),
+            table: table.into(),
+            filters,
+            sort: None,
+            page: 0,
+            page_size: 100,
+        };
+
+        // the planner's estimate once analyzed; views have none
+        exec(&registry, &history, "c2", "ANALYZE items").await;
+        assert_eq!(
+            estimate_rows(&registry, "it", "public", "items")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("3000")
+        );
+        assert_eq!(
+            estimate_rows(&registry, "it", "public", "slow")
+                .await
+                .unwrap(),
+            None
+        );
+
+        assert_eq!(
+            count_rows(&registry, "it", "c3", request("items", vec![]))
+                .await
+                .unwrap(),
+            "3000"
+        );
+        let only_x = vec![Filter {
+            column: "kind".into(),
+            op: FilterOp::Eq,
+            value: Some("x".into()),
+        }];
+        assert_eq!(
+            count_rows(&registry, "it", "c4", request("items", only_x))
+                .await
+                .unwrap(),
+            "1000"
+        );
+
+        // cancellable like an editor run
+        let running = count_rows(&registry, "it", "c5", request("slow", vec![]));
+        let cancel = async {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while registry.running("c5").is_none() && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            cancel_run(&registry, "c5").await.unwrap();
+        };
+        let (result, ()) = tokio::join!(running, cancel);
+        assert!(matches!(result, Err(AppError::Cancelled(_))), "{result:?}");
+        assert!(registry.running("c5").is_none());
+
+        // and bound by the connection's timeout
+        disconnect(&registry, "it").await;
+        config.timeout_secs = 1;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        assert!(matches!(
+            count_rows(&registry, "it", "c6", request("slow", vec![])).await,
+            Err(AppError::Timeout(_))
+        ));
     }
 
     #[tokio::test]

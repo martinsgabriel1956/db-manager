@@ -172,6 +172,21 @@ async fn values_introspection_and_triggers() {
     );
     assert_eq!(db.primary_key("main", "people").await.unwrap(), vec!["id"]);
     assert!(db.primary_key("main", "counter").await.unwrap().is_empty());
+    assert_eq!(db.estimate_rows("main", "people").await.unwrap(), None);
+    let count = sql_builder::count_sql(
+        SqliteAdapter::DIALECT,
+        &BrowseRequest {
+            schema: "main".into(),
+            table: "teams".into(),
+            filters: vec![],
+            sort: None,
+            page: 0,
+            page_size: 1,
+        },
+    )
+    .unwrap();
+    let rows = run(&db, &count).await.unwrap().first.batch.rows;
+    assert_eq!(rows, vec![vec![Cell::Int("1".into())]]);
     assert!(matches!(
         db.table_structure("main", "missing").await,
         Err(AppError::NotFound(_))

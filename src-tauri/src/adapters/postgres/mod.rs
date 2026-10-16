@@ -545,6 +545,25 @@ impl PostgresAdapter {
             .collect())
     }
 
+    /// The planner's estimate (`reltuples`, updated by VACUUM/ANALYZE). None for views,
+    /// partitioned parents and tables never analyzed (-1 from PG 14; older servers say 0).
+    pub async fn estimate_rows(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<String>, AppError> {
+        let estimate: Option<i64> = sqlx::query_scalar(
+            r"SELECT reltuples::int8 FROM pg_class
+              WHERE oid = (quote_ident($1) || '.' || quote_ident($2))::regclass
+                AND relkind IN ('r', 'm', 'f') AND reltuples >= 0",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(estimate.map(|rows| rows.to_string()))
+    }
+
     /// Primary-key columns in key order; empty for tables without one and for views.
     pub async fn primary_key(&self, schema: &str, table: &str) -> Result<Vec<String>, AppError> {
         let columns = sqlx::query_scalar(

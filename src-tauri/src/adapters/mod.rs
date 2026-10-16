@@ -96,6 +96,14 @@ impl SqlConnection {
         each!(self, adapter => adapter.completion_tables().await)
     }
 
+    pub async fn estimate_rows(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<String>, AppError> {
+        each!(self, adapter => adapter.estimate_rows(schema, table).await)
+    }
+
     pub async fn primary_key(&self, schema: &str, table: &str) -> Result<Vec<String>, AppError> {
         each!(self, adapter => adapter.primary_key(schema, table).await)
     }

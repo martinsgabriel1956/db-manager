@@ -429,6 +429,24 @@ impl MysqlAdapter {
         Ok(tables)
     }
 
+    /// `TABLE_ROWS`: InnoDB's sampled estimate, and cached by the server for up to
+    /// `information_schema_stats_expiry` (a day by default). None for views.
+    pub async fn estimate_rows(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Option<String>, AppError> {
+        let estimate: Option<Option<u64>> = sqlx::query_scalar(
+            r"SELECT TABLE_ROWS FROM information_schema.TABLES
+              WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'",
+        )
+        .bind(schema)
+        .bind(table)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(estimate.flatten().map(|rows| rows.to_string()))
+    }
+
     pub async fn primary_key(&self, schema: &str, table: &str) -> Result<Vec<String>, AppError> {
         let columns = sqlx::query_scalar(
             r"SELECT CAST(COLUMN_NAME AS CHAR) FROM information_schema.STATISTICS
