@@ -37,7 +37,25 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Local, sem publicar: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
+O release leva, além do `.deb` e do AppImage, um `.sig` de cada (assinatura do updater), o `latest.json` que o app consulta ao abrir e em "Procurar atualizações" (bandeja), e um `SHA256SUMS` dos pacotes (`sha256sum -c SHA256SUMS --ignore-missing` confere o que você baixou). O app atualiza sozinho o AppImage e o `.deb` (este pede a senha de administrador pelo `pkexec`), sempre depois de você confirmar.
+
+### Chave de assinatura
+
+O updater só instala um pacote assinado pela chave cuja parte pública está em `plugins.updater.pubkey` do `src-tauri/tauri.conf.json`. A chave privada **nunca** entra no repositório: fica fora dele e nos secrets do GitHub.
+
+```bash
+pnpm tauri signer generate -w ~/.tauri/ordo.key
+```
+
+O comando pede uma senha e grava `~/.tauri/ordo.key` (privada) e `~/.tauri/ordo.key.pub` (pública). Depois:
+
+1. Em **Settings → Secrets and variables → Actions** do repositório, crie `TAURI_SIGNING_PRIVATE_KEY` com o conteúdo de `~/.tauri/ordo.key` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` com a senha.
+2. A pública atual (id `90B7C4B184F0ED9A`) já está no `tauri.conf.json`; com um par novo, cole ali o conteúdo de `~/.tauri/ordo.key.pub` e faça o commit.
+3. Guarde a chave privada e a senha num cofre: sem elas, as versões já instaladas não aceitam mais nenhuma atualização (trocar a chave obriga cada usuário a baixar a próxima versão à mão).
+
+Sem o secret, o workflow falha antes de compilar.
+
+Local, sem publicar e sem chave: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
 
 ## Bancos de demonstração
 
@@ -52,14 +70,14 @@ Dados e credenciais em [dev/demo](dev/demo) (descartáveis, só local).
 ## Onde ficam os dados
 
 - Metadados das conexões: `~/.local/share/dev.nemomartins.dbmanager/connections.json`
-- Senhas: keychain do SO, serviço `db-manager`, usuário = id da conexão
+- Senhas: keychain do SO, serviço `db-manager`, usuário = id da conexão (`<id>:ssh` para a senha do túnel SSH)
 
 ## Problemas de conexão
 
 No formulário, **Testar conexão** conecta com o que está preenchido, sem salvar nada nem tocar no keychain. Os erros mais comuns:
 
 - **Recusou a conexão / timeout:** confira host e porta, e se o banco aceita conexões de fora (`listen_addresses` no Postgres, `bind-address` no MySQL, `bind` no Redis). Para um banco atrás de bastion, marque **Conectar por túnel SSH** e informe host e porta como o bastion os vê.
-- **Túnel SSH:** usa o `ssh` do sistema em modo não interativo, então só chave ou agente (`ssh-add`), sem senha nem pergunta de passphrase. Vale o `~/.ssh/config` (aliases, `ProxyJump`, `User`, `IdentityFile`); um host desconhecido entra no `known_hosts` na primeira vez, e uma chave de host trocada é recusada. Se falhar, a mensagem do `ssh` aparece no erro; confira com `ssh -N -L 15432:host:porta bastion` no terminal.
+- **Túnel SSH:** usa o `ssh` do sistema. Sem senha SSH no formulário, roda em modo não interativo: só chave sem passphrase ou agente (`ssh-add`). Com ela, a mesma senha responde à senha do usuário ou à passphrase da chave; fica no keychain (usuário `<id>:ssh`) e chega ao `ssh` pelo ambiente do processo (`SSH_ASKPASS`, OpenSSH 8.4 ou mais novo), nunca pela linha de comando. Vale o `~/.ssh/config` (aliases, `ProxyJump`, `User`, `IdentityFile`); um host desconhecido entra no `known_hosts` na primeira vez, e uma chave de host trocada é recusada. Se falhar, a mensagem do `ssh` aparece no erro; confira com `ssh -N -L 15432:host:porta bastion` no terminal.
 - **Senha ou usuário recusados:** a senha salva fica no keychain; ao editar, deixe o campo vazio para manter a salva ou digite outra.
 - **TLS:** "Exigir" recusa servidores sem TLS; "Exigir e verificar certificado" precisa do certificado CA quando ele não é público.
 - **MongoDB por URI:** a URI inteira (`mongodb://` ou `mongodb+srv://`) é o segredo; TLS e autenticação vêm dela.
