@@ -69,6 +69,9 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::update::check_update,
             commands::update::install_update,
             commands::update::open_release_page,
+            commands::redis::redis_subscribe,
+            commands::redis::stop_redis_session,
+            commands::redis::redis_publish,
         ])
 }
 
