@@ -34,9 +34,14 @@ type ConnectionFormProps = {
 };
 
 /** Connects with the draft, saved or not, and closes; the elapsed time is all it reports. */
-async function testDraft({ config, secret, sshSecret }: SaveConnectionInput): Promise<number> {
+async function testDraft({
+  config,
+  secret,
+  sshSecret,
+  sentinelSecret
+}: SaveConnectionInput): Promise<number> {
   const started = performance.now();
-  await commands.testConnection(config, secret, sshSecret);
+  await commands.testConnection(config, secret, sshSecret, sentinelSecret);
   return Math.round(performance.now() - started);
 }
 
@@ -102,7 +107,7 @@ export function ConnectionForm({
     }
     setErrors({});
     setTestedValues(JSON.stringify(values));
-    test.mutate({ config: parsed.config, secret: parsed.secret, sshSecret: parsed.sshSecret });
+    test.mutate(parsed);
   }
 
   function handleSubmit(event: FormEvent) {
@@ -114,22 +119,21 @@ export function ConnectionForm({
       return;
     }
     setErrors({});
-    save.mutate(
-      { config: parsed.config, secret: parsed.secret, sshSecret: parsed.sshSecret },
-      {
-        onSuccess: outcome => {
-          // the secret was applied; re-saving must not set or clear it again
-          setValues(prev => ({
-            ...prev,
-            password: "",
-            clearPassword: false,
-            sshPassword: "",
-            clearSshPassword: false
-          }));
-          onSaved(id, outcome.keychainWarning);
-        }
+    save.mutate(parsed, {
+      onSuccess: outcome => {
+        // the secrets were applied; re-saving must not set or clear them again
+        setValues(prev => ({
+          ...prev,
+          password: "",
+          clearPassword: false,
+          sshPassword: "",
+          clearSshPassword: false,
+          sentinelPassword: "",
+          clearSentinelPassword: false
+        }));
+        onSaved(id, outcome.keychainWarning);
       }
-    );
+    });
   }
 
   function handleCancel() {

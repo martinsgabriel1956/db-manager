@@ -31,7 +31,7 @@ sqlparser = "0.63.0"
 tauri-plugin-store = "2"
 mongodb = "3.9"
 # rustls without a provider feature: it uses ring, already enabled by sqlx
-redis = { version = "1.7", default-features = false, features = ["tokio-rustls-comp", "tls-rustls-insecure", "cluster-async"] }
+redis = { version = "1.7", default-features = false, features = ["tokio-rustls-comp", "tls-rustls-insecure", "cluster-async", "sentinel"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = { version = "2.14", default-features = false, features = ["rustls-tls", "system-proxy"] }

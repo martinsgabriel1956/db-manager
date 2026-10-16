@@ -12,12 +12,12 @@ use crate::adapters::ssh::SshTunnel;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
     DiagramTable, Engine, Environment, ExplainPlan, ExplainResponse, FilterOp, RelationKind,
-    RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome, StatementResult, TableChanges,
-    TableStructure, Target,
+    RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome, Secrets, StatementResult,
+    TableChanges, TableStructure, Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
-use crate::storage::secrets::{SecretStore, ssh_key};
+use crate::storage::secrets::{SecretStore, sentinel_key, ssh_key};
 use crate::use_cases::guard;
 
 /// Rows per batch in the SQL editor (initial result and each `fetch_more`).
@@ -33,15 +33,22 @@ pub async fn connect(
         return Ok(());
     }
     // a file database has no password; MongoDB's secret may be a whole connection string
-    let secret = match config.engine {
+    let password = match config.engine {
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let ssh_password = match config.ssh {
-        Some(_) => secrets.get(&ssh_key(&config.id))?,
-        None => None,
+    let secrets = Secrets {
+        ssh_password: match config.ssh {
+            Some(_) => secrets.get(&ssh_key(&config.id))?,
+            None => None,
+        },
+        sentinel_password: match config.target {
+            Target::RedisSentinel { .. } => secrets.get(&sentinel_key(&config.id))?,
+            _ => None,
+        },
+        password,
     };
-    let (live, tunnel) = open(&config, secret, ssh_password).await?;
+    let (live, tunnel) = open(&config, secrets).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -60,9 +67,13 @@ pub async fn connect(
 /// connects to the tunnel's local port instead of the database's host.
 async fn open(
     config: &ConnectionConfig,
-    secret: Option<String>,
-    ssh_password: Option<String>,
+    secrets: Secrets,
 ) -> Result<(Live, Option<SshTunnel>), AppError> {
+    let Secrets {
+        password: secret,
+        ssh_password,
+        sentinel_password,
+    } = secrets;
     let mut config = config.clone();
     let tunnel = match (&config.ssh, &mut config.target) {
         (Some(ssh), Target::Network { host, port, .. }) => {
@@ -76,7 +87,9 @@ async fn open(
     let config = &config;
     let live = match config.engine {
         Engine::Mongo => Live::Mongo(MongoAdapter::connect(config, secret).await?),
-        Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(config, secret).await?)),
+        Engine::Redis => Live::Redis(Box::new(
+            RedisAdapter::connect(config, secret, sentinel_password).await?,
+        )),
         _ => Live::Sql(SqlConnection::connect(config, secret, config.read_only).await?),
     };
     Ok((live, tunnel))
@@ -84,12 +97,8 @@ async fn open(
 
 /// Connects with a configuration that may not be saved and closes at once:
 /// nothing is registered, stored or written to the keychain.
-pub async fn test_connection(
-    config: &ConnectionConfig,
-    secret: Option<String>,
-    ssh_password: Option<String>,
-) -> Result<(), AppError> {
-    let (live, _tunnel) = open(config, secret, ssh_password).await?;
+pub async fn test_connection(config: &ConnectionConfig, secrets: Secrets) -> Result<(), AppError> {
+    let (live, _tunnel) = open(config, secrets).await?;
     live.close().await;
     Ok(())
 }

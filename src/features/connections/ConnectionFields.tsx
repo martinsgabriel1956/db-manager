@@ -77,6 +77,12 @@ function Field({ id, label, error, hint, children }: FieldProps) {
   );
 }
 
+const REDIS_MODE_LABEL: Record<ConnectionFormValues["redisMode"], string> = {
+  standalone: "Servidor único",
+  cluster: "Cluster",
+  sentinel: "Sentinel"
+};
+
 /** How "somente leitura" is enforced, said for the engine being set up. */
 const READ_ONLY_HINT: Record<Engine, string> = {
   postgres: "O próprio Postgres recusa escritas: a sessão abre em somente leitura.",
@@ -99,6 +105,9 @@ export function ConnectionFields({
   const isMongo = values.engine === "mongo";
   const isUri = isMongo && values.mongoMode === "uri";
   const isCluster = isRedis && values.redisMode === "cluster";
+  const isSentinel = isRedis && values.redisMode === "sentinel";
+  // the nodes stand in for host and port
+  const hasNodes = isCluster || isSentinel;
   // TLS comes from the URI itself, and a file has none
   const hasTls = !isSqlite && !isUri;
   const advancedError = Boolean(errors.timeoutSecs || errors.caCertPath || errors.tlsMode);
@@ -161,14 +170,14 @@ export function ConnectionFields({
         </datalist>
       </Field>
 
-      {!isSqlite && !isMongo && !isCluster && (
+      {!isSqlite && !isMongo && !hasNodes && (
         <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />
       )}
 
       {isRedis && (
         <fieldset className="flex gap-4 text-sm">
           <legend className="sr-only">Topologia do Redis</legend>
-          {(["standalone", "cluster"] as const).map(mode => (
+          {(["standalone", "cluster", "sentinel"] as const).map(mode => (
             <label key={mode} className="flex items-center gap-1.5">
               <input
                 type="radio"
@@ -177,9 +186,9 @@ export function ConnectionFields({
                 onChange={() =>
                   onChange({
                     redisMode: mode,
-                    // the server already typed is the natural first seed
+                    // the server already typed is the natural first seed (not a sentinel)
                     redisNodes:
-                      values.redisNodes === "" && values.host !== ""
+                      mode === "cluster" && values.redisNodes === "" && values.host !== ""
                         ? formatNodes([
                             { host: values.host, port: Number(values.port) || DEFAULT_PORT.redis }
                           ])
@@ -187,7 +196,7 @@ export function ConnectionFields({
                   })
                 }
               />
-              {mode === "standalone" ? "Servidor único" : "Cluster"}
+              {REDIS_MODE_LABEL[mode]}
             </label>
           ))}
         </fieldset>
@@ -243,17 +252,23 @@ export function ConnectionFields({
         </>
       ) : (
         <>
-          {isCluster ? (
+          {hasNodes ? (
             <Field
               id="redisNodes"
-              label="Nós semente"
+              label={isSentinel ? "Sentinels" : "Nós semente"}
               error={errors.redisNodes}
-              hint="host:porta, separados por vírgula. Um basta: os outros nós vêm dele. O cluster só tem o banco 0."
+              hint={
+                isSentinel
+                  ? "host:porta (padrão 26379), separados por vírgula. O endereço do master vem deles a cada conexão."
+                  : "host:porta, separados por vírgula. Um basta: os outros nós vêm dele. O cluster só tem o banco 0."
+              }
             >
               <Input
                 id="redisNodes"
                 value={values.redisNodes}
-                placeholder="10.0.0.1:7000, 10.0.0.2:7000"
+                placeholder={
+                  isSentinel ? "10.0.0.1:26379, 10.0.0.2:26379" : "10.0.0.1:7000, 10.0.0.2:7000"
+                }
                 aria-invalid={errors.redisNodes ? true : undefined}
                 aria-describedby={describedBy("redisNodes", errors.redisNodes, true)}
                 onChange={event => onChange({ redisNodes: event.target.value })}
@@ -268,6 +283,11 @@ export function ConnectionFields({
                 {textInput("port", { type: "number" })}
               </Field>
             </div>
+          )}
+          {isSentinel && (
+            <Field id="redisMasterName" label="Nome do master" error={errors.redisMasterName}>
+              {textInput("redisMasterName", { placeholder: "mymaster" })}
+            </Field>
           )}
           <div className="grid grid-cols-2 gap-4">
             {!isCluster && (
@@ -285,7 +305,7 @@ export function ConnectionFields({
           </div>
           <Field
             id="password"
-            label="Senha"
+            label={isSentinel ? "Senha do Redis" : "Senha"}
             error={errors.password}
             hint="Guardada no keychain do sistema (no Linux, o Secret Service: GNOME Keyring ou KWallet), não no arquivo de conexões."
           >
@@ -316,10 +336,53 @@ export function ConnectionFields({
               {storedSecret === "own" ? "Remover senha salva" : "Não copiar a senha salva"}
             </label>
           )}
-          {isCluster ? (
+          {isSentinel && (
+            <>
+              <Field
+                id="sentinelPassword"
+                label="Senha do sentinel (opcional)"
+                hint="Só se os sentinels pedem senha própria (requirepass do sentinel). Também vai para o keychain."
+              >
+                <Input
+                  id="sentinelPassword"
+                  type="password"
+                  value={values.sentinelPassword}
+                  disabled={values.clearSentinelPassword}
+                  aria-describedby="sentinelPassword-hint"
+                  placeholder={
+                    storedSecret === "own"
+                      ? "Deixe vazio para manter a senha salva"
+                      : storedSecret === "copy"
+                        ? "Deixe vazio para copiar a da conexão original"
+                        : ""
+                  }
+                  onChange={event => onChange({ sentinelPassword: event.target.value })}
+                />
+              </Field>
+              {storedSecret && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={values.clearSentinelPassword}
+                    onChange={event =>
+                      onChange({
+                        clearSentinelPassword: event.target.checked,
+                        sentinelPassword: ""
+                      })
+                    }
+                  />
+                  {storedSecret === "own"
+                    ? "Remover senha do sentinel salva"
+                    : "Não copiar a senha do sentinel salva"}
+                </label>
+              )}
+            </>
+          )}
+          {hasNodes ? (
             <p className="text-xs text-muted-foreground">
-              Sem túnel SSH no cluster: os nós anunciam os próprios endereços, e o túnel só alcança
-              um host e porta.
+              {isCluster
+                ? "Sem túnel SSH no cluster: os nós anunciam os próprios endereços, e o túnel só alcança um host e porta."
+                : "Sem túnel SSH com sentinel: o master vem pelo endereço que o sentinel anuncia, e o túnel só alcança um host e porta."}
             </p>
           ) : (
             <div className="grid gap-1">
@@ -338,7 +401,7 @@ export function ConnectionFields({
               </p>
             </div>
           )}
-          {values.sshEnabled && !isCluster && (
+          {values.sshEnabled && !hasNodes && (
             <>
               <div className="grid grid-cols-[1fr_8rem] gap-4">
                 <Field id="sshHost" label="Host SSH" error={errors.sshHost}>

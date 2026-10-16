@@ -102,9 +102,12 @@ export function targetSummary(connection: ConnectionConfig): string {
   if (target.kind === "uri") {
     return "URI de conexão";
   }
-  if (target.kind === "redisCluster") {
+  if (target.kind === "redisCluster" || target.kind === "redisSentinel") {
     const [first, ...rest] = target.nodes;
-    return `cluster ${first.host}:${first.port}${rest.length > 0 ? ` +${rest.length}` : ""}`;
+    const nodes = `${first.host}:${first.port}${rest.length > 0 ? ` +${rest.length}` : ""}`;
+    return target.kind === "redisCluster"
+      ? `cluster ${nodes}`
+      : `sentinel ${target.masterName} via ${nodes}`;
   }
   return `${target.host}:${target.port}`;
 }

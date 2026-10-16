@@ -17,13 +17,13 @@ export const commands = {
 	hideWindow: () => __TAURI_INVOKE<null>("hide_window"),
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
-	saveConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret, sshSecret }),
+	saveConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange, sentinelSecret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret, sshSecret, sentinelSecret }),
 	deleteConnection: (id: string) => __TAURI_INVOKE<KeychainOutcome>("delete_connection", { id }),
 	/**
 	 *  Connects with the form's draft (saved or not) and closes right away, so wrong
 	 *  credentials are found before they are stored. Never touches open sessions.
 	 */
-	testConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret, sshSecret }),
+	testConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange, sentinelSecret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret, sshSecret, sentinelSecret }),
 	connectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("connect_database", { connectionId }),
 	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
 	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),
@@ -73,6 +73,8 @@ export const commands = {
 	redisSubscribe: (connectionId: string, sessionId: string, channels: string[], patterns: string[], onEvent: Channel<PubSubEvent>) => __TAURI_INVOKE<null>("redis_subscribe", { connectionId, sessionId, channels, patterns, onEvent }),
 	stopRedisSession: (connectionId: string, sessionId: string) => __TAURI_INVOKE<void>("stop_redis_session", { connectionId, sessionId }),
 	redisPublish: (connectionId: string, db: number, channel: string, message: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("redis_publish", { connectionId, db, channel, message, confirmed }),
+	/**  The master address the sentinels resolved; null when not behind Sentinel. */
+	redisMaster: (connectionId: string) => __TAURI_INVOKE<string | null>("redis_master", { connectionId }),
 };
 
 /* Types */
@@ -604,7 +606,7 @@ export type TableStructure = {
 
 /**
  *  Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
- *  a connection string (MongoDB) or a Redis Cluster.
+ *  a connection string (MongoDB), a Redis Cluster or Redis behind Sentinel.
  */
 export type Target = { kind: "network"; host: string; port: number; database: string; username: string } | { kind: "file"; path: string } | 
 /**
@@ -617,7 +619,14 @@ export type Target = { kind: "network"; host: string; port: number; database: st
  *  Redis Cluster: the seed nodes; the client discovers the rest from them.
  *  A cluster only has database 0.
  */
-{ kind: "redisCluster"; nodes: NodeAddress[]; username: string };
+{ kind: "redisCluster"; nodes: NodeAddress[]; username: string } | 
+/**
+ *  Redis behind Sentinel: the sentinels and the name they know the master by.
+ *  The master's address is asked to them on every connect. `username` and the
+ *  connection's secret are the master's; a sentinel password, when needed, is a
+ *  second keychain entry.
+ */
+{ kind: "redisSentinel"; nodes: NodeAddress[]; masterName: string; database: string; username: string };
 
 export type TlsConfig = {
 	mode: TlsMode,

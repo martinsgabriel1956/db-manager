@@ -8,6 +8,11 @@ pub fn ssh_key(connection_id: &str) -> String {
     format!("{connection_id}:ssh")
 }
 
+/// The sentinels' password, kept apart from the Redis one.
+pub fn sentinel_key(connection_id: &str) -> String {
+    format!("{connection_id}:sentinel")
+}
+
 /// Two implementations: the OS keychain in the app, an in-memory one in tests.
 pub trait SecretStore: Send + Sync {
     /// None when no secret is stored for this connection.

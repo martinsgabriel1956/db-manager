@@ -64,7 +64,8 @@ fn text(value: &str) -> RedisText {
 #[tokio::test]
 async fn every_type_is_read_with_ttl_and_length() {
     let (_container, config) = start().await;
-    let redis = RedisAdapter::connect(&config, None).await.unwrap();
+    let redis = RedisAdapter::connect(&config, None, None).await.unwrap();
+    assert_eq!(redis.master(), None);
     for line in [
         "SET greeting \"olá\" EX 100",
         "SET blob \"\\xff\\x00\"",
@@ -145,7 +146,7 @@ async fn every_type_is_read_with_ttl_and_length() {
 #[tokio::test]
 async fn big_collections_are_truncated() {
     let (_container, config) = start().await;
-    let redis = RedisAdapter::connect(&config, None).await.unwrap();
+    let redis = RedisAdapter::connect(&config, None, None).await.unwrap();
     let count = MAX_ELEMENTS + 5;
     let members: Vec<String> = (0..count).map(|i| format!("m{i}")).collect();
     let mut sadd = vec!["SADD".to_string(), "big:set".to_string()];
@@ -173,7 +174,7 @@ async fn big_collections_are_truncated() {
 #[tokio::test]
 async fn scan_pages_through_every_key_and_counts_databases() {
     let (_container, config) = start().await;
-    let redis = RedisAdapter::connect(&config, None).await.unwrap();
+    let redis = RedisAdapter::connect(&config, None, None).await.unwrap();
     let mut mset = vec!["MSET".to_string()];
     for i in 0..2500 {
         mset.extend([format!("user:{i}"), "x".to_string()]);
@@ -210,7 +211,7 @@ async fn scan_pages_through_every_key_and_counts_databases() {
 async fn console_replies_info_and_timeout() {
     let (_container, mut config) = start().await;
     config.timeout_secs = 1;
-    let redis = RedisAdapter::connect(&config, None).await.unwrap();
+    let redis = RedisAdapter::connect(&config, None, None).await.unwrap();
 
     assert_eq!(run(&redis, 0, "SET k v").await, "OK");
     assert_eq!(run(&redis, 0, "RPUSH l a b").await, "(integer) 2");
@@ -247,16 +248,16 @@ async fn console_replies_info_and_timeout() {
 #[tokio::test]
 async fn wrong_password_fails_on_connect() {
     let (_container, config) = start().await;
-    let redis = RedisAdapter::connect(&config, None).await.unwrap();
+    let redis = RedisAdapter::connect(&config, None, None).await.unwrap();
     run(&redis, 0, "CONFIG SET requirepass s3cret").await;
 
-    let err = RedisAdapter::connect(&config, None)
+    let err = RedisAdapter::connect(&config, None, None)
         .await
         .err()
         .expect("NOAUTH");
     assert!(matches!(&err, AppError::Database(m) if m.contains("falha ao conectar")));
     assert!(
-        RedisAdapter::connect(&config, Some("s3cret".into()))
+        RedisAdapter::connect(&config, Some("s3cret".into()), None)
             .await
             .is_ok()
     );
@@ -322,7 +323,7 @@ async fn start_cluster() -> (ContainerAsync<GenericImage>, ConnectionConfig) {
 async fn connect_cluster(config: &ConnectionConfig) -> RedisAdapter {
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
-        match RedisAdapter::connect(config, None).await {
+        match RedisAdapter::connect(config, None, None).await {
             Ok(redis)
                 if run(&redis, 0, "CLUSTER INFO")
                     .await
@@ -430,4 +431,77 @@ async fn cluster_scans_every_primary_and_routes_by_key() {
         matches!(&event, Some(PubSubEvent::Message { payload, .. }) if payload.text == "hi"),
         "{event:?}"
     );
+}
+
+/// A master and one sentinel in one container, on the same ports inside and outside:
+/// the sentinel monitors 127.0.0.1, so the address it hands out works from the host.
+/// Each needs its own password.
+async fn start_sentinel() -> (ContainerAsync<GenericImage>, ConnectionConfig, u16) {
+    let (master, sentinel) = (free_port(), free_port());
+    let script = format!(
+        "redis-server --port {master} --save '' --appendonly no --requirepass master-pw \
+         --daemonize yes && \
+         printf 'port {sentinel}\\nsentinel monitor main 127.0.0.1 {master} 1\\n\
+         sentinel auth-pass main master-pw\\nrequirepass sentinel-pw\\n' > /tmp/sentinel.conf && \
+         redis-sentinel /tmp/sentinel.conf"
+    );
+    let container = GenericImage::new("redis", "7.4-alpine")
+        .with_wait_for(WaitFor::message_on_stdout("+monitor master main"))
+        .with_cmd(["sh", "-c", &script])
+        .with_mapped_port(master, ContainerPort::Tcp(master))
+        .with_mapped_port(sentinel, ContainerPort::Tcp(sentinel))
+        .start()
+        .await
+        .expect("docker is required for integration tests");
+    let config = ConnectionConfig {
+        target: Target::RedisSentinel {
+            nodes: vec![NodeAddress {
+                host: "127.0.0.1".into(),
+                port: sentinel,
+            }],
+            master_name: "main".into(),
+            database: "2".into(),
+            username: String::new(),
+        },
+        ..config(0)
+    };
+    (container, config, master)
+}
+
+#[tokio::test]
+async fn sentinel_resolves_the_master_with_separate_passwords() {
+    let (_container, config, master) = start_sentinel().await;
+    let redis = RedisAdapter::connect(
+        &config,
+        Some("master-pw".into()),
+        Some("sentinel-pw".into()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(redis.master(), Some(format!("127.0.0.1:{master}")));
+    run(&redis, 2, "SET k v").await;
+    assert_eq!(run(&redis, 2, "GET k").await, "\"v\"");
+    let databases = redis.databases().await.unwrap();
+    assert_eq!(databases.len(), 16);
+    assert_eq!((databases[2].index, databases[2].keys), (2, 1));
+
+    for (password, sentinel_password) in [
+        (Some("master-pw"), None),
+        (Some("master-pw"), Some("wrong")),
+        (None, Some("sentinel-pw")),
+    ] {
+        let err = RedisAdapter::connect(
+            &config,
+            password.map(Into::into),
+            sentinel_password.map(Into::into),
+        )
+        .await
+        .err()
+        .expect("refused");
+        assert!(
+            matches!(&err, AppError::Database(m) if m.contains("falha ao conectar")),
+            "{err:?}"
+        );
+    }
 }

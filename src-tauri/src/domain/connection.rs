@@ -37,7 +37,7 @@ pub struct TlsConfig {
 }
 
 /// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
-/// a connection string (MongoDB) or a Redis Cluster.
+/// a connection string (MongoDB), a Redis Cluster or Redis behind Sentinel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Target {
@@ -60,6 +60,17 @@ pub enum Target {
     #[serde(rename_all = "camelCase")]
     RedisCluster {
         nodes: Vec<NodeAddress>,
+        username: String,
+    },
+    /// Redis behind Sentinel: the sentinels and the name they know the master by.
+    /// The master's address is asked to them on every connect. `username` and the
+    /// connection's secret are the master's; a sentinel password, when needed, is a
+    /// second keychain entry.
+    #[serde(rename_all = "camelCase")]
+    RedisSentinel {
+        nodes: Vec<NodeAddress>,
+        master_name: String,
+        database: String,
         username: String,
     },
 }
@@ -118,6 +129,15 @@ pub enum SecretChange {
     /// The stored secret of another connection (the id), copied on save when duplicating
     /// it: the front never reads a stored secret, not even to copy it.
     CopyFrom(String),
+}
+
+/// The keychain secrets one connection attempt uses.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Secrets {
+    /// the database's password (MongoDB: possibly a whole connection string)
+    pub password: Option<String>,
+    pub ssh_password: Option<String>,
+    pub sentinel_password: Option<String>,
 }
 
 /// Result of an operation that touches the keychain. Metadata is saved even when the

@@ -14,7 +14,7 @@ web
 
 ## Product Purpose
 
-Cliente desktop para gerenciar bancos que já existem (na linha de TablePlus/DBeaver), com cinco engines num só app: **Postgres, MySQL, SQLite, MongoDB e Redis (standalone ou cluster)**. Três modelos de interface, um por modelo de dados: grade relacional (SQL), documentos (Mongo) e chave-valor (Redis).
+Cliente desktop para gerenciar bancos que já existem (na linha de TablePlus/DBeaver), com cinco engines num só app: **Postgres, MySQL, SQLite, MongoDB e Redis (standalone, cluster ou sentinel)**. Três modelos de interface, um por modelo de dados: grade relacional (SQL), documentos (Mongo) e chave-valor (Redis).
 
 Sucesso: trocar de banco e de ambiente sem trocar de ferramenta, sem nunca executar sem querer um comando destrutivo, e sem ver um valor diferente do que está gravado.
 
@@ -38,7 +38,7 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 ## Capabilities and Constraints
 
 - Decisões e escopo de cada marco (M0–M6) em `docs/decisions.md`; é a fonte de verdade técnica.
-- **Fora da v1:** edição de schema pela UI, MONITOR, módulos, Redis sentinel, export no Redis. Edição de schema está prevista para v2+. O builder visual de agregação e a inferência de schema por amostra no Mongo também saíram da lista depois da v1. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
+- **Fora da v1:** edição de schema pela UI, MONITOR, módulos, export no Redis. Edição de schema está prevista para v2+. O builder visual de agregação e a inferência de schema por amostra no Mongo também saíram da lista depois da v1. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
 - Edição inline só em tabela com chave primária editável; senão a tabela é somente leitura. Mongo e Redis editam na hora, sem stage.
 - Redis: sempre `SCAN`, nunca `KEYS`. Sem cancelamento no Redis e no SQLite (só timeout).
 - Distribuição só Linux (AppImage + `.deb`) via GitHub Releases; sem builds de macOS/Windows por enquanto.

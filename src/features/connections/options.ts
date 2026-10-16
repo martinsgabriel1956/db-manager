@@ -37,6 +37,8 @@ export const DEFAULT_PORT: Record<Exclude<Engine, "sqlite">, number> = {
   redis: 6379
 };
 
+export const DEFAULT_SENTINEL_PORT = 26379;
+
 /** Environment legend: the word always says it; the outline and hatch reinforce. */
 export const ENVIRONMENT_STYLE: Record<Environment, { label: string; tagClass: string }> = {
   local: { label: "Local", tagClass: "border border-dotted border-current" },
