@@ -42,6 +42,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::completion_tables,
             commands::sql::browse_table,
             commands::sql::run_script,
+            commands::sql::explain,
             commands::sql::fetch_more,
             commands::sql::close_cursor,
             commands::sql::cancel_run,

@@ -31,6 +31,7 @@ export const commands = {
 	completionTables: (connectionId: string) => __TAURI_INVOKE<CompletionTable[]>("completion_tables", { connectionId }),
 	browseTable: (connectionId: string, request: BrowseRequest) => __TAURI_INVOKE<RowBatch>("browse_table", { connectionId, request }),
 	runScript: (connectionId: string, runId: string, sql: string, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("run_script", { connectionId, runId, sql, confirmed }),
+	explain: (connectionId: string, runId: string, sql: string, analyze: boolean, confirmed: boolean) => __TAURI_INVOKE<ExplainResponse>("explain", { connectionId, runId, sql, analyze, confirmed }),
 	fetchMore: (cursorId: string) => __TAURI_INVOKE<RowBatch>("fetch_more", { cursorId }),
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
@@ -209,6 +210,15 @@ export type Engine = "postgres" | "mysql" | "sqlite" | "mongo" | "redis";
 
 export type Environment = "local" | "dev" | "staging" | "prod";
 
+export type ExplainPlan = {
+	/**  the exact EXPLAIN that ran */
+	sql: string,
+	root: PlanNode,
+	durationMs: number,
+};
+
+export type ExplainResponse = { status: "explained"; plan: ExplainPlan } | { status: "needsConfirmation"; confirmation: Confirmation };
+
 export type ExportOutcome = {
 	rows: number,
 	durationMs: number,
@@ -340,6 +350,24 @@ export type KeychainOutcome = {
 export type NodeAddress = {
 	host: string,
 	port: number,
+};
+
+/**
+ *  One step of a query plan, in the engine's own words and units. Costs are the
+ *  planner's estimate for the node including its children (SQLite has none).
+ */
+export type PlanNode = {
+	/**  "Seq Scan on users", "users (ALL)", "SCAN users" */
+	label: string,
+	/**  conditions, keys and sort keys, as "Filter: (id > 1)" */
+	details: string[],
+	cost: number | null,
+	rows: number | null,
+	/**  EXPLAIN ANALYZE only: rows per loop, time per loop and loops */
+	actualRows: number | null,
+	actualMs: number | null,
+	loops: number | null,
+	children: PlanNode[],
 };
 
 /**  A logical database (SELECT index) and how many keys it holds. */
