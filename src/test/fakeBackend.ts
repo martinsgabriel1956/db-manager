@@ -284,6 +284,28 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     browse_table: () => usersPage,
     run_script: () => executed(rowsOutcome),
     apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
+    alter_schema: args => {
+      const { change, confirmed } = args as { change: { kind: string }; confirmed: boolean };
+      if (confirmed) {
+        return executed({
+          statementCount: 1,
+          durationMs: 2,
+          result: { kind: "command", rowsAffected: 0 }
+        });
+      }
+      const destructive = change.kind.startsWith("drop");
+      return {
+        status: "needsConfirmation",
+        confirmation: {
+          reason: destructive
+            ? "Comando destrutivo: ALTER TABLE … DROP"
+            : "Alteração de estrutura: confira o comando antes de executar",
+          statements: [`-- ${change.kind}`],
+          destructive
+        }
+      };
+    },
+    column_definition: () => "varchar(10) NOT NULL COMMENT 'x'",
     copy_as_insert: () => 'INSERT INTO "public"."users" ("id", "profile") VALUES (\'2\', NULL);\n',
     search_history: () => [],
     browse_collection: () => ({ documents: mongoDocuments, hasMore: true }),

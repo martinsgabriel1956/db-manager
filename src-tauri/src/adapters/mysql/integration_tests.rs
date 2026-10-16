@@ -493,3 +493,107 @@ async fn explain_returns_the_plan_as_a_tree() {
     assert!(labels.iter().any(|l| l.starts_with("o (")), "{labels:?}");
     assert!(labels.iter().any(|l| l.starts_with("u (")), "{labels:?}");
 }
+
+#[tokio::test]
+async fn structure_changes_and_modify_from_the_whole_definition() {
+    use crate::adapters::sql_builder::schema_sql;
+    use crate::domain::{ColumnDefinition, SchemaChange};
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+    let apply = |change: SchemaChange| {
+        let db = &db;
+        async move {
+            let sql = schema_sql(db.dialect(), "test", "items", &change).unwrap();
+            run(db, &sql).await.map(|_| ())
+        }
+    };
+    apply(SchemaChange::CreateTable {
+        columns: vec![
+            ColumnDefinition {
+                name: "id".into(),
+                data_type: "int".into(),
+                nullable: false,
+                default: None,
+            },
+            ColumnDefinition {
+                name: "code".into(),
+                data_type: "varchar(10)".into(),
+                nullable: true,
+                default: None,
+            },
+        ],
+        primary_key: vec!["id".into()],
+    })
+    .await
+    .unwrap();
+    run(
+        &db,
+        "ALTER TABLE items MODIFY code varchar(10) NOT NULL DEFAULT 'a' COMMENT 'it''s'",
+    )
+    .await
+    .unwrap();
+
+    // MODIFY starts from everything the column has: the comment survives a type change
+    let current = db.column_definition("test", "items", "code").await.unwrap();
+    assert_eq!(current, "varchar(10) NOT NULL DEFAULT 'a' COMMENT 'it''s'");
+    apply(SchemaChange::RedefineColumn {
+        column: "code".into(),
+        definition: current.replace("varchar(10)", "varchar(20)"),
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        db.column_definition("test", "items", "code").await.unwrap(),
+        "varchar(20) NOT NULL DEFAULT 'a' COMMENT 'it''s'"
+    );
+    assert!(matches!(
+        db.column_definition("test", "items", "missing").await,
+        Err(AppError::NotFound(_))
+    ));
+
+    apply(SchemaChange::SetDefault {
+        column: "code".into(),
+        default: Some("'b'".into()),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::RenameColumn {
+        column: "code".into(),
+        new_name: "sku".into(),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::CreateIndex {
+        name: "items_sku".into(),
+        columns: vec!["sku".into()],
+        unique: true,
+    })
+    .await
+    .unwrap();
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert_eq!(structure.columns[1].name, "sku");
+    assert_eq!(structure.columns[1].default.as_deref(), Some("b"));
+    assert!(structure.indexes.iter().any(|i| i.name == "items_sku"));
+
+    apply(SchemaChange::DropIndex {
+        name: "items_sku".into(),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::DropColumn {
+        column: "sku".into(),
+    })
+    .await
+    .unwrap();
+    let structure = db.table_structure("test", "items").await.unwrap();
+    assert_eq!(structure.columns.len(), 1);
+    assert_eq!(structure.indexes.len(), 1);
+
+    // a READ ONLY session refuses DDL too
+    let read_only = connect(&config, true).await;
+    let err = run(&read_only, "ALTER TABLE items ADD COLUMN extra int")
+        .await
+        .err()
+        .unwrap();
+    assert!(err.to_string().contains("READ ONLY"), "{err}");
+}

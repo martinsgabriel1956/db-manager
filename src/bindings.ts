@@ -36,6 +36,8 @@ export const commands = {
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
 	applyChanges: (connectionId: string, changes: TableChanges, confirmed: boolean) => __TAURI_INVOKE<ApplyResponse>("apply_changes", { connectionId, changes, confirmed }),
+	alterSchema: (connectionId: string, schema: string, table: string, change: SchemaChange, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("alter_schema", { connectionId, schema, table, change, confirmed }),
+	columnDefinition: (connectionId: string, schema: string, table: string, column: string) => __TAURI_INVOKE<string>("column_definition", { connectionId, schema, table, column }),
 	copyAsInsert: (connectionId: string, schema: string, table: string, columns: string[], rows: Cell[][]) => __TAURI_INVOKE<string>("copy_as_insert", { connectionId, schema, table, columns, rows }),
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
@@ -116,6 +118,18 @@ export type Cell = { t: "null" } | { t: "bool"; v: boolean } |
 	typeName: string,
 	text: string,
 } };
+
+/**
+ *  A column of a new table or one being added. `data_type` and `default` are SQL as
+ *  the user types it (`varchar(20)`, `now()`, `'a'`): it goes into the DDL as is, and
+ *  the exact command is shown before it runs.
+ */
+export type ColumnDefinition = {
+	name: string,
+	dataType: string,
+	nullable: boolean,
+	default: string | null,
+};
 
 export type ColumnInfo = {
 	name: string,
@@ -405,6 +419,17 @@ export type RowBatch = {
 export type RowChange = { kind: "update"; key: KeyValue[]; values: ColumnValue[] } | { kind: "insert"; values: ColumnValue[] } | { kind: "delete"; key: KeyValue[] };
 
 export type RunResponse = { status: "executed"; outcome: ScriptOutcome } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+/**  One change of a table's structure; each becomes a single DDL statement. */
+export type SchemaChange = { kind: "createTable"; columns: ColumnDefinition[]; primaryKey: string[] } | { kind: "addColumn"; column: ColumnDefinition } | { kind: "renameColumn"; column: string; newName: string } | { kind: "dropColumn"; column: string } | 
+/**  Postgres; `using` converts values the server cannot cast by itself */
+{ kind: "setType"; column: string; dataType: string; using: string | null } | 
+/**  Postgres and MySQL; `None` drops the default */
+{ kind: "setDefault"; column: string; default: string | null } | 
+/**  Postgres */
+{ kind: "setNullable"; column: string; nullable: boolean } | 
+/**  MySQL: `MODIFY COLUMN` rewrites the whole column, so its whole definition is given */
+{ kind: "redefineColumn"; column: string; definition: string } | { kind: "createIndex"; name: string; columns: string[]; unique: boolean } | { kind: "dropIndex"; name: string };
 
 export type SchemaInfo = {
 	name: string,

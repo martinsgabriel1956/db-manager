@@ -327,3 +327,84 @@ async fn explain_query_plan_nests_by_parent() {
         "{subquery:?}"
     );
 }
+
+#[tokio::test]
+async fn structure_changes_within_what_sqlite_alters() {
+    use crate::adapters::sql_builder::schema_sql;
+    use crate::domain::{ColumnDefinition, SchemaChange};
+    let dir = tempfile::tempdir().unwrap();
+    let config = database(&dir, "alter.db", "SELECT 1").await;
+    let db = SqliteAdapter::connect(&config, false).await.unwrap();
+    let apply = |change: SchemaChange| {
+        let db = &db;
+        async move {
+            let sql = schema_sql(SqliteAdapter::DIALECT, "main", "items", &change)?;
+            run(db, &sql).await.map(|_| ())
+        }
+    };
+    let column =
+        |name: &str, data_type: &str, nullable: bool, default: Option<&str>| ColumnDefinition {
+            name: name.into(),
+            data_type: data_type.into(),
+            nullable,
+            default: default.map(str::to_string),
+        };
+    apply(SchemaChange::CreateTable {
+        columns: vec![column("id", "INTEGER", false, None)],
+        primary_key: vec!["id".into()],
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::AddColumn {
+        column: column("name", "TEXT", false, Some("''")),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::RenameColumn {
+        column: "name".into(),
+        new_name: "title".into(),
+    })
+    .await
+    .unwrap();
+    // the index is named in the schema, the table is not
+    apply(SchemaChange::CreateIndex {
+        name: "items_title".into(),
+        columns: vec!["title".into()],
+        unique: false,
+    })
+    .await
+    .unwrap();
+    let structure = db.table_structure("main", "items").await.unwrap();
+    assert_eq!(structure.columns[1].name, "title");
+    assert!(structure.indexes.iter().any(|i| i.name == "items_title"));
+
+    apply(SchemaChange::DropIndex {
+        name: "items_title".into(),
+    })
+    .await
+    .unwrap();
+    apply(SchemaChange::DropColumn {
+        column: "title".into(),
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        db.table_structure("main", "items")
+            .await
+            .unwrap()
+            .columns
+            .len(),
+        1
+    );
+    // the rest needs the table rebuilt: refused, with the reason
+    let refused = apply(SchemaChange::SetNullable {
+        column: "id".into(),
+        nullable: true,
+    })
+    .await
+    .unwrap_err();
+    assert!(
+        refused.to_string().contains("sem recriar a tabela"),
+        "{refused}"
+    );
+}

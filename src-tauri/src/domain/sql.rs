@@ -286,6 +286,70 @@ pub enum ApplyResponse {
     },
 }
 
+/// A column of a new table or one being added. `data_type` and `default` are SQL as
+/// the user types it (`varchar(20)`, `now()`, `'a'`): it goes into the DDL as is, and
+/// the exact command is shown before it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnDefinition {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub default: Option<String>,
+}
+
+/// One change of a table's structure; each becomes a single DDL statement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SchemaChange {
+    #[serde(rename_all = "camelCase")]
+    CreateTable {
+        columns: Vec<ColumnDefinition>,
+        primary_key: Vec<String>,
+    },
+    AddColumn {
+        column: ColumnDefinition,
+    },
+    #[serde(rename_all = "camelCase")]
+    RenameColumn {
+        column: String,
+        new_name: String,
+    },
+    DropColumn {
+        column: String,
+    },
+    /// Postgres; `using` converts values the server cannot cast by itself
+    #[serde(rename_all = "camelCase")]
+    SetType {
+        column: String,
+        data_type: String,
+        using: Option<String>,
+    },
+    /// Postgres and MySQL; `None` drops the default
+    SetDefault {
+        column: String,
+        default: Option<String>,
+    },
+    /// Postgres
+    SetNullable {
+        column: String,
+        nullable: bool,
+    },
+    /// MySQL: `MODIFY COLUMN` rewrites the whole column, so its whole definition is given
+    RedefineColumn {
+        column: String,
+        definition: String,
+    },
+    CreateIndex {
+        name: String,
+        columns: Vec<String>,
+        unique: bool,
+    },
+    DropIndex {
+        name: String,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {

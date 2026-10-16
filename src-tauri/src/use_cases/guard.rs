@@ -302,6 +302,32 @@ mod tests {
             ),
             (mysql, "TRUNCATE TABLE logs", Risk::destructive("TRUNCATE")),
             (mysql, "SELECT * FROM `t` WHERE a = 'x\\'", Risk::read()),
+            // the structure changes the table view generates
+            (
+                mysql,
+                "DROP INDEX `t_ab` ON `app`.`t`",
+                Risk::destructive("DROP"),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` DROP COLUMN `c`",
+                Risk::destructive("ALTER TABLE … DROP"),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` MODIFY COLUMN `c` varchar(20) NOT NULL",
+                Risk::write(),
+            ),
+            (
+                Dialect::Sqlite,
+                r#"DROP INDEX "main"."t_ab""#,
+                Risk::destructive("DROP"),
+            ),
+            (
+                Dialect::Sqlite,
+                r#"ALTER TABLE "main"."t" DROP COLUMN "c""#,
+                Risk::destructive("ALTER TABLE … DROP"),
+            ),
             (
                 Dialect::Sqlite,
                 "DROP TABLE IF EXISTS t",

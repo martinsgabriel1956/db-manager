@@ -332,6 +332,31 @@ impl MysqlAdapter {
         })
     }
 
+    /// The column's definition as `SHOW CREATE TABLE` writes it (type, NULL, default,
+    /// comment…), without the name: `MODIFY COLUMN` replaces all of it, so a change starts
+    /// from the whole text instead of losing what it does not mention.
+    pub async fn column_definition(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+    ) -> Result<String, AppError> {
+        let row = sqlx::query(AssertSqlSafe(format!(
+            "SHOW CREATE TABLE {}.{}",
+            self.dialect.quote_ident(schema),
+            self.dialect.quote_ident(table)
+        )))
+        .fetch_one(&self.pool)
+        .await?;
+        let create: String = row.try_get(1)?;
+        let prefix = format!("{} ", self.dialect.quote_ident(column));
+        create
+            .lines()
+            .find_map(|line| line.trim_start().strip_prefix(&prefix))
+            .map(|definition| definition.trim_end_matches(',').to_string())
+            .ok_or_else(|| AppError::not_found(&format!("coluna {column}")))
+    }
+
     pub async fn completion_tables(&self) -> Result<Vec<CompletionTable>, AppError> {
         let rows: Vec<(String, String, String)> = sqlx::query_as(AssertSqlSafe(format!(
             r"SELECT CAST(TABLE_SCHEMA AS CHAR), CAST(TABLE_NAME AS CHAR), CAST(COLUMN_NAME AS CHAR)

@@ -38,7 +38,8 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 ## Capabilities and Constraints
 
 - Decisões e escopo de cada marco (M0–M6) em `docs/decisions.md`; é a fonte de verdade técnica.
-- **Fora da v1:** edição de schema pela UI, builder visual de agregação, inferência de schema, gestão de índices, change streams, pub/sub/monitor, módulos, Redis cluster/sentinel, export no Redis, assinatura e auto-update. Cluster, edição de schema, builder de agregação, pub/sub, assinatura e auto-update estão previstos para v2+.
+- **Fora da v1:** builder visual de agregação, inferência de schema, gestão de índices, change streams, pub/sub/monitor, módulos, Redis cluster/sentinel, export no Redis, assinatura e auto-update. Cluster, builder de agregação, pub/sub, assinatura e auto-update estão previstos para v2+.
+- **Edição de schema (SQL), depois da v1:** criar tabela, adicionar, renomear e remover coluna, mudar tipo, default e NULL, criar e remover índice. A UI gera o DDL e sempre mostra o comando exato antes de rodar; remover coluna ou índice é destrutivo; o que a engine não faz (o SQLite não altera coluna sem recriar a tabela) é dito na tela, não escondido.
 - Edição inline só em tabela com chave primária editável; senão a tabela é somente leitura. Mongo e Redis editam na hora, sem stage.
 - Redis: sempre `SCAN`, nunca `KEYS`. Sem cancelamento no Redis e no SQLite (só timeout).
 - Distribuição só Linux (AppImage + `.deb`) via GitHub Releases; sem builds de macOS/Windows por enquanto.

@@ -16,6 +16,7 @@ import {
   Lock,
   Network,
   Pencil,
+  Plus,
   SquareTerminal,
   Table2,
   Unplug
@@ -34,6 +35,7 @@ import { useDisconnect, useSchemas } from "@/features/explorer/queries";
 import { connectionRowId, useExplorer } from "@/features/explorer/store";
 import { treeMove } from "@/features/explorer/treeNav";
 import { useRedisDatabases } from "@/features/redis/queries";
+import { NewTableFlow } from "@/features/table/SchemaDialogs";
 import type { DiagramTarget, RedisTarget, TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -62,6 +64,8 @@ type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   openByDefault: boolean;
   /** SQL only: MongoDB has no foreign keys */
   onOpenDiagram?: (target: DiagramTarget) => void;
+  /** SQL on a writable connection */
+  canCreateTable: boolean;
 };
 
 type RowAction = { label: string; icon: ReactNode; onSelect: () => void };
@@ -499,6 +503,7 @@ function ConnectionNode({
               activeTable={activeTable}
               onOpenTable={onOpenTable}
               onOpenDiagram={hasSqlEditor ? onOpenDiagram : undefined}
+              canCreateTable={hasSqlEditor && !connection.readOnly}
             />
           ))}
         </ul>
@@ -514,22 +519,29 @@ function SchemaNode({
   openByDefault,
   activeTable,
   onOpenTable,
-  onOpenDiagram
+  onOpenDiagram,
+  canCreateTable
 }: SchemaNodeProps) {
   const [expanded, setExpanded] = useState(openByDefault);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const rowRef = useRef<HTMLButtonElement>(null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
   const relationCount = countRelations(schema.relations, isMongo);
-  const actions: RowAction[] = onOpenDiagram
-    ? [
-        {
-          label: "Abrir diagrama ER",
-          icon: <Network />,
-          onSelect: () => onOpenDiagram({ connectionId, schema: schema.name })
-        }
-      ]
-    : [];
+  const actions: RowAction[] = [
+    ...(onOpenDiagram
+      ? [
+          {
+            label: "Abrir diagrama ER",
+            icon: <Network />,
+            onSelect: () => onOpenDiagram({ connectionId, schema: schema.name })
+          }
+        ]
+      : []),
+    ...(canCreateTable
+      ? [{ label: "Nova tabela…", icon: <Plus />, onSelect: () => setCreating(true) }]
+      : [])
+  ];
 
   return (
     <li role="none">
@@ -579,6 +591,17 @@ function SchemaNode({
           />
         )}
       </div>
+      {creating && (
+        <NewTableFlow
+          connectionId={connectionId}
+          schema={schema.name}
+          onCancel={() => setCreating(false)}
+          onCreated={table => {
+            setCreating(false);
+            onOpenTable({ connectionId, schema: schema.name, table });
+          }}
+        />
+      )}
       {expanded && (
         <ul role="group" className="grid grid-cols-1 pl-4">
           {schema.relations.length === 0 && (
