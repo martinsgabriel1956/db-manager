@@ -15,7 +15,7 @@ use redis::{
 
 use crate::domain::{
     AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage,
-    RedisDatabase, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
+    RedisDatabase, RedisModule, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -318,6 +318,26 @@ impl RedisAdapter {
                     .collect();
                 (length_of("XLEN").await?, RedisValue::Stream { entries })
             }
+            "ReJSON-RL" => {
+                let bytes: Vec<u8> = self.query(db, redis::cmd("JSON.GET").arg(key)).await?;
+                let length = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+                // cut on a character boundary; a cut document is shown, not edited
+                let mut json = String::from_utf8_lossy(&bytes).into_owned();
+                if json.len() > MAX_STRING_BYTES {
+                    let mut end = MAX_STRING_BYTES;
+                    while !json.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    json.truncate(end);
+                }
+                return Ok(KeyDetail {
+                    key: key.to_string(),
+                    ttl_secs,
+                    length,
+                    value: RedisValue::Json { json },
+                    truncated: length as usize > MAX_STRING_BYTES,
+                });
+            }
             other => (
                 0,
                 RedisValue::Unsupported {
@@ -398,6 +418,14 @@ impl RedisAdapter {
         Ok(reply::format_reply(&value))
     }
 
+    /// MODULE LIST: each module's name and version.
+    pub async fn modules(&self) -> Result<Vec<RedisModule>, AppError> {
+        let reply: Value = self
+            .query(self.default_db, redis::cmd("MODULE").arg("LIST"))
+            .await?;
+        Ok(parse_modules(&reply))
+    }
+
     /// INFO (or one section of it), parsed into sections.
     pub async fn info(&self, section: Option<&str>) -> Result<Vec<InfoSection>, AppError> {
         let mut command = redis::cmd("INFO");
@@ -472,6 +500,43 @@ fn map_error(err: &RedisError, timeout_secs: u32) -> AppError {
     AppError::Database(err.to_string())
 }
 
+/// Each module is a map (RESP3) or a flat [field, value, …] array (RESP2).
+fn parse_modules(reply: &Value) -> Vec<RedisModule> {
+    let text = |value: &Value| match value {
+        Value::BulkString(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+        Value::SimpleString(text) => text.clone(),
+        Value::Int(number) => number.to_string(),
+        other => reply::format_reply(other),
+    };
+    let Value::Array(modules) = reply else {
+        return Vec::new();
+    };
+    modules
+        .iter()
+        .map(|module| {
+            let fields: Vec<(String, &Value)> = match module {
+                Value::Map(pairs) => pairs.iter().map(|(k, v)| (text(k), v)).collect(),
+                Value::Array(items) => items
+                    .chunks(2)
+                    .filter_map(|pair| Some((text(pair.first()?), pair.get(1)?)))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let field = |name: &str| {
+                fields
+                    .iter()
+                    .find(|(key, _)| key == name)
+                    .map(|(_, value)| text(value))
+                    .unwrap_or_default()
+            };
+            RedisModule {
+                name: field("name"),
+                version: field("ver"),
+            }
+        })
+        .collect()
+}
+
 /// `keys=12,expires=0,avg_ttl=0` → 12
 fn keys_in(stats: &str) -> u32 {
     stats
@@ -525,6 +590,30 @@ mod tests {
         );
         assert_eq!(keys_in(&sections[1].entries[0].1), 12);
         assert_eq!(keys_in("garbage"), 0);
+    }
+
+    #[test]
+    fn modules_parse_from_resp2_and_resp3() {
+        let bulk = |text: &str| Value::BulkString(text.as_bytes().to_vec());
+        let resp2 = Value::Array(vec![Value::Array(vec![
+            bulk("name"),
+            bulk("ReJSON"),
+            bulk("ver"),
+            Value::Int(20609),
+            bulk("args"),
+            Value::Array(vec![]),
+        ])]);
+        let resp3 = Value::Array(vec![Value::Map(vec![
+            (bulk("name"), bulk("search")),
+            (bulk("ver"), Value::Int(21015)),
+        ])]);
+        let module = |name: &str, version: &str| RedisModule {
+            name: name.into(),
+            version: version.into(),
+        };
+        assert_eq!(parse_modules(&resp2), [module("ReJSON", "20609")]);
+        assert_eq!(parse_modules(&resp3), [module("search", "21015")]);
+        assert!(parse_modules(&Value::Array(vec![])).is_empty());
     }
 
     #[test]

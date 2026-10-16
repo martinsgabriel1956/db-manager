@@ -40,6 +40,15 @@ export function useServerInfo(connectionId: string) {
   });
 }
 
+export function useServerModules(connectionId: string) {
+  return useQuery({
+    queryKey: ["redisModules", connectionId],
+    queryFn: () => connected(connectionId, () => commands.serverModules(connectionId)),
+    // managed services often refuse MODULE: say so once, do not retry
+    retry: false
+  });
+}
+
 /**
  * Sends `input`; when the backend asks for confirmation (`run` returns it), keeps
  * the input until the user confirms (re-sent with `confirmed: true`) or dismisses.

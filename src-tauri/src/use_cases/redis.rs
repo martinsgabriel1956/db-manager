@@ -5,7 +5,7 @@ use redis::Value;
 use crate::adapters::redis::reply;
 use crate::domain::{
     AppError, CommandOutcome, CommandResponse, Confirmation, Environment, InfoSection, KeyDetail,
-    KeyEdit, KeyEditRequest, KeyEditResponse, KeyPage, RedisDatabase,
+    KeyEdit, KeyEditRequest, KeyEditResponse, KeyPage, RedisDatabase, RedisModule,
 };
 use crate::registry::Registry;
 use crate::storage::history::HistoryStore;
@@ -112,6 +112,17 @@ const READ_COMMANDS: &[&str] = &[
     "EVAL_RO",
     "EVALSHA_RO",
     "FCALL_RO",
+    // RedisJSON
+    "JSON.GET",
+    "JSON.MGET",
+    "JSON.TYPE",
+    "JSON.STRLEN",
+    "JSON.ARRLEN",
+    "JSON.ARRINDEX",
+    "JSON.OBJKEYS",
+    "JSON.OBJLEN",
+    "JSON.RESP",
+    "JSON.DEBUG MEMORY",
     // server
     "PING",
     "ECHO",
@@ -120,6 +131,7 @@ const READ_COMMANDS: &[&str] = &[
     "LASTSAVE",
     "COMMAND",
     "CONFIG GET",
+    "MODULE LIST",
     "CLIENT LIST",
     "CLIENT INFO",
     "CLIENT GETNAME",
@@ -279,6 +291,13 @@ pub async fn read_key(
         .await
 }
 
+pub async fn server_modules(
+    registry: &Registry,
+    connection_id: &str,
+) -> Result<Vec<RedisModule>, AppError> {
+    registry.connection(connection_id)?.redis()?.modules().await
+}
+
 pub async fn server_info(
     registry: &Registry,
     connection_id: &str,
@@ -319,6 +338,19 @@ fn edit_args(key: &str, edit: &KeyEdit) -> Result<Vec<String>, AppError> {
             ttl_secs: Some(ttl),
         } => return Ok(owned(&["EXPIRE", key, &ttl.to_string()])),
         KeyEdit::Expire { ttl_secs: None } => vec!["PERSIST", key],
+        KeyEdit::JsonSet { json } => {
+            // checked here so a typo is not sent; the text itself goes as typed
+            if let Err(err) = serde_json::from_str::<serde::de::IgnoredAny>(json) {
+                return Err(AppError::validation(format!("JSON inválido: {err}")));
+            }
+            if let Some(number) = oversized_integer(json) {
+                return Err(AppError::validation(format!(
+                    "o RedisJSON guarda inteiros de até 64 bits: {number} viraria um float \
+                     arredondado; grave-o como string"
+                )));
+            }
+            vec!["JSON.SET", key, "$", json]
+        }
         KeyEdit::Rename { new_key } if new_key.is_empty() || new_key == key => {
             return Err(AppError::validation("informe um nome novo para a chave"));
         }
@@ -326,6 +358,39 @@ fn edit_args(key: &str, edit: &KeyEdit) -> Result<Vec<String>, AppError> {
         KeyEdit::Delete => vec!["DEL", key],
     };
     Ok(owned(&args))
+}
+
+/// The first integer literal (outside strings) of valid JSON that fits neither
+/// i64 nor u64: RedisJSON would store it as a rounded double.
+fn oversized_integer(json: &str) -> Option<&str> {
+    let bytes = json.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'-' | b'0'..=b'9' => {
+                let start = i;
+                while i < bytes.len()
+                    && matches!(bytes[i], b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9')
+                {
+                    i += 1;
+                }
+                let token = &json[start..i];
+                let integer = !token.contains(['.', 'e', 'E']);
+                if integer && token.parse::<i64>().is_err() && token.parse::<u64>().is_err() {
+                    return Some(token);
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 fn owned(args: &[&str]) -> Vec<String> {
@@ -551,6 +616,27 @@ mod tests {
     }
 
     #[test]
+    fn integers_past_64_bits_are_found_outside_strings() {
+        assert_eq!(
+            oversized_integer(r#"[-9223372036854775808, 18446744073709551615]"#),
+            None
+        );
+        assert_eq!(oversized_integer(r#"{"a": 1e400, "b": 1.5}"#), None);
+        assert_eq!(
+            oversized_integer(r#"{"s": "99999999999999999999 \\\" 1"}"#),
+            None
+        );
+        assert_eq!(
+            oversized_integer(r#"{"s": "x", "n": [1, 18446744073709551616]}"#),
+            Some("18446744073709551616")
+        );
+        assert_eq!(
+            oversized_integer("-9223372036854775809"),
+            Some("-9223372036854775809")
+        );
+    }
+
+    #[test]
     fn edits_become_commands() {
         let args = |edit: KeyEdit| edit_args("k", &edit).unwrap();
         assert_eq!(
@@ -583,7 +669,17 @@ mod tests {
             ["RENAMENX", "k", "k2"]
         );
 
+        assert_eq!(
+            args(KeyEdit::JsonSet {
+                json: r#"{"n": 12345678901234567890}"#.into()
+            }),
+            ["JSON.SET", "k", "$", r#"{"n": 12345678901234567890}"#]
+        );
+
         let invalid = [
+            KeyEdit::JsonSet {
+                json: "{bad".into(),
+            },
             KeyEdit::ZsetAdd {
                 member: "m".into(),
                 score: "abc".into(),
@@ -609,6 +705,7 @@ mod integration_tests {
     use crate::adapters::redis::integration_tests::start;
     use crate::domain::{ConnectionConfig, RedisValue};
     use crate::storage::secrets::SecretStore;
+    use crate::use_cases::redis::server_modules;
     use crate::use_cases::sql;
 
     struct NoPassword;
@@ -904,5 +1001,103 @@ mod integration_tests {
             "OK"
         );
         assert_eq!(databases(&registry, "redis").await.unwrap()[0].keys, 0);
+    }
+
+    #[tokio::test]
+    async fn modules_are_listed_and_redisjson_is_edited() {
+        let (_container, mut config) =
+            crate::adapters::redis::integration_tests::start_stack().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        open(&registry, &config).await;
+        let document = r#"{"n":12345678901234567890,"s":"olá","l":[1,null]}"#;
+        for line in [
+            format!("JSON.SET doc $ '{document}'"),
+            "EXPIRE doc 600".to_string(),
+            "BF.ADD bloom x".to_string(),
+        ] {
+            output(console(&registry, &history, &line, false).await.unwrap());
+        }
+
+        let modules = server_modules(&registry, "redis").await.unwrap();
+        assert!(
+            modules
+                .iter()
+                .any(|m| m.name == "ReJSON" && !m.version.is_empty()),
+            "{modules:?}"
+        );
+
+        // module types show in the tree by name; RedisJSON opens as JSON, exactly as stored
+        let page = scan_keys(&registry, "redis", 0, "*", "0").await.unwrap();
+        let kind = |name: &str| {
+            page.keys
+                .iter()
+                .find(|k| k.name == name)
+                .map(|k| k.kind.clone())
+        };
+        assert_eq!(kind("doc").as_deref(), Some("ReJSON-RL"));
+        assert_eq!(kind("bloom").as_deref(), Some("MBbloom--"));
+        let detail = read_key(&registry, "redis", 0, "doc").await.unwrap();
+        assert_eq!(
+            detail.value,
+            RedisValue::Json {
+                json: document.into()
+            }
+        );
+        assert_eq!(
+            read_key(&registry, "redis", 0, "bloom")
+                .await
+                .unwrap()
+                .value,
+            RedisValue::Unsupported {
+                type_name: "MBbloom--".into()
+            }
+        );
+
+        let set = |json: &str| request("doc", vec![KeyEdit::JsonSet { json: json.into() }]);
+        let replaced = r#"{"n":18446744073709551615}"#;
+        assert_eq!(
+            edit(&registry, &history, set(replaced)).await.unwrap(),
+            KeyEditResponse::Applied
+        );
+        let detail = read_key(&registry, "redis", 0, "doc").await.unwrap();
+        assert_eq!(
+            detail.value,
+            RedisValue::Json {
+                json: replaced.into()
+            }
+        );
+        assert!(detail.ttl_secs.is_some(), "JSON.SET keeps the TTL");
+        for refused in ["{bad", r#"{"n":98765432109876543210}"#] {
+            assert!(matches!(
+                edit(&registry, &history, set(refused)).await,
+                Err(AppError::Validation(_))
+            ));
+        }
+
+        // prod confirms showing the command; read-only refuses
+        config.environment = Environment::Prod;
+        open(&registry, &config).await;
+        let KeyEditResponse::NeedsConfirmation { confirmation } =
+            edit(&registry, &history, set(r#"{"a": 1}"#)).await.unwrap()
+        else {
+            panic!("confirmation expected");
+        };
+        assert_eq!(confirmation.statements, [r#"JSON.SET doc $ "{\"a\": 1}""#]);
+        config.environment = Environment::Local;
+        config.read_only = true;
+        open(&registry, &config).await;
+        assert!(matches!(
+            edit(&registry, &history, set("{}")).await,
+            Err(AppError::ReadOnly(_))
+        ));
+        assert_eq!(
+            output(
+                console(&registry, &history, "JSON.GET doc", false)
+                    .await
+                    .unwrap()
+            ),
+            format!("{replaced:?}")
+        );
     }
 }

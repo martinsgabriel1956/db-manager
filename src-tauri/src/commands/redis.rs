@@ -3,7 +3,7 @@ use tauri::State;
 use crate::AppState;
 use crate::domain::{
     AppError, CommandResponse, InfoSection, KeyDetail, KeyEditRequest, KeyEditResponse, KeyPage,
-    RedisDatabase,
+    RedisDatabase, RedisModule,
 };
 use crate::use_cases::redis;
 
@@ -84,4 +84,13 @@ pub async fn server_info(
     connection_id: String,
 ) -> Result<Vec<InfoSection>, AppError> {
     redis::server_info(&state.registry, &connection_id).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn server_modules(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Vec<RedisModule>, AppError> {
+    redis::server_modules(&state.registry, &connection_id).await
 }
