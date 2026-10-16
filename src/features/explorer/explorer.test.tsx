@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, BrowseRequest } from "@/bindings";
-import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import { callsTo, fakeBackend, prodPostgres, usersDdl } from "@/test/fakeBackend";
 import { filterText } from "@/features/table/BrowseToolbar";
 import { pageLabel } from "@/features/table/TableView";
 import { renderWithClient, rowAction } from "@/test/render";
@@ -188,6 +188,28 @@ test("structure tab lists columns, indexes and foreign keys", async () => {
   expect(structure.getAllByText("PK")).toHaveLength(2); // header + the id column
   expect(structure.getByText("users_pkey")).toBeInTheDocument();
   expect(structure.getByText("Nenhum.")).toBeInTheDocument();
+
+  // the DDL, said to be rebuilt on Postgres, copies whole
+  const ddl = await structure.findByRole("region", { name: "DDL de users" });
+  expect(ddl).toHaveTextContent('CREATE TABLE "public"."users"');
+  expect(structure.getByText(/Reconstruído a partir do catálogo/)).toBeInTheDocument();
+  await user.click(structure.getByRole("button", { name: "Copiar" }));
+  expect(await structure.findByRole("status")).toHaveTextContent("DDL copiado");
+  expect(await navigator.clipboard.readText()).toBe(usersDdl);
+});
+
+test("the DDL a database stores is not called rebuilt", async () => {
+  fakeBackend([prodPostgres], {
+    table_ddl: () => ({ sql: "CREATE TABLE users (id INTEGER PRIMARY KEY);", reconstructed: false })
+  });
+  const user = await openUsers();
+
+  await user.click(screen.getByRole("tab", { name: "Estrutura" }));
+
+  expect(
+    await screen.findByText("CREATE TABLE users (id INTEGER PRIMARY KEY);")
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Reconstruído/)).not.toBeInTheDocument();
 });
 
 test("browse errors are shown", async () => {

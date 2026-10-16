@@ -28,6 +28,7 @@ export const commands = {
 	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
 	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),
 	tableStructure: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<TableStructure>("table_structure", { connectionId, schema, table }),
+	tableDdl: (connectionId: string, schema: string, table: string) => __TAURI_INVOKE<TableDdl>("table_ddl", { connectionId, schema, table }),
 	completionTables: (connectionId: string) => __TAURI_INVOKE<CompletionTable[]>("completion_tables", { connectionId }),
 	browseTable: (connectionId: string, request: BrowseRequest) => __TAURI_INVOKE<RowBatch>("browse_table", { connectionId, request }),
 	runScript: (connectionId: string, runId: string, sql: string, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("run_script", { connectionId, runId, sql, confirmed }),
@@ -431,6 +432,13 @@ export type TableChanges = {
 	schema: string,
 	table: string,
 	changes: RowChange[],
+};
+
+/**  The statements that create a table (or view), as the database reports them. */
+export type TableDdl = {
+	sql: string,
+	/**  true when rebuilt from the catalog (Postgres keeps no CREATE TABLE text) */
+	reconstructed: boolean,
 };
 
 export type TableStructure = {

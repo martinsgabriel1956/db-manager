@@ -11,7 +11,7 @@ use crate::adapters::ssh::SshTunnel;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
     DiagramTable, Engine, Environment, FilterOp, RelationKind, RowBatch, RowChange, RunResponse,
-    SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableStructure, Target,
+    SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableDdl, TableStructure, Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
@@ -109,6 +109,19 @@ pub async fn table_structure(
         .connection(connection_id)?
         .sql()?
         .table_structure(schema, table)
+        .await
+}
+
+pub async fn table_ddl(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+) -> Result<TableDdl, AppError> {
+    registry
+        .connection(connection_id)?
+        .sql()?
+        .ddl(schema, table)
         .await
 }
 

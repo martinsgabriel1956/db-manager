@@ -215,6 +215,8 @@ export const usersStructure: TableStructure = {
   foreignKeys: []
 };
 
+export const usersDdl = 'CREATE TABLE "public"."users" (\n    "id" integer NOT NULL\n);';
+
 export const usersPage: RowBatch = {
   columns: [
     { name: "id", typeName: "int4", editable: true },
@@ -280,6 +282,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     disconnect_database: () => null,
     list_schemas: () => schemas,
     table_structure: () => usersStructure,
+    table_ddl: () => ({ sql: usersDdl, reconstructed: true }),
     completion_tables: () => completion,
     browse_table: () => usersPage,
     run_script: () => executed(rowsOutcome),

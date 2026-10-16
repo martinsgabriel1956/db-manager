@@ -3,8 +3,9 @@
 use std::time::{Duration, Instant};
 
 use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::testcontainers::ContainerAsync;
+use testcontainers_modules::testcontainers::core::ContainerRequest;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
+use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
 use tokio::sync::oneshot;
 
 use super::PostgresAdapter;
@@ -16,7 +17,15 @@ use crate::domain::{
 };
 
 pub(crate) async fn start() -> (ContainerAsync<Postgres>, ConnectionConfig) {
-    let container = Postgres::default()
+    start_version(Postgres::default().into()).await
+}
+
+/// Generated columns and other recent catalog features need a newer server than the
+/// module's default (11).
+async fn start_version(
+    image: ContainerRequest<Postgres>,
+) -> (ContainerAsync<Postgres>, ConnectionConfig) {
+    let container = image
         .start()
         .await
         .expect("docker is required for integration tests");
@@ -414,6 +423,13 @@ async fn introspection_and_browsing() {
         Err(AppError::NotFound(_))
     ));
 
+    // PG 11 has no attgenerated: the DDL still comes back
+    let ddl = db.ddl("app", "users").await.unwrap().sql;
+    assert!(
+        ddl.contains(r#""id" integer DEFAULT nextval('app.users_id_seq'::regclass) NOT NULL"#),
+        "{ddl}"
+    );
+
     let completion = db.completion_tables().await.unwrap();
     let users = completion.iter().find(|t| t.table == "users").unwrap();
     assert_eq!(users.columns, vec!["id", "team_id", "email", "age", "note"]);
@@ -515,5 +531,76 @@ async fn introspection_and_browsing() {
     assert!(matches!(
         db.browse(&missing).await,
         Err(AppError::Database(_))
+    ));
+}
+
+#[tokio::test]
+async fn ddl_is_rebuilt_from_the_catalog_and_recreates_the_table() {
+    let (_container, config) = start_version(Postgres::default().with_tag("16-alpine")).await;
+    let db = connect(&config, false).await;
+    run(
+        &db,
+        r#"CREATE TABLE teams (id int PRIMARY KEY);
+           CREATE TABLE "Orders" (
+             id bigint GENERATED ALWAYS AS IDENTITY,
+             team_id int NOT NULL REFERENCES teams (id) ON DELETE CASCADE,
+             code varchar(12) NOT NULL DEFAULT 'x''y',
+             price numeric(10, 2) CHECK (price >= 0),
+             total numeric GENERATED ALWAYS AS (price * 2) STORED,
+             tags text[],
+             PRIMARY KEY (id),
+             CONSTRAINT orders_code_key UNIQUE (code)
+           );
+           CREATE INDEX orders_lower_code ON "Orders" (lower(code)) WHERE price > 0;
+           CREATE VIEW cheap AS SELECT id FROM "Orders" WHERE price < 10"#,
+    )
+    .await
+    .unwrap();
+
+    let ddl = db.ddl("public", "Orders").await.unwrap();
+    assert!(ddl.reconstructed);
+    assert_eq!(
+        ddl.sql,
+        r#"CREATE TABLE "public"."Orders" (
+    "id" bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+    "team_id" integer NOT NULL,
+    "code" character varying(12) DEFAULT 'x''y'::character varying NOT NULL,
+    "price" numeric(10,2),
+    "total" numeric GENERATED ALWAYS AS ((price * (2)::numeric)) STORED,
+    "tags" text[],
+    CONSTRAINT "Orders_pkey" PRIMARY KEY (id),
+    CONSTRAINT "orders_code_key" UNIQUE (code),
+    CONSTRAINT "Orders_price_check" CHECK ((price >= (0)::numeric)),
+    CONSTRAINT "Orders_team_id_fkey" FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+);
+
+CREATE INDEX orders_lower_code ON public."Orders" USING btree (lower((code)::text)) WHERE (price > (0)::numeric);"#
+    );
+
+    // the text is real DDL: dropping the table and running it gives the same table back
+    let before = db.table_structure("public", "Orders").await.unwrap();
+    run(&db, r#"DROP VIEW cheap; DROP TABLE "Orders""#)
+        .await
+        .unwrap();
+    run(&db, &ddl.sql).await.unwrap();
+    assert_eq!(
+        db.table_structure("public", "Orders").await.unwrap(),
+        before
+    );
+    assert_eq!(db.ddl("public", "Orders").await.unwrap(), ddl);
+
+    run(
+        &db,
+        r#"CREATE VIEW cheap AS SELECT id FROM "Orders" WHERE price < 10"#,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.ddl("public", "cheap").await.unwrap().sql,
+        "CREATE VIEW \"public\".\"cheap\" AS\n SELECT id\n   FROM \"Orders\"\n  WHERE price < 10::numeric;"
+    );
+    assert!(matches!(
+        db.ddl("public", "missing").await,
+        Err(AppError::NotFound(_))
     ));
 }
