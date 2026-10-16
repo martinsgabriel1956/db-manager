@@ -29,9 +29,9 @@ type ConnectionFormProps = {
 };
 
 /** Connects with the draft, saved or not, and closes; the elapsed time is all it reports. */
-async function testDraft({ config, secret }: SaveConnectionInput): Promise<number> {
+async function testDraft({ config, secret, sentinelSecret }: SaveConnectionInput): Promise<number> {
   const started = performance.now();
-  await commands.testConnection(config, secret);
+  await commands.testConnection(config, secret, sentinelSecret);
   return Math.round(performance.now() - started);
 }
 
@@ -91,7 +91,7 @@ export function ConnectionForm({
     }
     setErrors({});
     setTestedValues(JSON.stringify(values));
-    test.mutate({ config: parsed.config, secret: parsed.secret });
+    test.mutate(parsed);
   }
 
   function handleSubmit(event: FormEvent) {
@@ -103,16 +103,19 @@ export function ConnectionForm({
       return;
     }
     setErrors({});
-    save.mutate(
-      { config: parsed.config, secret: parsed.secret },
-      {
-        onSuccess: outcome => {
-          // the secret was applied; re-saving must not set or clear it again
-          setValues(prev => ({ ...prev, password: "", clearPassword: false }));
-          onSaved(id, outcome.keychainWarning);
-        }
+    save.mutate(parsed, {
+      onSuccess: outcome => {
+        // the secrets were applied; re-saving must not set or clear them again
+        setValues(prev => ({
+          ...prev,
+          password: "",
+          clearPassword: false,
+          sentinelPassword: "",
+          clearSentinelPassword: false
+        }));
+        onSaved(id, outcome.keychainWarning);
       }
-    );
+    });
   }
 
   function handleCancel() {

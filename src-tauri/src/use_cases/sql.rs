@@ -16,6 +16,7 @@ use crate::domain::{
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
 use crate::storage::secrets::SecretStore;
+use crate::use_cases::connections::sentinel_secret_id;
 use crate::use_cases::guard;
 
 /// Rows per batch in the SQL editor (initial result and each `fetch_more`).
@@ -35,7 +36,11 @@ pub async fn connect(
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let (live, tunnel) = open(&config, secret).await?;
+    let sentinel_secret = match config.target {
+        Target::RedisSentinel { .. } => secrets.get(&sentinel_secret_id(&config.id))?,
+        _ => None,
+    };
+    let (live, tunnel) = open(&config, secret, sentinel_secret).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -55,6 +60,7 @@ pub async fn connect(
 async fn open(
     config: &ConnectionConfig,
     secret: Option<String>,
+    sentinel_secret: Option<String>,
 ) -> Result<(Live, Option<SshTunnel>), AppError> {
     let mut config = config.clone();
     let tunnel = match (&config.ssh, &mut config.target) {
@@ -69,7 +75,9 @@ async fn open(
     let config = &config;
     let live = match config.engine {
         Engine::Mongo => Live::Mongo(MongoAdapter::connect(config, secret).await?),
-        Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(config, secret).await?)),
+        Engine::Redis => Live::Redis(Box::new(
+            RedisAdapter::connect(config, secret, sentinel_secret).await?,
+        )),
         _ => Live::Sql(SqlConnection::connect(config, secret, config.read_only).await?),
     };
     Ok((live, tunnel))
@@ -80,8 +88,9 @@ async fn open(
 pub async fn test_connection(
     config: &ConnectionConfig,
     secret: Option<String>,
+    sentinel_secret: Option<String>,
 ) -> Result<(), AppError> {
-    let (live, _tunnel) = open(config, secret).await?;
+    let (live, _tunnel) = open(config, secret, sentinel_secret).await?;
     live.close().await;
     Ok(())
 }

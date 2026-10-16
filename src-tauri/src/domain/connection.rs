@@ -37,7 +37,7 @@ pub struct TlsConfig {
 }
 
 /// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
-/// a connection string (MongoDB) or a Redis Cluster.
+/// a connection string (MongoDB), a Redis Cluster or Redis behind Sentinel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Target {
@@ -60,6 +60,17 @@ pub enum Target {
     #[serde(rename_all = "camelCase")]
     RedisCluster {
         nodes: Vec<NodeAddress>,
+        username: String,
+    },
+    /// Redis behind Sentinel: the sentinels and the name they know the master by.
+    /// The master's address is asked to them on every connect. `username` and the
+    /// connection's secret are the master's; a sentinel password, when needed, is a
+    /// second keychain entry.
+    #[serde(rename_all = "camelCase")]
+    RedisSentinel {
+        nodes: Vec<NodeAddress>,
+        master_name: String,
+        database: String,
         username: String,
     },
 }

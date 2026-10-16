@@ -7,6 +7,7 @@ import { DEFAULT_REDIS_SEPARATOR } from "@/features/connections/options";
 import { ConsolePanel } from "@/features/redis/ConsolePanel";
 import { InfoPanel } from "@/features/redis/InfoPanel";
 import { KeyBrowser } from "@/features/redis/KeyBrowser";
+import { useRedisMaster } from "@/features/redis/queries";
 
 type RedisViewProps = { connection: ConnectionConfig; db: number };
 
@@ -21,6 +22,8 @@ const SECTION_LABEL: Record<Section, string> = {
 export function RedisView({ connection, db }: RedisViewProps) {
   const [section, setSection] = useState("keys");
   const promptRef = useRef<HTMLInputElement>(null);
+  const sentinel = connection.target.kind === "redisSentinel" ? connection.target : null;
+  const master = useRedisMaster(connection.id, sentinel !== null);
 
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
@@ -41,6 +44,12 @@ export function RedisView({ connection, db }: RedisViewProps) {
           ))}
         </TabsList>
         {connection.readOnly && <Badge variant="held">Somente leitura</Badge>}
+        {/* which server the writes reach: the sentinels decide it at each connect */}
+        {sentinel && master.data && (
+          <p className="text-xs text-muted-foreground">
+            master {sentinel.masterName} em <span className="font-mono">{master.data}</span>
+          </p>
+        )}
         <ConnectionContext connectionId={connection.id} className="ml-auto" />
       </div>
       {/* panels stay mounted so the selected key and the console scrollback survive switching */}

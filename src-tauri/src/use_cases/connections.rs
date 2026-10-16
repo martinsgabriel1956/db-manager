@@ -28,10 +28,26 @@ pub fn save(
     secrets: &dyn SecretStore,
     config: ConnectionConfig,
     secret: SecretChange,
+    sentinel_secret: SecretChange,
 ) -> Result<KeychainOutcome, AppError> {
     let config = normalize(config);
     let mut connections = store.load()?;
     validate(&config, &secret, &connections)?;
+    let is_sentinel = matches!(config.target, Target::RedisSentinel { .. });
+    if !is_sentinel && matches!(sentinel_secret, SecretChange::Set(_)) {
+        return Err(AppError::validation(
+            "senha do sentinel só se aplica ao Redis com sentinel",
+        ));
+    }
+    // a connection that stops using sentinel leaves no sentinel password behind
+    let was_sentinel = connections
+        .iter()
+        .any(|c| c.id == config.id && matches!(c.target, Target::RedisSentinel { .. }));
+    let sentinel_secret = if !is_sentinel && was_sentinel {
+        SecretChange::Clear
+    } else {
+        sentinel_secret
+    };
 
     match connections.iter_mut().find(|c| c.id == config.id) {
         Some(existing) => *existing = config.clone(),
@@ -39,14 +55,21 @@ pub fn save(
     }
     store.save(&connections)?;
 
-    let keychain_result = match secret {
+    let apply = |id: &str, change: SecretChange| match change {
         SecretChange::Keep => Ok(()),
-        SecretChange::Set(password) => secrets.set(&config.id, &password),
-        SecretChange::Clear => secrets.delete(&config.id),
+        SecretChange::Set(password) => secrets.set(id, &password),
+        SecretChange::Clear => secrets.delete(id),
     };
+    let keychain_result =
+        apply(&config.id, secret).and(apply(&sentinel_secret_id(&config.id), sentinel_secret));
     Ok(KeychainOutcome {
         keychain_warning: keychain_result.err().map(|err| err.to_string()),
     })
+}
+
+/// Keychain entry of a sentinel's password, next to the connection's own secret.
+pub fn sentinel_secret_id(connection_id: &str) -> String {
+    format!("{connection_id}:sentinel")
 }
 
 pub fn delete(
@@ -62,8 +85,11 @@ pub fn delete(
     }
     store.save(&connections)?;
 
+    let keychain_result = secrets
+        .delete(id)
+        .and(secrets.delete(&sentinel_secret_id(id)));
     Ok(KeychainOutcome {
-        keychain_warning: secrets.delete(id).err().map(|err| err.to_string()),
+        keychain_warning: keychain_result.err().map(|err| err.to_string()),
     })
 }
 
@@ -89,13 +115,18 @@ fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
             database: database.trim().to_string(),
         },
         Target::RedisCluster { nodes, username } => Target::RedisCluster {
-            nodes: nodes
-                .into_iter()
-                .map(|node| NodeAddress {
-                    host: node.host.trim().to_string(),
-                    ..node
-                })
-                .collect(),
+            nodes: trim_nodes(nodes),
+            username: username.trim().to_string(),
+        },
+        Target::RedisSentinel {
+            nodes,
+            master_name,
+            database,
+            username,
+        } => Target::RedisSentinel {
+            nodes: trim_nodes(nodes),
+            master_name: master_name.trim().to_string(),
+            database: database.trim().to_string(),
             username: username.trim().to_string(),
         },
     };
@@ -111,6 +142,16 @@ fn normalize(mut config: ConnectionConfig) -> ConnectionConfig {
     config
 }
 
+fn trim_nodes(nodes: Vec<NodeAddress>) -> Vec<NodeAddress> {
+    nodes
+        .into_iter()
+        .map(|node| NodeAddress {
+            host: node.host.trim().to_string(),
+            ..node
+        })
+        .collect()
+}
+
 fn non_empty(value: Option<String>) -> Option<String> {
     value
         .map(|s| s.trim().to_string())
@@ -118,26 +159,35 @@ fn non_empty(value: Option<String>) -> Option<String> {
 }
 
 /// A draft to test: the same rules as saving, minus the name (it does not reach
-/// the database). Returns the normalized config and the secret it would connect
-/// with, read without touching the keychain: a new one as typed, the saved one
-/// when kept, none when cleared.
+/// the database). Returns the normalized config and the secrets it would connect
+/// with (its own, then the sentinel's), read without writing the keychain: a new
+/// one as typed, the saved one when kept, none when cleared.
 pub fn prepare_test(
     store: &ConnectionStore,
     secrets: &dyn SecretStore,
     config: ConnectionConfig,
     secret: SecretChange,
-) -> Result<(ConnectionConfig, Option<String>), AppError> {
+    sentinel_secret: SecretChange,
+) -> Result<(ConnectionConfig, Option<String>, Option<String>), AppError> {
     let config = normalize(config);
     if config.id.trim().is_empty() {
         return Err(AppError::validation("id da conexão ausente"));
     }
     validate_target(&config, &secret, &store.load()?)?;
-    let password = match (config.engine, secret) {
-        (Engine::Sqlite, _) | (_, SecretChange::Clear) => None,
-        (_, SecretChange::Set(value)) => Some(value),
-        (_, SecretChange::Keep) => secrets.get(&config.id)?,
+    let resolve = |id: &str, change: SecretChange| match change {
+        SecretChange::Clear => Ok(None),
+        SecretChange::Set(value) => Ok(Some(value)),
+        SecretChange::Keep => secrets.get(id),
     };
-    Ok((config, password))
+    let password = match config.engine {
+        Engine::Sqlite => None,
+        _ => resolve(&config.id, secret)?,
+    };
+    let sentinel_password = match config.target {
+        Target::RedisSentinel { .. } => resolve(&sentinel_secret_id(&config.id), sentinel_secret)?,
+        _ => None,
+    };
+    Ok((config, password, sentinel_password))
 }
 
 fn validate(
@@ -219,6 +269,34 @@ fn validate_target(
         (_, Target::RedisCluster { .. }) => {
             return invalid("cluster só se aplica ao Redis");
         }
+        (
+            Engine::Redis,
+            Target::RedisSentinel {
+                nodes,
+                master_name,
+                database,
+                ..
+            },
+        ) => {
+            if nodes.is_empty() {
+                return invalid("informe ao menos um sentinel");
+            }
+            if nodes
+                .iter()
+                .any(|node| node.host.is_empty() || node.port == 0)
+            {
+                return invalid("cada sentinel precisa de host e porta");
+            }
+            if master_name.is_empty() {
+                return invalid("informe o nome do master");
+            }
+            if !is_valid_redis_db(database) {
+                return invalid("database do Redis deve ser um número de 0 a 15");
+            }
+        }
+        (_, Target::RedisSentinel { .. }) => {
+            return invalid("sentinel só se aplica ao Redis");
+        }
         (_, Target::File { .. }) => {
             return invalid("este banco precisa de host/porta, não de arquivo");
         }
@@ -248,6 +326,11 @@ fn validate_target(
             // the client follows the addresses the nodes announce, which bypass the tunnel
             return invalid(
                 "túnel SSH não funciona com cluster: os nós anunciam os próprios endereços",
+            );
+        }
+        if matches!(config.target, Target::RedisSentinel { .. }) {
+            return invalid(
+                "túnel SSH não funciona com sentinel: o master vem pelo endereço que o sentinel anuncia",
             );
         }
         if !matches!(config.target, Target::Network { .. }) {
@@ -402,6 +485,7 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("s3cret".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -418,6 +502,7 @@ mod tests {
             &MemorySecrets::default(),
             postgres("1", "pg"),
             SecretChange::Set("s3cret".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -434,6 +519,7 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -441,6 +527,7 @@ mod tests {
             &store,
             &secrets,
             postgres("1", "renamed"),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -460,10 +547,18 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
-        save(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Clear,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(secrets.stored("1"), None);
     }
@@ -477,6 +572,7 @@ mod tests {
             &BrokenKeychain,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -503,6 +599,7 @@ mod tests {
             &store,
             &MemorySecrets::default(),
             config,
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -538,6 +635,7 @@ mod tests {
             &MemorySecrets::default(),
             config,
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -556,8 +654,22 @@ mod tests {
     fn list_sorts_by_name_case_insensitively() {
         let (_dir, store) = store();
         let secrets = MemorySecrets::default();
-        save(&store, &secrets, postgres("1", "beta"), SecretChange::Keep).unwrap();
-        save(&store, &secrets, postgres("2", "Alpha"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("1", "beta"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        save(
+            &store,
+            &secrets,
+            postgres("2", "Alpha"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         let names: Vec<String> = list(&store).unwrap().into_iter().map(|c| c.name).collect();
 
@@ -569,8 +681,22 @@ mod tests {
         let (_dir, store) = store();
         let secrets = MemorySecrets::default();
 
-        save(&store, &secrets, sqlite("1"), SecretChange::Keep).unwrap();
-        save(&store, &secrets, redis("2"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            sqlite("1"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        save(
+            &store,
+            &secrets,
+            redis("2"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(list(&store).unwrap().len(), 2);
     }
@@ -693,7 +819,13 @@ mod tests {
 
         for (config, secret, expected) in cases {
             let (_dir, store) = store();
-            let msg = validation_message(save(&store, &MemorySecrets::default(), config, secret));
+            let msg = validation_message(save(
+                &store,
+                &MemorySecrets::default(),
+                config,
+                secret,
+                SecretChange::Keep,
+            ));
             assert_eq!(msg, expected);
         }
     }
@@ -722,6 +854,7 @@ mod tests {
             &saved,
             &secrets,
             redis_cluster("1", &[(" a ", 7000), ("b", 7001)]),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -758,7 +891,167 @@ mod tests {
         ];
         for (config, expected) in cases {
             let (_dir, store) = store();
-            let msg = validation_message(save(&store, &secrets, config, SecretChange::Keep));
+            let msg = validation_message(save(
+                &store,
+                &secrets,
+                config,
+                SecretChange::Keep,
+                SecretChange::Keep,
+            ));
+            assert_eq!(msg, expected);
+        }
+    }
+
+    fn redis_sentinel(id: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            target: Target::RedisSentinel {
+                nodes: vec![NodeAddress {
+                    host: " s1 ".into(),
+                    port: 26379,
+                }],
+                master_name: " main ".into(),
+                database: "0".into(),
+                username: String::new(),
+            },
+            ..redis(id)
+        }
+    }
+
+    #[test]
+    fn sentinel_password_is_a_second_keychain_entry() {
+        let (_dir, store) = store();
+        let secrets = MemorySecrets::default();
+        let sentinel_id = sentinel_secret_id("1");
+
+        save(
+            &store,
+            &secrets,
+            redis_sentinel("1"),
+            SecretChange::Set("redis-pw".into()),
+            SecretChange::Set("sentinel-pw".into()),
+        )
+        .unwrap();
+        assert_eq!(secrets.stored("1").as_deref(), Some("redis-pw"));
+        assert_eq!(secrets.stored(&sentinel_id).as_deref(), Some("sentinel-pw"));
+        let Target::RedisSentinel {
+            nodes, master_name, ..
+        } = &list(&store).unwrap()[0].target
+        else {
+            panic!("sentinel target");
+        };
+        assert_eq!(
+            (nodes[0].host.as_str(), master_name.as_str()),
+            ("s1", "main")
+        );
+
+        let (_, password, sentinel_password) = prepare_test(
+            &store,
+            &secrets,
+            redis_sentinel("1"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        assert_eq!(password.as_deref(), Some("redis-pw"));
+        assert_eq!(sentinel_password.as_deref(), Some("sentinel-pw"));
+
+        // leaving sentinel drops its password; deleting drops both
+        save(
+            &store,
+            &secrets,
+            redis("1"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        assert_eq!(secrets.stored(&sentinel_id), None);
+        assert_eq!(secrets.stored("1").as_deref(), Some("redis-pw"));
+        save(
+            &store,
+            &secrets,
+            redis_sentinel("1"),
+            SecretChange::Keep,
+            SecretChange::Set("again".into()),
+        )
+        .unwrap();
+        delete(&store, &secrets, "1").unwrap();
+        assert_eq!(secrets.stored("1"), None);
+        assert_eq!(secrets.stored(&sentinel_id), None);
+    }
+
+    #[test]
+    fn redis_sentinel_validation() {
+        let secrets = MemorySecrets::default();
+        let with = |change: fn(&mut ConnectionConfig)| {
+            let mut config = redis_sentinel("1");
+            change(&mut config);
+            config
+        };
+        let target =
+            |nodes: Vec<NodeAddress>, master_name: &str, database: &str| Target::RedisSentinel {
+                nodes,
+                master_name: master_name.into(),
+                database: database.into(),
+                username: String::new(),
+            };
+        let node = || {
+            vec![NodeAddress {
+                host: "s".into(),
+                port: 26379,
+            }]
+        };
+        let cases = [
+            (
+                ConnectionConfig {
+                    target: target(Vec::new(), "m", "0"),
+                    ..redis_sentinel("1")
+                },
+                SecretChange::Keep,
+                "informe ao menos um sentinel",
+            ),
+            (
+                ConnectionConfig {
+                    target: target(node(), " ", "0"),
+                    ..redis_sentinel("1")
+                },
+                SecretChange::Keep,
+                "informe o nome do master",
+            ),
+            (
+                ConnectionConfig {
+                    target: target(node(), "m", "16"),
+                    ..redis_sentinel("1")
+                },
+                SecretChange::Keep,
+                "database do Redis deve ser um número de 0 a 15",
+            ),
+            (
+                with(|config| {
+                    config.ssh = Some(SshConfig {
+                        host: "bastion".into(),
+                        port: None,
+                        user: None,
+                        identity_file: None,
+                    });
+                }),
+                SecretChange::Keep,
+                "túnel SSH não funciona com sentinel: o master vem pelo endereço que o sentinel anuncia",
+            ),
+            (
+                redis("1"),
+                SecretChange::Set("pw".into()),
+                "senha do sentinel só se aplica ao Redis com sentinel",
+            ),
+        ];
+        for (config, sentinel_secret, expected) in cases {
+            let (_dir, store) = store();
+            let msg = validation_message(save(
+                &store,
+                &secrets,
+                config,
+                SecretChange::Keep,
+                sentinel_secret,
+            ));
             assert_eq!(msg, expected);
         }
     }
@@ -784,10 +1077,18 @@ mod tests {
             &secrets,
             mongo_uri("1"),
             SecretChange::Set(uri.into()),
+            SecretChange::Keep,
         )
         .unwrap();
         // editing later can keep it
-        save(&store, &secrets, mongo_uri("1"), SecretChange::Keep).unwrap();
+        save(
+            &store,
+            &secrets,
+            mongo_uri("1"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(secrets.stored("1").as_deref(), Some(uri));
         assert_eq!(
@@ -827,7 +1128,13 @@ mod tests {
         for (config, secret, expected) in cases {
             let (_dir, store) = store();
             assert_eq!(
-                validation_message(save(&store, &MemorySecrets::default(), config, secret)),
+                validation_message(save(
+                    &store,
+                    &MemorySecrets::default(),
+                    config,
+                    secret,
+                    SecretChange::Keep
+                )),
                 expected
             );
         }
@@ -839,10 +1146,17 @@ mod tests {
             &secrets,
             mongo_uri("1"),
             SecretChange::Set("mongodb://h".into()),
+            SecretChange::Keep,
         )
         .unwrap();
         assert_eq!(
-            validation_message(save(&store, &secrets, mongo_uri("1"), SecretChange::Clear)),
+            validation_message(save(
+                &store,
+                &secrets,
+                mongo_uri("1"),
+                SecretChange::Clear,
+                SecretChange::Keep
+            )),
             "a conexão por URI precisa da URI salva"
         );
     }
@@ -856,6 +1170,7 @@ mod tests {
             &secrets,
             postgres("1", "Prod DB"),
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -863,6 +1178,7 @@ mod tests {
             &store,
             &secrets,
             postgres("2", "prod db"),
+            SecretChange::Keep,
             SecretChange::Keep,
         ));
 
@@ -878,6 +1194,7 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("pw".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -895,6 +1212,7 @@ mod tests {
             &store,
             &MemorySecrets::default(),
             postgres("1", "pg"),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap();
@@ -923,6 +1241,7 @@ mod tests {
             &MemorySecrets::default(),
             postgres("1", "pg"),
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -938,11 +1257,12 @@ mod tests {
         let secrets = MemorySecrets::default();
 
         // a draft needs no name and is not stored
-        let (config, password) = prepare_test(
+        let (config, password, _) = prepare_test(
             &store,
             &secrets,
             postgres("1", "  "),
             SecretChange::Set("typed".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
@@ -961,13 +1281,34 @@ mod tests {
             &secrets,
             postgres("1", "pg"),
             SecretChange::Set("saved".into()),
+            SecretChange::Keep,
         )
         .unwrap();
 
-        let keep = prepare_test(&store, &secrets, postgres("1", "pg"), SecretChange::Keep).unwrap();
-        let clear =
-            prepare_test(&store, &secrets, postgres("1", "pg"), SecretChange::Clear).unwrap();
-        let file = prepare_test(&store, &secrets, sqlite("2"), SecretChange::Keep).unwrap();
+        let keep = prepare_test(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        let clear = prepare_test(
+            &store,
+            &secrets,
+            postgres("1", "pg"),
+            SecretChange::Clear,
+            SecretChange::Keep,
+        )
+        .unwrap();
+        let file = prepare_test(
+            &store,
+            &secrets,
+            sqlite("2"),
+            SecretChange::Keep,
+            SecretChange::Keep,
+        )
+        .unwrap();
 
         assert_eq!(keep.1.as_deref(), Some("saved"));
         assert_eq!(clear.1, None);
@@ -992,12 +1333,14 @@ mod tests {
             &MemorySecrets::default(),
             no_host,
             SecretChange::Keep,
+            SecretChange::Keep,
         )
         .unwrap_err();
         let new_uri = prepare_test(
             &store,
             &MemorySecrets::default(),
             mongo_uri("2"),
+            SecretChange::Keep,
             SecretChange::Keep,
         )
         .unwrap_err();

@@ -79,7 +79,7 @@ impl MongoAdapter {
                 }
                 (options, non_empty(database))
             }
-            Target::File { .. } | Target::RedisCluster { .. } => {
+            Target::File { .. } | Target::RedisCluster { .. } | Target::RedisSentinel { .. } => {
                 return Err(AppError::validation(
                     "MongoDB precisa de host/porta ou URI de conexão",
                 ));

@@ -85,3 +85,13 @@ pub async fn server_info(
 ) -> Result<Vec<InfoSection>, AppError> {
     redis::server_info(&state.registry, &connection_id).await
 }
+
+/// The master address the sentinels resolved; null when not behind Sentinel.
+#[tauri::command]
+#[specta::specta]
+pub async fn redis_master(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Option<String>, AppError> {
+    Ok(state.registry.connection(&connection_id)?.redis()?.master())
+}

@@ -63,7 +63,8 @@ describe("parseForm", () => {
         keySeparator: null,
         ssh: null
       },
-      secret: { action: "set", value: "pw" }
+      secret: { action: "set", value: "pw" },
+      sentinelSecret: { action: "keep" }
     });
   });
 
@@ -392,6 +393,82 @@ describe("redis cluster", () => {
     };
 
     expect(fromConfig(config).redisNodes).toBe("a:7000, [::1]:7001");
+    expect(parseForm(fromConfig(config), "1")).toMatchObject({ success: true, config });
+  });
+});
+
+describe("redis sentinel", () => {
+  const sentinelForm = (patch: Partial<ConnectionFormValues>) =>
+    form({
+      name: "r",
+      engine: "redis",
+      database: "2",
+      redisMode: "sentinel",
+      redisNodes: "s1, s2:26380",
+      redisMasterName: " main ",
+      ...patch
+    });
+
+  test("builds a sentinel target with the sentinel port by default and no tunnel", () => {
+    const result = parseForm(sentinelForm({ sshEnabled: true, sshHost: "bastion" }), "1");
+
+    expect(result.success && result.config).toMatchObject({
+      target: {
+        kind: "redisSentinel",
+        nodes: [
+          { host: "s1", port: 26379 },
+          { host: "s2", port: 26380 }
+        ],
+        masterName: "main",
+        database: "2",
+        username: ""
+      },
+      ssh: null
+    });
+  });
+
+  test("keeps, sets or clears the sentinel password apart from Redis's", () => {
+    const sentinelSecret = (patch: Partial<ConnectionFormValues>) => {
+      const result = parseForm(sentinelForm(patch), "1", true);
+      return result.success && result.sentinelSecret;
+    };
+
+    expect(sentinelSecret({})).toEqual({ action: "keep" });
+    expect(sentinelSecret({ sentinelPassword: "s", password: "r" })).toEqual({
+      action: "set",
+      value: "s"
+    });
+    expect(sentinelSecret({ clearSentinelPassword: true })).toEqual({ action: "clear" });
+    // typed while on another mode, it never leaves the form
+    expect(
+      parseForm(sentinelForm({ redisMode: "cluster", sentinelPassword: "s" }), "1")
+    ).toMatchObject({ sentinelSecret: { action: "keep" } });
+  });
+
+  test("requires sentinels and the master's name", () => {
+    const result = parseForm(sentinelForm({ redisNodes: "", redisMasterName: " " }), "1");
+
+    expect(result.success === false && result.errors).toEqual({
+      redisNodes: "Informe ao menos um sentinel",
+      redisMasterName: "Informe o nome do master"
+    });
+  });
+
+  test("round-trips through fromConfig", () => {
+    const config: ConnectionConfig = {
+      ...postgresConfig,
+      engine: "redis",
+      target: {
+        kind: "redisSentinel",
+        nodes: [{ host: "s1", port: 26379 }],
+        masterName: "main",
+        database: "3",
+        username: "me"
+      },
+      tls: { mode: "require", caCertPath: null },
+      keySeparator: ":"
+    };
+
     expect(parseForm(fromConfig(config), "1")).toMatchObject({ success: true, config });
   });
 });
