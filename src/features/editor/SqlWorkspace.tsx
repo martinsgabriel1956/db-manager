@@ -1,10 +1,16 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { Play, Square } from "lucide-react";
+import { ChevronDown, ListTree, Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { commands, type Engine } from "@/bindings";
 import { Receipt } from "@/components/Receipt";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
 import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunner";
@@ -12,8 +18,9 @@ import { ExportButton } from "@/features/export/ExportButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
+import { PlanView } from "@/features/results/PlanView";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
-import { RUN_SHORTCUT } from "@/lib/platform";
+import { EXPLAIN_SHORTCUT, RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
   connectionId: string;
@@ -38,6 +45,11 @@ type ResultsPanelProps = {
 type WaitingPaneProps = { title: string; children: ReactNode };
 
 export function summary(state: RunState): string | null {
+  if (state.status === "plan") {
+    // ANALYZE ran the statement: the receipt says so
+    const analyzed = state.plan.root.actualRows !== null ? " com ANALYZE · a instrução rodou" : "";
+    return `Plano de execução${analyzed} · ${state.plan.durationMs} ms`;
+  }
   if (state.status !== "rows" && state.status !== "command") {
     return null;
   }
@@ -75,6 +87,14 @@ export function SqlWorkspace({
     }
   }
 
+  function explainFromEditor(text: string, analyze = false) {
+    if (!isRunning) {
+      runner.run(text, false, { analyze });
+    }
+  }
+
+  const explainText = () => editorApi.current?.prepareExplain() ?? sql;
+
   return (
     <div className="flex h-full flex-col">
       {/* the same view header as tables and collections: title left, connection and action right */}
@@ -85,6 +105,38 @@ export function SqlWorkspace({
         </span>
         <div className="ml-auto flex min-w-0 items-center gap-4">
           <ConnectionContext connectionId={connectionId} />
+          <div className="flex">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isRunning}
+              title={`${EXPLAIN_SHORTCUT} explica a seleção ou a instrução sob o cursor`}
+              onClick={() => explainFromEditor(explainText())}
+            >
+              <ListTree /> Explicar
+            </Button>
+            {/* only Postgres reports ANALYZE as JSON; it runs the statement, so no shortcut */}
+            {engine === "postgres" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isRunning}
+                    aria-label="Mais formas de explicar"
+                    className="-ml-px px-1.5"
+                  >
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => explainFromEditor(explainText(), true)}>
+                    Explicar com ANALYZE (executa a instrução)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           {isRunning ? (
             <Button size="sm" variant="outline" onClick={runner.cancel}>
               <Square /> Cancelar
@@ -106,6 +158,7 @@ export function SqlWorkspace({
             value={sql}
             onChange={onSqlChange}
             onRun={runFromEditor}
+            onExplain={explainFromEditor}
             completion={completion.data}
             engine={engine}
             defaultSchema={defaultSchema}
@@ -230,6 +283,21 @@ function ResultsPanel({
       <p role="alert" className="p-3 font-mono text-sm whitespace-pre-wrap text-destructive">
         {state.message}
       </p>
+    );
+  }
+  if (state.status === "plan") {
+    return (
+      <PlanView
+        plan={state.plan}
+        header={
+          <div
+            role="status"
+            className={`flex min-w-0 items-center gap-2 ${confirmed ? "" : "text-muted-foreground"}`}
+          >
+            <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
+          </div>
+        }
+      />
     );
   }
   if (state.status === "command") {

@@ -13,6 +13,7 @@ import {
   SQLite,
   type SQLNamespace
 } from "@codemirror/lang-sql";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
@@ -24,6 +25,8 @@ type SqlEditorProps = {
   onChange: (value: string) => void;
   /** receives the selection, or the whole document when nothing is selected */
   onRun: (sql: string) => void;
+  /** receives the selection, or the statement under the cursor */
+  onExplain: (sql: string) => void;
   completion: CompletionTable[] | undefined;
   engine: Engine;
   defaultSchema: string;
@@ -33,8 +36,11 @@ type SqlEditorProps = {
   autoFocus?: boolean;
 };
 
-/** `prepareRun` closes a completion left open and returns what to run, as Mod-Enter does. */
-export type SqlEditorApi = { prepareRun: () => string };
+/**
+ * `prepareRun` closes a completion left open and returns what to run, as Mod-Enter does;
+ * `prepareExplain` does the same for what to explain, as Mod-Shift-E does.
+ */
+export type SqlEditorApi = { prepareRun: () => string; prepareExplain: () => string };
 
 /** `{ schema: { table: [columns] } }` for CodeMirror's schema-aware autocomplete. */
 export function toNamespace(tables: CompletionTable[]): SQLNamespace {
@@ -49,6 +55,29 @@ export function toNamespace(tables: CompletionTable[]): SQLNamespace {
 export function textToRun(state: EditorState): string {
   const { from, to } = state.selection.main;
   return from === to ? state.doc.toString() : state.sliceDoc(from, to);
+}
+
+/**
+ * The selection, or the statement under the cursor: the last one starting at or before it
+ * (a cursor on the blank line after a statement still means that statement).
+ */
+export function statementAt(state: EditorState): string {
+  const { from, to, head } = state.selection.main;
+  if (from !== to) {
+    return state.sliceDoc(from, to);
+  }
+  const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
+  let statement: { from: number; to: number } | null = null;
+  for (let node = tree.topNode.firstChild; node; node = node.nextSibling) {
+    if (node.name !== "Statement") {
+      continue;
+    }
+    if (node.from > head && statement) {
+      break;
+    }
+    statement = { from: node.from, to: node.to };
+  }
+  return statement ? state.sliceDoc(statement.from, statement.to) : "";
 }
 
 const DIALECT = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
@@ -97,6 +126,7 @@ export function SqlEditor({
   value,
   onChange,
   onRun,
+  onExplain,
   completion,
   engine,
   defaultSchema,
@@ -109,11 +139,13 @@ export function SqlEditor({
   // the editor is created once; callbacks are read through refs to stay current
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const onExplainRef = useRef(onExplain);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     onRunRef.current = onRun;
-  }, [onChange, onRun]);
+    onExplainRef.current = onExplain;
+  }, [onChange, onRun, onExplain]);
 
   useEffect(() => {
     const view = new EditorView({
@@ -131,6 +163,14 @@ export function SqlEditor({
                   // a completion left open would float over the result and the confirmation
                   closeCompletion(editor);
                   onRunRef.current(textToRun(editor.state));
+                  return true;
+                }
+              },
+              {
+                key: "Mod-Shift-e",
+                run: editor => {
+                  closeCompletion(editor);
+                  onExplainRef.current(statementAt(editor.state));
                   return true;
                 }
               }
@@ -156,6 +196,10 @@ export function SqlEditor({
       prepareRun: () => {
         closeCompletion(view);
         return textToRun(view.state);
+      },
+      prepareExplain: () => {
+        closeCompletion(view);
+        return statementAt(view.state);
       }
     };
     return () => {
