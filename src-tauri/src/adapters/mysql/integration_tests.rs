@@ -8,6 +8,7 @@ use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tokio::sync::oneshot;
 
 use super::MysqlAdapter;
+use crate::adapters::explain::{self, tests::labels};
 use crate::adapters::sql_builder;
 use crate::adapters::stream::ScriptRun;
 use crate::domain::{
@@ -459,4 +460,36 @@ async fn connections_go_back_to_the_pool() {
         run(&db, "SELECT * FROM t").await.unwrap();
         db.browse(&request).await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn explain_returns_the_plan_as_a_tree() {
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+    run(
+        &db,
+        "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);
+         CREATE TABLE orders (id INT PRIMARY KEY, user_id INT, total DECIMAL(10, 2));
+         INSERT INTO users VALUES (1, 'a'), (2, 'b');
+         INSERT INTO orders VALUES (1, 1, 10), (2, 2, 20), (3, 1, 30)",
+    )
+    .await
+    .unwrap();
+
+    let sql = explain::explain_sql(
+        db.dialect(),
+        "SELECT * FROM orders o JOIN users u ON u.id = o.user_id ORDER BY o.total",
+        false,
+    )
+    .unwrap();
+    let output = run(&db, &sql).await.unwrap();
+    let root = explain::parse(db.dialect(), &output.first.batch).unwrap();
+
+    assert_eq!(root.label, "query_block");
+    assert!(root.cost.is_some_and(|cost| cost > 0.0), "{root:?}");
+    let labels = labels(&root);
+    // the access type is the optimizer's choice (eq_ref, or a hash join on tiny tables)
+    assert!(labels.contains(&"nested_loop".to_string()), "{labels:?}");
+    assert!(labels.iter().any(|l| l.starts_with("o (")), "{labels:?}");
+    assert!(labels.iter().any(|l| l.starts_with("u (")), "{labels:?}");
 }
