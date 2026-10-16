@@ -2,6 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // ssh runs this same binary as its askpass (SSH_ASKPASS) for the tunnel's password:
+    // answer and leave before any window or other instance check
+    if let Some(reply) = ordo_lib::askpass_reply() {
+        println!("{reply}");
+        return;
+    }
     // WebKitGTK's DMA-BUF renderer leaks shared memory on some GPUs (NVIDIA
     // hybrid on Wayland): big pages like the ER diagram ate all RAM until the
     // OOM killer took the app and the browser with it
