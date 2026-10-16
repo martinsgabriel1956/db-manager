@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { emit } from "@tauri-apps/api/event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import { useTabs } from "@/features/tabs/store";
@@ -503,4 +504,31 @@ test("Ctrl+Q with staged edits asks first; the tabs stay for the next launch", a
   // quitting closes no tab: they are persisted and reopen on the next launch
   expect(useTabs.getState().tabs).toMatchObject([{ kind: "table", table: "users" }]);
   expect(applied(calls)).toHaveLength(0);
+});
+
+test("installing an update with staged edits asks first, like Ctrl+Q", async () => {
+  // nothing new at launch; the tray check finds 0.4.0
+  let available: string | null = null;
+  const calls = fakeBackend([devPostgres], {
+    check_update: () => ({ current: "0.3.0", available, installable: true }),
+    install_update: () => null
+  });
+  const user = await openUsers(devPostgres);
+  await editCell(user, "2", "20");
+  available = "0.4.0";
+
+  await emit("check-updates");
+  await user.click(await screen.findByRole("button", { name: "Instalar e reiniciar" }));
+  const dialog = await screen.findByRole("dialog", { name: "Descartar alterações?" });
+  expect(dialog).toHaveTextContent(
+    "Postgres dev · users tem 1 alteração pendente. Reiniciar para atualizar descarta todas"
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Voltar" }));
+  // back to the offer, nothing installed
+  await screen.findByRole("dialog", { name: "Ordo 0.4.0 disponível" });
+  expect(callsTo(calls, "install_update")).toHaveLength(0);
+
+  await user.click(screen.getByRole("button", { name: "Instalar e reiniciar" }));
+  await user.click(await screen.findByRole("button", { name: "Descartar e atualizar" }));
+  await waitFor(() => expect(callsTo(calls, "install_update")).toHaveLength(1));
 });

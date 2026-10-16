@@ -2,17 +2,19 @@
 //! has no click events: everything goes through the menu. Closing the window only
 //! hides it (see lib.rs): "Abrir Ordo" brings it back, "Sair" ends the app. The
 //! first line says how many sessions are open, so a hidden window never hides one.
+//! "Procurar atualizações" shows the window, where the update dialog answers.
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{App, AppHandle, Manager, Wry};
+use tauri::{App, AppHandle, Emitter, Manager, Wry};
 
 use crate::AppState;
 
 const TRAY_ICON: &[u8] = include_bytes!("../icons/tray.png");
 const STATUS_ID: &str = "status";
 const OPEN_ID: &str = "open";
+const UPDATE_ID: &str = "update";
 const QUIT_ID: &str = "quit";
 
 /// The menu's status line, rewritten whenever a session opens or closes.
@@ -22,8 +24,9 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, STATUS_ID, status_text(0), false, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let open = MenuItem::with_id(app, OPEN_ID, "Abrir Ordo", true, None::<&str>)?;
+    let update = MenuItem::with_id(app, UPDATE_ID, "Procurar atualizações", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT_ID, "Sair", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&status, &separator, &open, &quit])?;
+    let menu = Menu::with_items(app, &[&status, &separator, &open, &update, &quit])?;
     app.manage(TrayStatus(status));
 
     // On Linux the id names the icon file ($XDG_RUNTIME_DIR/tray-icon/tray-icon-<id>-0.png) and the
@@ -35,6 +38,11 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             OPEN_ID => show_main_window(app),
+            UPDATE_ID => {
+                show_main_window(app);
+                // best effort: a window that cannot hear it just shows no dialog
+                let _ = app.emit("check-updates", ());
+            }
             QUIT_ID => app.exit(0),
             _ => {}
         })
