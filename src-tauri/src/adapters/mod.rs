@@ -1,5 +1,6 @@
 pub mod csv;
 pub mod dialect;
+pub mod explain;
 pub mod mongo;
 pub mod mysql;
 pub mod postgres;
