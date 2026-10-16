@@ -47,6 +47,8 @@ pub struct RedisAdapter {
     streams: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
+// one per open connection, and the adapter is already boxed in `Live`
+#[expect(clippy::large_enum_variant)]
 enum Server {
     /// One multiplexed connection per logical database, opened on first use.
     Standalone {
