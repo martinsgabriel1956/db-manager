@@ -40,6 +40,7 @@ pub(crate) async fn start() -> (ContainerAsync<Redis>, ConnectionConfig) {
         },
         key_separator: Some(":".into()),
         ssh: None,
+        group: None,
     };
     (container, config)
 }

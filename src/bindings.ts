@@ -17,13 +17,13 @@ export const commands = {
 	hideWindow: () => __TAURI_INVOKE<null>("hide_window"),
 	listConnections: () => __TAURI_INVOKE<ConnectionConfig[]>("list_connections"),
 	/**  Saving closes an open session of that connection: it must reconnect with the new settings. */
-	saveConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret }),
+	saveConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange) => __TAURI_INVOKE<KeychainOutcome>("save_connection", { config, secret, sshSecret }),
 	deleteConnection: (id: string) => __TAURI_INVOKE<KeychainOutcome>("delete_connection", { id }),
 	/**
 	 *  Connects with the form's draft (saved or not) and closes right away, so wrong
 	 *  credentials are found before they are stored. Never touches open sessions.
 	 */
-	testConnection: (config: ConnectionConfig, secret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret }),
+	testConnection: (config: ConnectionConfig, secret: SecretChange, sshSecret: SecretChange) => __TAURI_INVOKE<null>("test_connection", { config, secret, sshSecret }),
 	connectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("connect_database", { connectionId }),
 	disconnectDatabase: (connectionId: string) => __TAURI_INVOKE<null>("disconnect_database", { connectionId }),
 	listSchemas: (connectionId: string) => __TAURI_INVOKE<SchemaInfo[]>("list_schemas", { connectionId }),
@@ -31,6 +31,7 @@ export const commands = {
 	completionTables: (connectionId: string) => __TAURI_INVOKE<CompletionTable[]>("completion_tables", { connectionId }),
 	browseTable: (connectionId: string, request: BrowseRequest) => __TAURI_INVOKE<RowBatch>("browse_table", { connectionId, request }),
 	runScript: (connectionId: string, runId: string, sql: string, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("run_script", { connectionId, runId, sql, confirmed }),
+	explain: (connectionId: string, runId: string, sql: string, analyze: boolean, confirmed: boolean) => __TAURI_INVOKE<ExplainResponse>("explain", { connectionId, runId, sql, analyze, confirmed }),
 	fetchMore: (cursorId: string) => __TAURI_INVOKE<RowBatch>("fetch_more", { cursorId }),
 	closeCursor: (cursorId: string) => __TAURI_INVOKE<null>("close_cursor", { cursorId }),
 	cancelRun: (runId: string) => __TAURI_INVOKE<null>("cancel_run", { runId }),
@@ -54,6 +55,17 @@ export const commands = {
 	editKey: (connectionId: string, request: KeyEditRequest, confirmed: boolean) => __TAURI_INVOKE<KeyEditResponse>("edit_key", { connectionId, request, confirmed }),
 	runRedisCommand: (connectionId: string, db: number, command: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("run_redis_command", { connectionId, db, command, confirmed }),
 	serverInfo: (connectionId: string) => __TAURI_INVOKE<InfoSection[]>("server_info", { connectionId }),
+	checkUpdate: () => __TAURI_INVOKE<UpdateCheck>("check_update"),
+	/**  Only after the user said yes (and dropped staged edits): installs, then restarts. */
+	installUpdate: () => __TAURI_INVOKE<null>("install_update"),
+	openReleasePage: () => __TAURI_INVOKE<null>("open_release_page"),
+	/**
+	 *  Subscribes on a dedicated connection; messages arrive on `on_event` until
+	 *  `stop_redis_session`.
+	 */
+	redisSubscribe: (connectionId: string, sessionId: string, channels: string[], patterns: string[], onEvent: Channel<PubSubEvent>) => __TAURI_INVOKE<null>("redis_subscribe", { connectionId, sessionId, channels, patterns, onEvent }),
+	stopRedisSession: (connectionId: string, sessionId: string) => __TAURI_INVOKE<void>("stop_redis_session", { connectionId, sessionId }),
+	redisPublish: (connectionId: string, db: number, channel: string, message: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("redis_publish", { connectionId, db, channel, message, confirmed }),
 };
 
 /* Types */
@@ -195,6 +207,8 @@ export type ConnectionConfig = {
 	keySeparator: string | null,
 	/**  absent in files saved before the tunnel existed */
 	ssh?: SshConfig | null,
+	/**  folder in the sidebar; None = ungrouped, at the top. Absent in files saved before groups */
+	group?: string | null,
 };
 
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
@@ -222,6 +236,15 @@ export type DocumentWrite = { kind: "insert"; document: string } |
 export type Engine = "postgres" | "mysql" | "sqlite" | "mongo" | "redis";
 
 export type Environment = "local" | "dev" | "staging" | "prod";
+
+export type ExplainPlan = {
+	/**  the exact EXPLAIN that ran */
+	sql: string,
+	root: PlanNode,
+	durationMs: number,
+};
+
+export type ExplainResponse = { status: "explained"; plan: ExplainPlan } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 export type ExportOutcome = {
 	rows: number,
@@ -351,6 +374,31 @@ export type KeychainOutcome = {
 	keychainWarning: string | null,
 };
 
+/**
+ *  One step of a query plan, in the engine's own words and units. Costs are the
+ *  planner's estimate for the node including its children (SQLite has none).
+ */
+export type PlanNode = {
+	/**  "Seq Scan on users", "users (ALL)", "SCAN users" */
+	label: string,
+	/**  conditions, keys and sort keys, as "Filter: (id > 1)" */
+	details: string[],
+	cost: number | null,
+	rows: number | null,
+	/**  EXPLAIN ANALYZE only: rows per loop, time per loop and loops */
+	actualRows: number | null,
+	actualMs: number | null,
+	loops: number | null,
+	children: PlanNode[],
+};
+
+/**  What a pub/sub subscription sends to the panel, one at a time. */
+export type PubSubEvent = { kind: "message"; channel: RedisText; 
+/**  the PSUBSCRIBE pattern that matched; None for SUBSCRIBE */
+pattern: RedisText | null; payload: RedisText } | 
+/**  the subscription is over (server closed the connection, or it was stopped) */
+{ kind: "ended"; reason: string };
+
 /**  A logical database (SELECT index) and how many keys it holds. */
 export type RedisDatabase = {
 	index: number,
@@ -409,7 +457,12 @@ export type ScriptOutcome = {
  *  What to do with the stored password when saving a connection.
  *  The front never receives the stored password, so editing needs an explicit "keep".
  */
-export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" };
+export type SecretChange = { action: "keep" } | { action: "set"; value: string } | { action: "clear" } | 
+/**
+ *  The stored secret of another connection (the id), copied on save when duplicating
+ *  it: the front never reads a stored secret, not even to copy it.
+ */
+{ action: "copyFrom"; value: string };
 
 export type Sort = {
 	column: string,
@@ -473,6 +526,14 @@ export type TlsConfig = {
 };
 
 export type TlsMode = "disable" | "prefer" | "require" | "verifyFull";
+
+export type UpdateCheck = {
+	current: string,
+	/**  the newer version on GitHub Releases, if any */
+	available: string | null,
+	/**  the updater can replace this install; false = point to the release page */
+	installable: boolean,
+};
 
 /**  What a watch sends to the UI: events, then at most one error that ends it. */
 export type WatchMessage = { kind: "change"; event: ChangeEvent } | { kind: "error"; message: string };

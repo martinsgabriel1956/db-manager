@@ -4,18 +4,20 @@ use std::time::{Duration, Instant};
 use futures_util::{StreamExt, TryStreamExt, stream};
 
 use crate::adapters::SqlConnection;
+use crate::adapters::explain;
 use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
 use crate::adapters::sql_builder;
 use crate::adapters::ssh::SshTunnel;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
-    DiagramTable, Engine, Environment, FilterOp, RelationKind, RowBatch, RowChange, RunResponse,
-    SchemaInfo, ScriptOutcome, StatementResult, TableChanges, TableStructure, Target,
+    DiagramTable, Engine, Environment, ExplainPlan, ExplainResponse, FilterOp, RelationKind,
+    RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome, StatementResult, TableChanges,
+    TableStructure, Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
-use crate::storage::secrets::SecretStore;
+use crate::storage::secrets::{SecretStore, ssh_key};
 use crate::use_cases::guard;
 
 /// Rows per batch in the SQL editor (initial result and each `fetch_more`).
@@ -35,7 +37,11 @@ pub async fn connect(
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let (live, tunnel) = open(&config, secret).await?;
+    let ssh_password = match config.ssh {
+        Some(_) => secrets.get(&ssh_key(&config.id))?,
+        None => None,
+    };
+    let (live, tunnel) = open(&config, secret, ssh_password).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -55,11 +61,12 @@ pub async fn connect(
 async fn open(
     config: &ConnectionConfig,
     secret: Option<String>,
+    ssh_password: Option<String>,
 ) -> Result<(Live, Option<SshTunnel>), AppError> {
     let mut config = config.clone();
     let tunnel = match (&config.ssh, &mut config.target) {
         (Some(ssh), Target::Network { host, port, .. }) => {
-            let tunnel = SshTunnel::open(ssh, host, *port).await?;
+            let tunnel = SshTunnel::open(ssh, host, *port, ssh_password.as_deref()).await?;
             *host = "127.0.0.1".to_string();
             *port = tunnel.local_port;
             Some(tunnel)
@@ -80,8 +87,9 @@ async fn open(
 pub async fn test_connection(
     config: &ConnectionConfig,
     secret: Option<String>,
+    ssh_password: Option<String>,
 ) -> Result<(), AppError> {
-    let (live, _tunnel) = open(config, secret).await?;
+    let (live, _tunnel) = open(config, secret, ssh_password).await?;
     live.close().await;
     Ok(())
 }
@@ -271,9 +279,78 @@ pub async fn run_script(
     })
 }
 
-/// Applies staged grid edits in one transaction. Rows are identified by the whole
-/// primary key; tables without one are not editable. On prod the generated SQL is
-/// returned for confirmation first.
+/// The plan of one statement. Plain EXPLAIN only plans; ANALYZE runs the statement,
+/// so it goes through the same confirmation as running it, showing the EXPLAIN
+/// that will run. Read-only sessions refuse its writes in the database itself.
+pub async fn explain(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    run_id: &str,
+    sql: &str,
+    analyze: bool,
+    confirmed: bool,
+) -> Result<ExplainResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let dialect = connection.sql()?.dialect();
+    let statements = dialect.split(sql);
+    let [statement] = statements.as_slice() else {
+        return Err(AppError::validation(if statements.is_empty() {
+            "nenhuma instrução para explicar"
+        } else {
+            "selecione uma única instrução para explicar"
+        }));
+    };
+    let explain_sql = explain::explain_sql(dialect, statement, analyze)?;
+    if analyze && !confirmed {
+        // classified on the statement itself: the parser may not know EXPLAIN's options
+        let confirmation = guard::confirmation_for(
+            std::slice::from_ref(statement),
+            dialect,
+            connection.environment,
+            connection.read_only,
+        );
+        if let Some(confirmation) = confirmation {
+            return Ok(ExplainResponse::NeedsConfirmation {
+                confirmation: Confirmation {
+                    statements: vec![explain_sql],
+                    ..confirmation
+                },
+            });
+        }
+    }
+
+    let started = Instant::now();
+    let result = connection
+        .sql()?
+        .run_script(
+            std::slice::from_ref(&explain_sql),
+            EDITOR_BATCH_SIZE,
+            |pid| registry.start_run(run_id, connection.clone(), pid),
+        )
+        .await;
+    registry.finish_run(run_id);
+    let duration_ms = elapsed_ms(started);
+    record(
+        history,
+        connection_id,
+        &connection,
+        &explain_sql,
+        duration_ms,
+        result.as_ref().err(),
+    )
+    .await;
+    // a plan fits one batch; a cursor still open is dropped here, which closes it
+    let root = explain::parse(dialect, &result?.first.batch)?;
+    Ok(ExplainResponse::Explained {
+        plan: ExplainPlan {
+            sql: explain_sql,
+            root,
+            duration_ms,
+        },
+    })
+}
+
 /// Rows of a table as INSERT statements, in the connection's own SQL dialect.
 pub fn copy_as_insert(
     registry: &Registry,
@@ -287,6 +364,9 @@ pub fn copy_as_insert(
     sql_builder::insert_sql(dialect, schema, table, columns, rows)
 }
 
+/// Applies staged grid edits in one transaction. Rows are identified by the whole
+/// primary key; tables without one are not editable. On prod the generated SQL is
+/// returned for confirmation first.
 pub async fn apply_changes(
     registry: &Registry,
     history: &HistoryStore,
@@ -1004,6 +1084,161 @@ mod integration_tests {
         ));
     }
 
+    #[tokio::test]
+    async fn explain_plans_and_analyze_follows_the_write_rules() {
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        exec(
+            &registry,
+            &history,
+            "e1",
+            "CREATE TABLE users (id int PRIMARY KEY, name text);
+             CREATE TABLE orders (id int PRIMARY KEY, user_id int REFERENCES users, total numeric);
+             INSERT INTO users SELECT g, 'u' || g FROM generate_series(1, 100) g",
+        )
+        .await;
+        let explain = |run_id: &'static str, sql: &'static str, analyze: bool, confirmed: bool| {
+            explain(&registry, &history, "it", run_id, sql, analyze, confirmed)
+        };
+        let plan = |response: ExplainResponse| match response {
+            ExplainResponse::Explained { plan } => plan,
+            ExplainResponse::NeedsConfirmation { confirmation } => {
+                panic!("unexpected confirmation: {confirmation:?}")
+            }
+        };
+        let (registry_ref, history_ref) = (&registry, &history);
+        let count = |run_id: &'static str| async move {
+            let outcome = exec(
+                registry_ref,
+                history_ref,
+                run_id,
+                "SELECT count(*) FROM users",
+            )
+            .await;
+            match outcome.result {
+                StatementResult::Rows { batch, .. } => batch.rows[0][0].clone(),
+                other => panic!("expected rows: {other:?}"),
+            }
+        };
+
+        // the statement under the cursor arrives with its semicolon
+        let joined = plan(
+            explain(
+                "e2",
+                "SELECT * FROM orders o JOIN users u ON u.id = o.user_id;",
+                false,
+                false,
+            )
+            .await
+            .unwrap(),
+        );
+        assert_eq!(
+            joined.sql,
+            "EXPLAIN (FORMAT JSON) SELECT * FROM orders o JOIN users u ON u.id = o.user_id"
+        );
+        let root = &joined.root;
+        assert!(root.label.contains("Join"), "{root:?}");
+        assert!(root.cost.is_some() && root.rows.is_some());
+        assert_eq!(root.actual_rows, None);
+        let labels = crate::adapters::explain::tests::labels(root);
+        assert!(
+            labels.iter().any(|l| l.ends_with("on users u")),
+            "{labels:?}"
+        );
+        assert!(
+            labels.iter().any(|l| l.ends_with("on orders o")),
+            "{labels:?}"
+        );
+
+        // a plain EXPLAIN only plans: nothing asks, nothing is deleted
+        plan(
+            explain("e3", "DELETE FROM users", false, false)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(count("e4").await, Cell::Int("100".into()));
+
+        // ANALYZE reports what really happened
+        let analyzed = plan(
+            explain("e5", "SELECT * FROM users WHERE id <= 10", true, false)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(analyzed.root.actual_rows, Some(10.0));
+        assert_eq!(analyzed.root.loops, Some(1.0));
+        assert!(
+            analyzed
+                .root
+                .details
+                .iter()
+                .any(|d| d.starts_with("Execution Time"))
+        );
+
+        // ANALYZE runs the statement: a destructive one waits, showing the exact EXPLAIN
+        let response = explain("e6", "DELETE FROM users", true, false)
+            .await
+            .unwrap();
+        let ExplainResponse::NeedsConfirmation { confirmation } = response else {
+            panic!("expected confirmation");
+        };
+        assert!(confirmation.destructive);
+        assert_eq!(
+            confirmation.statements,
+            ["EXPLAIN (ANALYZE, FORMAT JSON) DELETE FROM users"]
+        );
+        assert_eq!(count("e7").await, Cell::Int("100".into()));
+        let deleted = plan(
+            explain("e8", "DELETE FROM users", true, true)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(deleted.root.actual_rows, Some(0.0));
+        assert_eq!(count("e9").await, Cell::Int("0".into()));
+
+        assert!(matches!(
+            explain("e10", "SELECT 1; SELECT 2", false, false).await,
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            explain("e11", "-- nothing", false, false).await,
+            Err(AppError::Validation(_))
+        ));
+        // explains land in the history like any run, with the EXPLAIN that ran
+        let recorded = history
+            .search("EXPLAIN (ANALYZE", None, false, 10)
+            .await
+            .unwrap();
+        assert_eq!(recorded.len(), 2);
+
+        // on prod, ANALYZE of any write asks; a plain EXPLAIN does not
+        disconnect(&registry, "it").await;
+        config.environment = Environment::Prod;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        let insert = "INSERT INTO users VALUES (1, 'a')";
+        let response = explain("e12", insert, true, false).await.unwrap();
+        assert!(matches!(
+            response,
+            ExplainResponse::NeedsConfirmation { confirmation } if !confirmation.destructive
+        ));
+        plan(explain("e13", insert, false, false).await.unwrap());
+        plan(explain("e14", "SELECT 1", true, false).await.unwrap());
+
+        // read-only: the database itself refuses what ANALYZE would write
+        disconnect(&registry, "it").await;
+        config.read_only = true;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        let err = explain("e15", insert, true, true).await.unwrap_err();
+        assert!(err.to_string().contains("read-only"), "{err}");
+    }
+
     /// The whole path through the use case for a non-Postgres engine: enum dispatch,
     /// the SQLite dialect in the guard and splitter, no keychain lookup.
     #[tokio::test]
@@ -1040,6 +1275,7 @@ mod integration_tests {
             },
             key_separator: None,
             ssh: None,
+            group: None,
         };
         let registry = Registry::default();
         let history = HistoryStore::in_memory().await;
