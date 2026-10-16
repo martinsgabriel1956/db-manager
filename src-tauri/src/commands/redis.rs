@@ -4,7 +4,7 @@ use tauri::ipc::Channel;
 use crate::AppState;
 use crate::domain::{
     AppError, CommandResponse, InfoSection, KeyDetail, KeyEditRequest, KeyEditResponse, KeyPage,
-    PubSubEvent, RedisDatabase, RedisModule,
+    LiveStart, MonitorEvent, PubSubEvent, RedisDatabase, RedisModule,
 };
 use crate::use_cases::redis;
 
@@ -146,6 +146,27 @@ pub async fn redis_master(
     connection_id: String,
 ) -> Result<Option<String>, AppError> {
     Ok(state.registry.connection(&connection_id)?.redis()?.master())
+}
+
+/// MONITOR on a dedicated connection; lines arrive on `on_event` until
+/// `stop_redis_session` or the limits. Prod asks first.
+#[tauri::command]
+#[specta::specta]
+pub async fn redis_monitor(
+    state: State<'_, AppState>,
+    connection_id: String,
+    session_id: String,
+    confirmed: bool,
+    on_event: Channel<MonitorEvent>,
+) -> Result<LiveStart, AppError> {
+    redis::monitor(
+        &state.registry,
+        &connection_id,
+        &session_id,
+        confirmed,
+        move |event| on_event.send(event).is_ok(),
+    )
+    .await
 }
 
 #[tauri::command]
