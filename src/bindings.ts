@@ -43,6 +43,9 @@ export const commands = {
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
+	previewCsv: (path: string) => __TAURI_INVOKE<CsvPreview>("preview_csv", { path }),
+	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
+	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
@@ -154,6 +157,12 @@ export type ColumnInfo = {
 	options: string[],
 };
 
+/**  File column (by position) → table column. */
+export type ColumnMapping = {
+	source: number,
+	column: string,
+};
+
 /**  New value typed by the user; `None` writes NULL. */
 export type ColumnValue = {
 	column: string,
@@ -211,6 +220,23 @@ export type ConnectionConfig = {
 	group?: string | null,
 };
 
+export type CsvImport = {
+	schema: string,
+	table: string,
+	path: string,
+	/**  table columns left out keep their default */
+	mapping: ColumnMapping[],
+};
+
+/**  The start of a CSV file, to map its columns before importing. */
+export type CsvPreview = {
+	columns: string[],
+	/**  the first rows; `None` is an empty unquoted field (NULL) */
+	rows: ((string | null)[])[],
+	/**  guessed from the header: `,`, `;` or a tab */
+	delimiter: string,
+};
+
 /**  A table of the ER diagram: its columns and the foreign keys leaving it. */
 export type DiagramTable = {
 	name: string,
@@ -223,6 +249,13 @@ export type DocumentFormat =
 "ndjson" | 
 /**  a JSON array of documents */
 "jsonArray";
+
+/**  An NDJSON or JSON array file of Extended JSON documents, into a collection. */
+export type DocumentImport = {
+	database: string,
+	collection: string,
+	path: string,
+};
 
 export type DocumentPage = {
 	documents: string[],
@@ -302,6 +335,13 @@ export type HistoryEntry = {
 	error: string | null,
 	starred: boolean,
 };
+
+export type ImportResponse = 
+/**
+ *  always first: the sample INSERT (or first document) and the count, to confirm
+ *  before anything runs
+ */
+{ status: "needsConfirmation"; confirmation: Confirmation } | { status: "imported"; rows: number; duration_ms: number };
 
 export type IndexInfo = {
 	name: string,
