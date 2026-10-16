@@ -66,6 +66,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::redis::redis_subscribe,
             commands::redis::stop_redis_session,
             commands::redis::redis_publish,
+            commands::redis::redis_monitor,
         ])
 }
 

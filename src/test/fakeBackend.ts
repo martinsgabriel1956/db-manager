@@ -312,6 +312,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     run_redis_command: () => ({ status: "executed", outcome: { output: "OK", durationMs: 1 } }),
     redis_subscribe: () => null,
     stop_redis_session: () => null,
+    redis_monitor: () => ({ status: "started" }),
     redis_publish: () => ({
       status: "executed",
       outcome: { output: "(integer) 1", durationMs: 1 }

@@ -59,6 +59,11 @@ export const commands = {
 	redisSubscribe: (connectionId: string, sessionId: string, channels: string[], patterns: string[], onEvent: Channel<PubSubEvent>) => __TAURI_INVOKE<null>("redis_subscribe", { connectionId, sessionId, channels, patterns, onEvent }),
 	stopRedisSession: (connectionId: string, sessionId: string) => __TAURI_INVOKE<void>("stop_redis_session", { connectionId, sessionId }),
 	redisPublish: (connectionId: string, db: number, channel: string, message: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("redis_publish", { connectionId, db, channel, message, confirmed }),
+	/**
+	 *  MONITOR on a dedicated connection; lines arrive on `on_event` until
+	 *  `stop_redis_session` or the limits. Prod asks first.
+	 */
+	redisMonitor: (connectionId: string, sessionId: string, confirmed: boolean, onEvent: Channel<MonitorEvent>) => __TAURI_INVOKE<LiveStart>("redis_monitor", { connectionId, sessionId, confirmed, onEvent }),
 };
 
 /* Types */
@@ -341,6 +346,16 @@ export type KeyValue = {
 export type KeychainOutcome = {
 	keychainWarning: string | null,
 };
+
+export type LiveStart = { status: "started" } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+/**
+ *  What MONITOR sends to the panel: each command the server runs, as the server
+ *  prints it (`1700000000.123456 [0 127.0.0.1:5000] "GET" "k"`).
+ */
+export type MonitorEvent = { kind: "line"; text: string } | 
+/**  stopped, the limit reached, or the server closed the connection */
+{ kind: "ended"; reason: string };
 
 /**  What a pub/sub subscription sends to the panel, one at a time. */
 export type PubSubEvent = { kind: "message"; channel: RedisText; 
