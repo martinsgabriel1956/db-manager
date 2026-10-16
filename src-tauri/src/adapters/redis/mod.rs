@@ -8,16 +8,22 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use redis::aio::MultiplexedConnection;
+use futures_util::future::try_join_all;
+use redis::aio::{ConnectionLike, MultiplexedConnection};
+use redis::cluster::ClusterClientBuilder;
+use redis::cluster_async::ClusterConnection;
+use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
+use redis::sentinel::{SentinelClient, SentinelClientBuilder, SentinelServerType};
 use redis::{
     AsyncConnectionConfig, Client, Cmd, ConnectionAddr, ConnectionInfo, FromRedisValue,
-    IntoConnectionInfo, RedisConnectionInfo, RedisError, TlsCertificates, Value,
+    IntoConnectionInfo, Pipeline, RedisConnectionInfo, RedisError, RedisFuture, TlsCertificates,
+    Value,
 };
 use tokio::sync::oneshot;
 
 use crate::domain::{
-    AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage, PubSubEvent,
-    RedisDatabase, RedisModule, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
+    AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage, NodeAddress,
+    PubSubEvent, RedisDatabase, RedisModule, RedisValue, StreamEntry, Target, TlsMode, ZsetEntry,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -32,60 +38,191 @@ const SCAN_ROUNDS: usize = 10;
 const SCAN_COUNT: usize = 1000;
 const DEFAULT_DATABASES: u8 = 16;
 
-/// One multiplexed connection per logical database, opened on first use.
 pub struct RedisAdapter {
-    info: ConnectionInfo,
-    config: AsyncConnectionConfig,
+    server: Server,
     default_db: u8,
     timeout_secs: u32,
-    // never held across an await
-    connections: Mutex<HashMap<u8, MultiplexedConnection>>,
     /// live sessions on dedicated connections (pub/sub), by id; dropping the
     /// sender ends the session
     streams: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
-impl RedisAdapter {
-    pub async fn connect(
-        config: &ConnectionConfig,
-        password: Option<String>,
-    ) -> Result<Self, AppError> {
-        let Target::Network {
-            host,
-            port,
-            database,
-            username,
-        } = &config.target
-        else {
-            return Err(AppError::validation("Redis precisa de host e porta"));
-        };
-        let default_db = if database.is_empty() {
-            0
-        } else {
-            database
-                .parse()
-                .map_err(|_| AppError::validation("database do Redis deve ser um número"))?
-        };
+// one per open connection, and the adapter is already boxed in `Live`
+#[expect(clippy::large_enum_variant)]
+enum Server {
+    /// One multiplexed connection per logical database, opened on first use.
+    Standalone {
+        // the std locks are never held across an await
+        info: Mutex<ConnectionInfo>,
+        config: AsyncConnectionConfig,
+        connections: Mutex<HashMap<u8, MultiplexedConnection>>,
+        /// Behind Sentinel: asked for the master again whenever a connection is
+        /// opened, so reconnecting after a failover reaches the new master.
+        sentinel: Option<tokio::sync::Mutex<SentinelClient>>,
+    },
+    /// Routes each command to the node that owns its key, and reconnects by itself.
+    /// A cluster only has database 0. `seed` is the first seed node, where dedicated
+    /// connections (pub/sub) go: a PUBLISH reaches every node of the cluster.
+    Cluster {
+        connection: ClusterConnection,
+        seed: ConnectionInfo,
+    },
+}
 
-        let mut settings = RedisConnectionInfo::default();
-        if !username.is_empty() {
-            settings = settings.set_username(username);
-        }
-        if let Some(password) = password.filter(|p| !p.is_empty()) {
-            settings = settings.set_password(password);
-        }
-        let info = connection_info(config, host, *port)?.set_redis_settings(settings);
-        let timeout =
-            (config.timeout_secs > 0).then(|| Duration::from_secs(u64::from(config.timeout_secs)));
-
-        let adapter = Self {
-            info,
+impl Server {
+    fn standalone(
+        info: ConnectionInfo,
+        timeout: Option<Duration>,
+        sentinel: Option<SentinelClient>,
+    ) -> Self {
+        Server::Standalone {
+            info: Mutex::new(info),
             config: AsyncConnectionConfig::new()
                 .set_connection_timeout(Some(CONNECT_TIMEOUT))
                 .set_response_timeout(timeout),
+            connections: Mutex::new(HashMap::new()),
+            sentinel: sentinel.map(tokio::sync::Mutex::new),
+        }
+    }
+}
+
+/// Either kind of connection, so commands and pipelines run the same way on both.
+#[derive(Clone)]
+enum Connection {
+    Single(MultiplexedConnection),
+    Cluster(ClusterConnection),
+}
+
+impl ConnectionLike for Connection {
+    fn req_packed_command<'a>(&'a mut self, cmd: &'a Cmd) -> RedisFuture<'a, Value> {
+        match self {
+            Self::Single(connection) => connection.req_packed_command(cmd),
+            Self::Cluster(connection) => connection.req_packed_command(cmd),
+        }
+    }
+
+    fn req_packed_commands<'a>(
+        &'a mut self,
+        pipeline: &'a Pipeline,
+        offset: usize,
+        count: usize,
+    ) -> RedisFuture<'a, Vec<Value>> {
+        match self {
+            Self::Single(connection) => connection.req_packed_commands(pipeline, offset, count),
+            Self::Cluster(connection) => connection.req_packed_commands(pipeline, offset, count),
+        }
+    }
+
+    fn get_db(&self) -> i64 {
+        match self {
+            Self::Single(connection) => connection.get_db(),
+            Self::Cluster(connection) => connection.get_db(),
+        }
+    }
+}
+
+impl RedisAdapter {
+    /// `sentinel_password` authenticates to the sentinels; `password` always to Redis.
+    pub async fn connect(
+        config: &ConnectionConfig,
+        password: Option<String>,
+        sentinel_password: Option<String>,
+    ) -> Result<Self, AppError> {
+        let password = password.filter(|p| !p.is_empty());
+        let timeout =
+            (config.timeout_secs > 0).then(|| Duration::from_secs(u64::from(config.timeout_secs)));
+        let failed = |err: RedisError| AppError::Database(format!("falha ao conectar: {err}"));
+
+        let (server, default_db) = match &config.target {
+            Target::Network {
+                host,
+                port,
+                database,
+                username,
+            } => {
+                let info = connection_info(config, host, *port)?
+                    .set_redis_settings(settings(username, password.as_deref()));
+                (Server::standalone(info, timeout, None), parse_db(database)?)
+            }
+            Target::RedisSentinel {
+                nodes,
+                master_name,
+                database,
+                username,
+            } => {
+                let sentinels = nodes
+                    .iter()
+                    .map(|node| address(config.tls.mode, &node.host, node.port));
+                let mut builder =
+                    SentinelClientBuilder::new(sentinels, master_name, SentinelServerType::Master)
+                        .map_err(invalid_config)?;
+                // the sentinels' addresses already say TLS or not; the master is told here
+                match config.tls.mode {
+                    TlsMode::Disable | TlsMode::Prefer => {}
+                    TlsMode::Require => {
+                        builder = builder.set_client_to_redis_tls_mode(redis::TlsMode::Insecure);
+                    }
+                    TlsMode::VerifyFull => {
+                        builder = builder.set_client_to_redis_tls_mode(redis::TlsMode::Secure);
+                    }
+                }
+                if let Some(certificates) = certificates(config)? {
+                    builder = builder
+                        .set_client_to_redis_certificates(certificates.clone())
+                        .set_client_to_sentinel_certificates(certificates);
+                }
+                if !username.is_empty() {
+                    builder = builder.set_client_to_redis_username(username);
+                }
+                if let Some(password) = password {
+                    builder = builder.set_client_to_redis_password(password);
+                }
+                if let Some(password) = sentinel_password.filter(|p| !p.is_empty()) {
+                    builder = builder.set_client_to_sentinel_password(password);
+                }
+                let mut sentinel = builder.build().map_err(invalid_config)?;
+                let master = sentinel.async_get_client().await.map_err(failed)?;
+                let info = master.get_connection_info().clone();
+                (
+                    Server::standalone(info, timeout, Some(sentinel)),
+                    parse_db(database)?,
+                )
+            }
+            Target::RedisCluster { nodes, username } => {
+                let seed = match nodes.first() {
+                    Some(node) => connection_info(config, &node.host, node.port)?
+                        .set_redis_settings(settings(username, password.as_deref())),
+                    None => return Err(AppError::validation("informe ao menos um nó do cluster")),
+                };
+                let mut builder = ClusterClientBuilder::new(
+                    nodes
+                        .iter()
+                        .map(|node| address(config.tls.mode, &node.host, node.port)),
+                )
+                .connection_timeout(CONNECT_TIMEOUT);
+                if let Some(certificates) = certificates(config)? {
+                    builder = builder.certs(certificates);
+                }
+                if !username.is_empty() {
+                    builder = builder.username(username);
+                }
+                if let Some(password) = password {
+                    builder = builder.password(password);
+                }
+                if let Some(timeout) = timeout {
+                    builder = builder.response_timeout(timeout);
+                }
+                let client = builder.build().map_err(invalid_config)?;
+                let connection = client.get_async_connection().await.map_err(failed)?;
+                (Server::Cluster { connection, seed }, 0)
+            }
+            _ => return Err(AppError::validation("Redis precisa de host e porta")),
+        };
+
+        let adapter = Self {
+            server,
             default_db,
             timeout_secs: config.timeout_secs,
-            connections: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()),
         };
         // the handshake authenticates; PING catches servers that require a password we lack
@@ -97,7 +234,9 @@ impl RedisAdapter {
     }
 
     pub fn close(&self) {
-        lock(&self.connections).clear();
+        if let Server::Standalone { connections, .. } = &self.server {
+            lock(connections).clear();
+        }
         lock(&self.streams).clear();
     }
 
@@ -111,30 +250,48 @@ impl RedisAdapter {
         patterns: &[String],
         send: impl Fn(PubSubEvent) -> bool + Send + 'static,
     ) -> Result<(), AppError> {
-        let client = Client::open(self.info.clone()).map_err(|err| self.error(err))?;
-        let mut pubsub = tokio::time::timeout(CONNECT_TIMEOUT, client.get_async_pubsub())
+        let info = match &self.server {
+            Server::Standalone { info, .. } => lock(info).clone(),
+            Server::Cluster { seed, .. } => seed.clone(),
+        };
+        let client = Client::open(info).map_err(|err| self.error(err))?;
+        let pubsub = tokio::time::timeout(CONNECT_TIMEOUT, client.get_async_pubsub())
             .await
             .map_err(|_| AppError::Timeout("falha ao conectar: tempo esgotado".into()))?
             .map_err(|err| self.error(err))?;
+        let (mut sink, mut messages) = pubsub.split();
         if !channels.is_empty() {
-            pubsub
-                .subscribe(channels)
+            sink.subscribe(channels)
                 .await
                 .map_err(|err| self.error(err))?;
         }
         if !patterns.is_empty() {
-            pubsub
-                .psubscribe(patterns)
+            sink.psubscribe(patterns)
                 .await
                 .map_err(|err| self.error(err))?;
         }
+        let (channels, patterns) = (channels.to_vec(), patterns.to_vec());
         let (stop, mut stopped) = oneshot::channel();
         lock(&self.streams).insert(id.to_string(), stop);
         tokio::spawn(async move {
-            let mut messages = pubsub.into_on_message();
             let reason = loop {
                 tokio::select! {
-                    _ = &mut stopped => break "assinatura encerrada",
+                    _ = &mut stopped => {
+                        // "ended" has to be true when it is said: the socket closes only
+                        // after this task drops it, so leave on the server first and wait
+                        // for its answer. Failing that, dropping the connection ends it anyway.
+                        let _ = tokio::time::timeout(CONNECT_TIMEOUT, async {
+                            if !channels.is_empty() {
+                                sink.unsubscribe(&channels).await?;
+                            }
+                            if !patterns.is_empty() {
+                                sink.punsubscribe(&patterns).await?;
+                            }
+                            Ok::<_, redis::RedisError>(())
+                        })
+                        .await;
+                        break "assinatura encerrada";
+                    }
                     message = messages.next() => match message {
                         Some(message) => {
                             if !send(pubsub_event(&message)) {
@@ -157,25 +314,63 @@ impl RedisAdapter {
         lock(&self.streams).remove(id);
     }
 
-    async fn connection(&self, db: u8) -> Result<MultiplexedConnection, AppError> {
-        if let Some(connection) = lock(&self.connections).get(&db) {
-            return Ok(connection.clone());
+    async fn connection(&self, db: u8) -> Result<Connection, AppError> {
+        let (info, config, connections, sentinel) = match &self.server {
+            Server::Cluster { .. } if db != 0 => {
+                return Err(AppError::validation("um cluster só tem o database 0"));
+            }
+            Server::Cluster { connection, .. } => {
+                return Ok(Connection::Cluster(connection.clone()));
+            }
+            Server::Standalone {
+                info,
+                config,
+                connections,
+                sentinel,
+            } => (info, config, connections, sentinel),
+        };
+        if let Some(connection) = lock(connections).get(&db) {
+            return Ok(Connection::Single(connection.clone()));
         }
-        let settings = self.info.redis_settings().clone().set_db(i64::from(db));
-        let client = Client::open(self.info.clone().set_redis_settings(settings))
-            .map_err(|err| self.error(err))?;
+        if let Some(sentinel) = sentinel {
+            let master = sentinel
+                .lock()
+                .await
+                .async_get_client()
+                .await
+                .map_err(|err| self.error(err))?;
+            *lock(info) = master.get_connection_info().clone();
+        }
+        let info = lock(info).clone();
+        let settings = info.redis_settings().clone().set_db(i64::from(db));
+        let client =
+            Client::open(info.set_redis_settings(settings)).map_err(|err| self.error(err))?;
         let connection = client
-            .get_multiplexed_async_connection_with_config(&self.config)
+            .get_multiplexed_async_connection_with_config(config)
             .await
             .map_err(|err| self.error(err))?;
-        lock(&self.connections).insert(db, connection.clone());
-        Ok(connection)
+        lock(connections).insert(db, connection.clone());
+        Ok(Connection::Single(connection))
     }
 
-    /// A broken connection is dropped so the next call opens a new one.
+    /// The master the sentinels pointed to on the last (re)connect; None without Sentinel.
+    pub fn master(&self) -> Option<String> {
+        match &self.server {
+            Server::Standalone {
+                info,
+                sentinel: Some(_),
+                ..
+            } => Some(lock(info).addr().to_string()),
+            _ => None,
+        }
+    }
+
+    /// A broken standalone connection is dropped so the next call opens a new one.
     fn fail(&self, db: u8, err: RedisError) -> AppError {
-        if err.is_unrecoverable_error() {
-            lock(&self.connections).remove(&db);
+        if let Server::Standalone { connections, .. } = &self.server
+            && err.is_unrecoverable_error()
+        {
+            lock(connections).remove(&db);
         }
         self.error(err)
     }
@@ -192,9 +387,63 @@ impl RedisAdapter {
             .map_err(|err| self.fail(db, err))
     }
 
+    /// `command` on one cluster node; routed as usual without a node.
+    async fn query_on<T: FromRedisValue>(
+        &self,
+        db: u8,
+        node: Option<&NodeAddress>,
+        command: &Cmd,
+    ) -> Result<T, AppError> {
+        let (Some(node), Server::Cluster { connection, .. }) = (node, &self.server) else {
+            return self.query(db, command).await;
+        };
+        let routing = RoutingInfo::SingleNode(SingleNodeRoutingInfo::ByAddress {
+            host: node.host.clone(),
+            port: node.port,
+        });
+        let value = connection
+            .clone()
+            .route_command(command.clone(), routing)
+            .await
+            .map_err(|err| self.error(err))?;
+        redis::from_redis_value(value).map_err(|err| self.error(err.into()))
+    }
+
+    /// The cluster's primaries as it announces them (CLUSTER SLOTS), sorted so that a
+    /// node index in a SCAN cursor means the same node on the next page. Empty when
+    /// standalone.
+    async fn primaries(&self) -> Result<Vec<NodeAddress>, AppError> {
+        if let Server::Standalone { .. } = self.server {
+            return Ok(Vec::new());
+        }
+        // [start, end, [host, port, id, …] (the primary), replicas…]
+        let ranges: Vec<Vec<Value>> = self.query(0, redis::cmd("CLUSTER").arg("SLOTS")).await?;
+        let mut primaries: Vec<NodeAddress> = ranges
+            .into_iter()
+            .filter_map(|range| {
+                let node: Vec<Value> = redis::from_redis_value(range.get(2)?.clone()).ok()?;
+                Some(NodeAddress {
+                    host: redis::from_redis_value(node.first()?.clone()).ok()?,
+                    port: redis::from_redis_value(node.get(1)?.clone()).ok()?,
+                })
+            })
+            .collect();
+        primaries.sort_by(|a, b| (&a.host, a.port).cmp(&(&b.host, b.port)));
+        primaries.dedup();
+        Ok(primaries)
+    }
+
     /// Databases 0..N (CONFIG GET databases; 16 when CONFIG is not allowed) with
-    /// their key counts from INFO keyspace.
+    /// their key counts from INFO keyspace. A cluster has only database 0.
     pub async fn databases(&self) -> Result<Vec<RedisDatabase>, AppError> {
+        if let Server::Cluster { .. } = self.server {
+            // summed over the primaries by the cluster client
+            let keys: u64 = self.query(0, &redis::cmd("DBSIZE")).await?;
+            return Ok(vec![RedisDatabase {
+                index: 0,
+                keys: u32::try_from(keys).unwrap_or(u32::MAX),
+            }]);
+        }
         let configured = self
             .query::<Vec<String>>(
                 self.default_db,
@@ -222,14 +471,33 @@ impl RedisAdapter {
 
     /// One page of SCAN MATCH `pattern`, continuing from `cursor` ("0" starts over),
     /// with each key's TYPE. Never KEYS: it blocks the server on large databases.
+    /// A cluster is scanned one primary after the other, with the cursor as
+    /// "<primary index>:<that primary's cursor>".
     // ponytail: names that are not UTF-8 are shown lossily and cannot be opened
     pub async fn scan(&self, db: u8, pattern: &str, cursor: &str) -> Result<KeyPage, AppError> {
-        let mut cursor = cursor.to_string();
-        let mut names: Vec<Vec<u8>> = Vec::new();
+        let primaries = self.primaries().await?;
+        let (mut node, mut cursor) = match cursor.split_once(':') {
+            Some((node, cursor)) => (
+                node.parse::<usize>()
+                    .map_err(|_| AppError::validation("cursor de SCAN inválido"))?,
+                cursor.to_string(),
+            ),
+            None => (0, cursor.to_string()),
+        };
+        let mut keys = Vec::new();
+        let mut done = false;
         for _ in 0..SCAN_ROUNDS {
-            let (next, batch): (String, Vec<Vec<u8>>) = self
-                .query(
+            let target = if primaries.is_empty() {
+                None
+            } else {
+                Some(primaries.get(node).ok_or_else(|| {
+                    AppError::validation("o cluster mudou durante a busca: recarregue as chaves")
+                })?)
+            };
+            let (next, names): (String, Vec<Vec<u8>>) = self
+                .query_on(
                     db,
+                    target,
                     redis::cmd("SCAN")
                         .arg(&cursor)
                         .arg("MATCH")
@@ -238,35 +506,42 @@ impl RedisAdapter {
                         .arg(SCAN_COUNT),
                 )
                 .await?;
-            names.extend(batch);
+            // one TYPE per key, concurrent on the multiplexed connection: in a
+            // cluster each goes to its key's node, which a pipeline cannot do
+            let kinds: Vec<String> = try_join_all(
+                names
+                    .iter()
+                    .map(|name| async move { self.query(db, redis::cmd("TYPE").arg(name)).await }),
+            )
+            .await?;
+            keys.extend(
+                names
+                    .into_iter()
+                    .zip(kinds)
+                    // deleted between SCAN and TYPE
+                    .filter(|(_, kind)| kind != "none")
+                    .map(|(name, kind)| KeyEntry {
+                        name: String::from_utf8_lossy(&name).into_owned(),
+                        kind,
+                    }),
+            );
             cursor = next;
-            if cursor == "0" || names.len() >= SCAN_TARGET {
+            if cursor == "0" {
+                node += 1;
+                if node >= primaries.len() {
+                    done = true;
+                    break;
+                }
+            }
+            if keys.len() >= SCAN_TARGET {
                 break;
             }
         }
-
-        let mut pipe = redis::pipe();
-        for name in &names {
-            pipe.cmd("TYPE").arg(name);
-        }
-        let kinds: Vec<String> = if names.is_empty() {
-            Vec::new()
-        } else {
-            let mut connection = self.connection(db).await?;
-            pipe.query_async(&mut connection)
-                .await
-                .map_err(|err| self.fail(db, err))?
+        let cursor = match (done, primaries.is_empty()) {
+            (true, _) => "0".to_string(),
+            (false, true) => cursor,
+            (false, false) => format!("{node}:{cursor}"),
         };
-        let keys = names
-            .into_iter()
-            .zip(kinds)
-            // deleted between SCAN and TYPE
-            .filter(|(_, kind)| kind != "none")
-            .map(|(name, kind)| KeyEntry {
-                name: String::from_utf8_lossy(&name).into_owned(),
-                kind,
-            })
-            .collect();
         Ok(KeyPage { keys, cursor })
     }
 
@@ -495,9 +770,38 @@ impl RedisAdapter {
         if let Some(section) = section {
             command.arg(section);
         }
-        let text: String = self.query(self.default_db, &command).await?;
-        Ok(parse_info(&text))
+        // each cluster node answers for itself: the first primary's, and it says so
+        let primaries = self.primaries().await?;
+        let text: String = self
+            .query_on(self.default_db, primaries.first(), &command)
+            .await?;
+        let mut sections = parse_info(&text);
+        if let Some(node) = primaries.first() {
+            sections.insert(
+                0,
+                InfoSection {
+                    name: "Cluster".to_string(),
+                    entries: vec![
+                        (
+                            "nó exibido".to_string(),
+                            format!("{}:{}", node.host, node.port),
+                        ),
+                        ("primários".to_string(), primaries.len().to_string()),
+                    ],
+                },
+            );
+        }
+        Ok(sections)
     }
+}
+
+fn parse_db(database: &str) -> Result<u8, AppError> {
+    if database.is_empty() {
+        return Ok(0);
+    }
+    database
+        .parse()
+        .map_err(|_| AppError::validation("database do Redis deve ser um número"))
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -521,6 +825,17 @@ fn pubsub_event(message: &redis::Msg) -> PubSubEvent {
     }
 }
 
+fn settings(username: &str, password: Option<&str>) -> RedisConnectionInfo {
+    let mut settings = RedisConnectionInfo::default();
+    if !username.is_empty() {
+        settings = settings.set_username(username);
+    }
+    if let Some(password) = password {
+        settings = settings.set_password(password);
+    }
+    settings
+}
+
 fn pairs(items: Vec<Vec<u8>>) -> impl Iterator<Item = (Vec<u8>, Vec<u8>)> {
     let mut items = items.into_iter();
     std::iter::from_fn(move || Some((items.next()?, items.next()?)))
@@ -529,37 +844,49 @@ fn pairs(items: Vec<Vec<u8>>) -> impl Iterator<Item = (Vec<u8>, Vec<u8>)> {
 /// Redis has no opportunistic TLS: "prefer" connects in plain text. "require"
 /// encrypts without checking the certificate, "verifyFull" checks it (system roots
 /// or the configured CA).
-fn connection_info(
-    config: &ConnectionConfig,
-    host: &str,
-    port: u16,
-) -> Result<ConnectionInfo, AppError> {
+fn address(mode: TlsMode, host: &str, port: u16) -> ConnectionAddr {
     let tls = |insecure| ConnectionAddr::TcpTls {
         host: host.to_string(),
         port,
         insecure,
         tls_params: None,
     };
-    let invalid = |err: RedisError| AppError::validation(format!("configuração inválida: {err}"));
-    match (config.tls.mode, &config.tls.ca_cert_path) {
-        (TlsMode::Disable | TlsMode::Prefer, _) => ConnectionAddr::Tcp(host.to_string(), port)
-            .into_connection_info()
-            .map_err(invalid),
-        (TlsMode::Require, _) => tls(true).into_connection_info().map_err(invalid),
-        (TlsMode::VerifyFull, None) => tls(false).into_connection_info().map_err(invalid),
-        (TlsMode::VerifyFull, Some(path)) => {
-            let root_cert = std::fs::read(path).map_err(|err| {
-                AppError::validation(format!("não foi possível ler o CA {path}: {err}"))
-            })?;
-            let certificates = TlsCertificates {
-                client_tls: None,
-                root_cert: Some(root_cert),
-            };
-            Client::build_with_tls(tls(false), certificates)
-                .map(|client| client.get_connection_info().clone())
-                .map_err(invalid)
-        }
+    match mode {
+        TlsMode::Disable | TlsMode::Prefer => ConnectionAddr::Tcp(host.to_string(), port),
+        TlsMode::Require => tls(true),
+        TlsMode::VerifyFull => tls(false),
     }
+}
+
+/// The configured CA for "verifyFull"; None uses the system roots.
+fn certificates(config: &ConnectionConfig) -> Result<Option<TlsCertificates>, AppError> {
+    let (TlsMode::VerifyFull, Some(path)) = (config.tls.mode, &config.tls.ca_cert_path) else {
+        return Ok(None);
+    };
+    let root_cert = std::fs::read(path)
+        .map_err(|err| AppError::validation(format!("não foi possível ler o CA {path}: {err}")))?;
+    Ok(Some(TlsCertificates {
+        client_tls: None,
+        root_cert: Some(root_cert),
+    }))
+}
+
+fn connection_info(
+    config: &ConnectionConfig,
+    host: &str,
+    port: u16,
+) -> Result<ConnectionInfo, AppError> {
+    let address = address(config.tls.mode, host, port);
+    match certificates(config)? {
+        None => address.into_connection_info().map_err(invalid_config),
+        Some(certificates) => Client::build_with_tls(address, certificates)
+            .map(|client| client.get_connection_info().clone())
+            .map_err(invalid_config),
+    }
+}
+
+fn invalid_config(err: RedisError) -> AppError {
+    AppError::validation(format!("configuração inválida: {err}"))
 }
 
 fn map_error(err: &RedisError, timeout_secs: u32) -> AppError {
@@ -567,6 +894,19 @@ fn map_error(err: &RedisError, timeout_secs: u32) -> AppError {
         // nothing to cancel: Redis has no KILL for a running command
         return AppError::Timeout(format!(
             "comando excedeu o timeout de {timeout_secs}s (o Redis pode continuar executando-o)"
+        ));
+    }
+    // alone, or inside a MULTI/EXEC that the server aborted
+    let cross_slot = err.code() == Some("CROSSSLOT")
+        || err
+            .clone()
+            .into_server_errors()
+            .is_some_and(|errors| errors.iter().any(|(_, error)| error.code() == "CROSSSLOT"));
+    if cross_slot {
+        return AppError::Database(format!(
+            "as chaves estão em slots diferentes do cluster; um comando com várias chaves só \
+             roda quando todas caem no mesmo slot (use a mesma hash tag, ex.: {{user:1}}:a e \
+             {{user:1}}:b): {err}"
         ));
     }
     AppError::Database(err.to_string())

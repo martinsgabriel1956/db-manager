@@ -38,6 +38,7 @@ pub(crate) async fn start() -> (ContainerAsync<Mongo>, ConnectionConfig) {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     };
     (container, config)
 }

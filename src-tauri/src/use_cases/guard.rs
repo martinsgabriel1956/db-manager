@@ -282,6 +282,23 @@ mod tests {
         for (sql, expected) in cases {
             assert_eq!(classify(sql, Dialect::Postgres), expected, "{sql}");
         }
+        // the structure changes of the table view
+        let structure = [
+            (r#"ALTER TABLE "app"."t" RENAME TO "u""#, Risk::write()),
+            (r#"ALTER INDEX "app"."i" RENAME TO "j""#, Risk::write()),
+            (r#"DROP TABLE "app"."t""#, Risk::destructive("DROP")),
+            (
+                r#"ALTER TABLE "app"."t" ADD CONSTRAINT "c" CHECK (price >= 0)"#,
+                Risk::write(),
+            ),
+            (
+                r#"ALTER TABLE "app"."t" DROP CONSTRAINT "c""#,
+                Risk::destructive("ALTER TABLE … DROP"),
+            ),
+        ];
+        for (sql, expected) in structure {
+            assert_eq!(classify(sql, Dialect::Postgres), expected, "{sql}");
+        }
     }
 
     #[test]
@@ -302,6 +319,53 @@ mod tests {
             ),
             (mysql, "TRUNCATE TABLE logs", Risk::destructive("TRUNCATE")),
             (mysql, "SELECT * FROM `t` WHERE a = 'x\\'", Risk::read()),
+            // the structure changes the table view generates
+            (
+                mysql,
+                "DROP INDEX `t_ab` ON `app`.`t`",
+                Risk::destructive("DROP"),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` DROP COLUMN `c`",
+                Risk::destructive("ALTER TABLE … DROP"),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` MODIFY COLUMN `c` varchar(20) NOT NULL",
+                Risk::write(),
+            ),
+            (
+                Dialect::Sqlite,
+                r#"DROP INDEX "main"."t_ab""#,
+                Risk::destructive("DROP"),
+            ),
+            // the parser does not know RENAME INDEX: the safe fallback asks as destructive
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` RENAME INDEX `a` TO `b`",
+                Risk::destructive("ALTER (não foi possível analisar o comando)"),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` RENAME TO `app`.`u`",
+                Risk::write(),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` ADD CONSTRAINT `t_fk` FOREIGN KEY (`a`) REFERENCES `app`.`u` (`id`) ON DELETE CASCADE",
+                Risk::write(),
+            ),
+            (
+                mysql,
+                "ALTER TABLE `app`.`t` DROP CONSTRAINT `t_fk`",
+                Risk::destructive("ALTER TABLE … DROP"),
+            ),
+            (
+                Dialect::Sqlite,
+                r#"ALTER TABLE "main"."t" DROP COLUMN "c""#,
+                Risk::destructive("ALTER TABLE … DROP"),
+            ),
             (
                 Dialect::Sqlite,
                 "DROP TABLE IF EXISTS t",

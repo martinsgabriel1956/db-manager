@@ -3,7 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, BrowseRequest } from "@/bindings";
-import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import {
+  callsTo,
+  devMongo,
+  devPostgres,
+  fakeBackend,
+  prodPostgres,
+  usersDdl
+} from "@/test/fakeBackend";
+import { useExplorer } from "@/features/explorer/store";
 import { filterText } from "@/features/table/BrowseToolbar";
 import { pageLabel } from "@/features/table/TableView";
 import { renderWithClient, rowAction } from "@/test/render";
@@ -187,7 +195,30 @@ test("structure tab lists columns, indexes and foreign keys", async () => {
   expect(structure.getByText("jsonb")).toBeInTheDocument();
   expect(structure.getAllByText("PK")).toHaveLength(2); // header + the id column
   expect(structure.getByText("users_pkey")).toBeInTheDocument();
-  expect(structure.getByText("Nenhum.")).toBeInTheDocument();
+  // no foreign keys, no constraints
+  expect(structure.getAllByText("Nenhuma.")).toHaveLength(2);
+
+  // the DDL, said to be rebuilt on Postgres, copies whole
+  const ddl = await structure.findByRole("region", { name: "DDL de users" });
+  expect(ddl).toHaveTextContent('CREATE TABLE "public"."users"');
+  expect(structure.getByText(/Reconstruído a partir do catálogo/)).toBeInTheDocument();
+  await user.click(structure.getByRole("button", { name: "Copiar" }));
+  expect(await structure.findByRole("status")).toHaveTextContent("DDL copiado");
+  expect(await navigator.clipboard.readText()).toBe(usersDdl);
+});
+
+test("the DDL a database stores is not called rebuilt", async () => {
+  fakeBackend([prodPostgres], {
+    table_ddl: () => ({ sql: "CREATE TABLE users (id INTEGER PRIMARY KEY);", reconstructed: false })
+  });
+  const user = await openUsers();
+
+  await user.click(screen.getByRole("tab", { name: "Estrutura" }));
+
+  expect(
+    await screen.findByText("CREATE TABLE users (id INTEGER PRIMARY KEY);")
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Reconstruído/)).not.toBeInTheDocument();
 });
 
 test("browse errors are shown", async () => {
@@ -266,4 +297,34 @@ test("a copy the backend refuses says why", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Não copiado: a coluna foto tem um valor que a grade só mostra em parte"
   );
+});
+
+test("groups fold into folders below the ungrouped connections, by keyboard too", async () => {
+  fakeBackend([
+    { ...devPostgres, group: "Clientes" },
+    prodPostgres,
+    { ...devMongo, group: "Clientes" }
+  ]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  const group = await screen.findByRole("treeitem", { name: /^Clientes/ });
+  expect(group).toHaveAccessibleName("Clientes · 2 conexões");
+  const levels = screen.getAllByRole("treeitem").map(item => item.getAttribute("aria-level"));
+  // Postgres prod (no group) first, then the folder and its two connections one level down
+  expect(levels).toEqual(["1", "1", "2", "2"]);
+  expect(screen.getAllByRole("treeitem")[0]).toHaveAccessibleName(/^Postgres prod/);
+  expect(group).toHaveAttribute("aria-expanded", "true");
+
+  // ← from a connection inside goes up to its folder, ← again folds it
+  screen.getByRole("treeitem", { name: /^Postgres dev/ }).focus();
+  await user.keyboard("{ArrowLeft}");
+  expect(group).toHaveFocus();
+  await user.keyboard("{ArrowLeft}");
+  expect(group).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("treeitem", { name: /^Postgres dev/ })).not.toBeInTheDocument();
+  expect(useExplorer.getState().collapsedGroups).toEqual(["Clientes"]);
+
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("treeitem", { name: /^Mongo dev/ })).toBeInTheDocument();
 });

@@ -33,6 +33,15 @@ export function useKey(connectionId: string, db: number, key: string | null) {
   });
 }
 
+/** The master the sentinels pointed to; asked only for connections behind Sentinel. */
+export function useRedisMaster(connectionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["redisMaster", connectionId],
+    queryFn: () => connected(connectionId, () => commands.redisMaster(connectionId)),
+    enabled
+  });
+}
+
 export function useServerInfo(connectionId: string) {
   return useQuery({
     queryKey: ["redisInfo", connectionId],

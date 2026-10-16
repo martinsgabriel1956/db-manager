@@ -393,3 +393,23 @@ test("history offers the SQL editor only for SQL connections", async () => {
   expect(await screen.findByText(/GET k/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Abrir no editor/ })).not.toBeInTheDocument();
 });
+
+test("behind Sentinel the header names the master the sentinels resolved", async () => {
+  const sentinel: ConnectionConfig = {
+    ...localRedis,
+    target: {
+      kind: "redisSentinel",
+      nodes: [{ host: "s1", port: 26379 }],
+      masterName: "main",
+      database: "0",
+      username: ""
+    }
+  };
+  fakeBackend([sentinel], { redis_master: () => "10.0.0.5:6379" });
+  await openDb0(sentinel);
+
+  expect(await screen.findByText(/master main em/)).toHaveTextContent("10.0.0.5:6379");
+  expect(screen.getByRole("treeitem", { name: /^Cache/ })).toHaveTextContent(
+    "sentinel main via s1:26379"
+  );
+});

@@ -3,6 +3,7 @@ import type {
   ConnectionConfig,
   Engine,
   Environment,
+  NodeAddress,
   SecretChange,
   Target,
   TlsMode
@@ -10,6 +11,7 @@ import type {
 import {
   DEFAULT_PORT,
   DEFAULT_REDIS_SEPARATOR,
+  DEFAULT_SENTINEL_PORT,
   DEFAULT_TIMEOUT_SECS
 } from "@/features/connections/options";
 
@@ -18,6 +20,8 @@ import {
 
 export type ConnectionFormValues = {
   name: string;
+  /** folder in the sidebar; empty = ungrouped */
+  group: string;
   engine: Engine;
   /** empty until chosen: the protection regime is never a silent default */
   environment: Environment | "";
@@ -37,6 +41,16 @@ export type ConnectionFormValues = {
   mongoMode: "network" | "uri";
   /** the connection string; kept in the keychain like a password */
   uri: string;
+  /** Redis only: one server, a cluster reached through its seed nodes, or a master
+   * found through Sentinel */
+  redisMode: "standalone" | "cluster" | "sentinel";
+  /** the cluster's seed nodes or the sentinels: "host:porta" separated by commas or spaces */
+  redisNodes: string;
+  /** the name the sentinels know the master by */
+  redisMasterName: string;
+  /** Sentinel's own password, a second keychain entry */
+  sentinelPassword: string;
+  clearSentinelPassword: boolean;
   /** host/port targets only: reach the server through the system ssh */
   sshEnabled: boolean;
   sshHost: string;
@@ -44,16 +58,26 @@ export type ConnectionFormValues = {
   sshPort: string;
   sshUser: string;
   sshIdentityFile: string;
+  /** the user's password or the key's passphrase; kept in the keychain apart from the database's */
+  sshPassword: string;
+  clearSshPassword: boolean;
 };
 
 export type FormErrors = Partial<Record<keyof ConnectionFormValues, string>>;
 
 export type ParsedForm =
-  | { success: true; config: ConnectionConfig; secret: SecretChange }
+  | {
+      success: true;
+      config: ConnectionConfig;
+      secret: SecretChange;
+      sshSecret: SecretChange;
+      sentinelSecret: SecretChange;
+    }
   | { success: false; errors: FormErrors };
 
 export const EMPTY_FORM: ConnectionFormValues = {
   name: "",
+  group: "",
   engine: "postgres",
   environment: "",
   readOnly: false,
@@ -70,11 +94,18 @@ export const EMPTY_FORM: ConnectionFormValues = {
   keySeparator: DEFAULT_REDIS_SEPARATOR,
   mongoMode: "network",
   uri: "",
+  redisMode: "standalone",
+  redisNodes: "",
+  redisMasterName: "",
+  sentinelPassword: "",
+  clearSentinelPassword: false,
   sshEnabled: false,
   sshHost: "",
   sshPort: "",
   sshUser: "",
-  sshIdentityFile: ""
+  sshIdentityFile: "",
+  sshPassword: "",
+  clearSshPassword: false
 };
 
 const CONNECTION_STRING = /^mongodb(\+srv)?:\/\//;
@@ -133,6 +164,29 @@ function collect<T>(schema: z.ZodType<T>, input: unknown, errors: FormErrors): T
   return undefined;
 }
 
+/**
+ * "host:porta" separated by commas or spaces, IPv6 in brackets; a node without a port
+ * gets `defaultPort`. Null when a node does not parse.
+ */
+export function parseNodes(text: string, defaultPort: number): NodeAddress[] | null {
+  const nodes: NodeAddress[] = [];
+  for (const part of text.split(/[\s,]+/).filter(Boolean)) {
+    const match = /^(\[[^\]]+\]|[^:[\]]+)(?::(\d+))?$/.exec(part);
+    const port = match?.[2] === undefined ? defaultPort : Number(match[2]);
+    if (!match || port < 1 || port > 65535) {
+      return null;
+    }
+    nodes.push({ host: match[1].replace(/^\[(.*)\]$/, "$1"), port });
+  }
+  return nodes;
+}
+
+export function formatNodes(nodes: NodeAddress[]): string {
+  return nodes
+    .map(({ host, port }) => `${host.includes(":") ? `[${host}]` : host}:${port}`)
+    .join(", ");
+}
+
 function toTarget(
   file: z.infer<typeof fileSchema> | undefined,
   network: z.infer<typeof networkSchema> | undefined,
@@ -150,17 +204,27 @@ function toTarget(
   return undefined;
 }
 
+function isRedisMode(values: ConnectionFormValues, mode: ConnectionFormValues["redisMode"]) {
+  return values.engine === "redis" && values.redisMode === mode;
+}
+
 function isUriMode(values: ConnectionFormValues): boolean {
   return values.engine === "mongo" && values.mongoMode === "uri";
 }
 
-function secretChange(values: ConnectionFormValues): SecretChange {
+/** Left empty on a copy, the original's stored secret is copied by the backend. */
+function keepSecret(copyOf: string | undefined): SecretChange {
+  return copyOf ? { action: "copyFrom", value: copyOf } : { action: "keep" };
+}
+
+function secretChange(values: ConnectionFormValues, copyOf: string | undefined): SecretChange {
+  const keep = keepSecret(copyOf);
   if (values.engine === "sqlite") {
     return { action: "keep" };
   }
   if (isUriMode(values)) {
     const uri = values.uri.trim();
-    return uri === "" ? { action: "keep" } : { action: "set", value: uri };
+    return uri === "" ? keep : { action: "set", value: uri };
   }
   if (values.clearPassword) {
     return { action: "clear" };
@@ -168,35 +232,89 @@ function secretChange(values: ConnectionFormValues): SecretChange {
   if (values.password !== "") {
     return { action: "set", value: values.password };
   }
-  return { action: "keep" };
+  return keep;
 }
 
-/** `isEditing`: an existing connection may leave secrets empty to keep the stored ones. */
-export function parseForm(values: ConnectionFormValues, id: string, isEditing = false): ParsedForm {
+function sentinelSecretChange(values: ConnectionFormValues, copyOf?: string): SecretChange {
+  if (!isRedisMode(values, "sentinel")) {
+    return { action: "keep" };
+  }
+  if (values.clearSentinelPassword) {
+    return { action: "clear" };
+  }
+  return values.sentinelPassword === ""
+    ? keepSecret(copyOf)
+    : { action: "set", value: values.sentinelPassword };
+}
+
+/**
+ * `isEditing`: an existing connection may leave secrets empty to keep the stored ones.
+ * `copyOf`: the id of the connection being duplicated, whose stored secrets an empty field copies.
+ */
+export function parseForm(
+  values: ConnectionFormValues,
+  id: string,
+  isEditing = false,
+  copyOf?: string
+): ParsedForm {
   const errors: FormErrors = {};
   const isSqlite = values.engine === "sqlite";
   const isRedis = values.engine === "redis";
   const isUri = isUriMode(values);
+  const isCluster = isRedisMode(values, "cluster");
+  const isSentinel = isRedisMode(values, "sentinel");
 
   const common = collect(commonSchema, values, errors);
-  const network = isSqlite || isUri ? undefined : collect(networkSchema, values, errors);
+  const network =
+    isSqlite || isUri || isCluster || isSentinel
+      ? undefined
+      : collect(networkSchema, values, errors);
   const file = isSqlite ? collect(fileSchema, values, errors) : undefined;
-  const redis = isRedis ? collect(redisSchema, values, errors) : undefined;
-  const hasSsh = values.sshEnabled && !isSqlite && !isUri;
+  const redis = isRedis
+    ? collect(
+        isCluster ? redisSchema.extend({ database: z.string() }) : redisSchema,
+        values,
+        errors
+      )
+    : undefined;
+  // cluster nodes and sentinels announce addresses of their own, which a tunnel cannot follow
+  const hasSsh = values.sshEnabled && !isSqlite && !isUri && !isCluster && !isSentinel;
+  let redisTarget: Target | undefined;
+  if (isCluster || isSentinel) {
+    const nodes = parseNodes(
+      values.redisNodes,
+      isSentinel ? DEFAULT_SENTINEL_PORT : DEFAULT_PORT.redis
+    );
+    const masterName = values.redisMasterName.trim();
+    const username = values.username.trim();
+    if (!nodes) {
+      errors.redisNodes = "Use host:porta, separados por vírgula";
+    } else if (nodes.length === 0) {
+      errors.redisNodes = isSentinel ? "Informe ao menos um sentinel" : "Informe ao menos um nó";
+    }
+    if (isSentinel && masterName === "") {
+      errors.redisMasterName = "Informe o nome do master";
+    }
+    if (nodes && nodes.length > 0 && redis) {
+      redisTarget = isCluster
+        ? { kind: "redisCluster", nodes, username }
+        : { kind: "redisSentinel", nodes, masterName, database: redis.database, username };
+    }
+  }
   const ssh = hasSsh ? collect(sshSchema, values, errors) : undefined;
   if (hasSsh && values.tlsMode === "verifyFull") {
     errors.tlsMode = 'Pelo túnel SSH o certificado não confere com o host: use "Exigir"';
   }
   if (isUri) {
     const uri = values.uri.trim();
-    if (uri === "" && !isEditing) {
+    if (uri === "" && !isEditing && !copyOf) {
       errors.uri = "Informe a URI de conexão";
     } else if (uri !== "" && !CONNECTION_STRING.test(uri)) {
       errors.uri = "Use mongodb:// ou mongodb+srv://";
     }
   }
 
-  const target = toTarget(file, network, isUri ? values.database.trim() : undefined);
+  const target = redisTarget ?? toTarget(file, network, isUri ? values.database.trim() : undefined);
   const environment = values.environment === "" ? null : values.environment;
   if (!environment) {
     errors.environment = "Escolha o ambiente: ele define as proteções desta conexão";
@@ -213,6 +331,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
     config: {
       id,
       name: common.name,
+      group: values.group.trim() || null,
       engine: values.engine,
       environment,
       readOnly: values.readOnly,
@@ -232,35 +351,58 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
           }
         : null
     },
-    secret: secretChange(values)
+    secret: secretChange(values, copyOf),
+    // without the tunnel the backend drops its password; nothing to send
+    sshSecret: !ssh
+      ? { action: "keep" }
+      : values.clearSshPassword
+        ? { action: "clear" }
+        : values.sshPassword !== ""
+          ? { action: "set", value: values.sshPassword }
+          : keepSecret(copyOf),
+    sentinelSecret: sentinelSecretChange(values, copyOf)
   };
 }
 
 export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
   const network = config.target.kind === "network" ? config.target : null;
   const uri = config.target.kind === "uri" ? config.target : null;
+  const cluster = config.target.kind === "redisCluster" ? config.target : null;
+  const sentinel = config.target.kind === "redisSentinel" ? config.target : null;
   return {
     ...EMPTY_FORM,
     name: config.name,
+    group: config.group ?? "",
     engine: config.engine,
     environment: config.environment,
     readOnly: config.readOnly,
     timeoutSecs: String(config.timeoutSecs),
     host: network?.host ?? "",
     port: network ? String(network.port) : "",
-    database: network?.database ?? uri?.database ?? "",
-    username: network?.username ?? "",
+    database: network?.database ?? uri?.database ?? sentinel?.database ?? "",
+    username: network?.username ?? cluster?.username ?? sentinel?.username ?? "",
     filePath: config.target.kind === "file" ? config.target.path : "",
     tlsMode: config.tls.mode,
     caCertPath: config.tls.caCertPath ?? "",
     keySeparator: config.keySeparator ?? DEFAULT_REDIS_SEPARATOR,
     mongoMode: uri ? "uri" : "network",
+    redisMode: cluster ? "cluster" : sentinel ? "sentinel" : "standalone",
+    redisNodes: formatNodes(cluster?.nodes ?? sentinel?.nodes ?? []),
+    redisMasterName: sentinel?.masterName ?? "",
     sshEnabled: Boolean(config.ssh),
     sshHost: config.ssh?.host ?? "",
     sshPort: config.ssh?.port == null ? "" : String(config.ssh.port),
     sshUser: config.ssh?.user ?? "",
     sshIdentityFile: config.ssh?.identityFile ?? ""
   };
+}
+
+/**
+ * A copy of a connection as a new one. The environment comes back empty: the protection
+ * regime is chosen again, never carried over silently.
+ */
+export function duplicateForm(config: ConnectionConfig): ConnectionFormValues {
+  return { ...fromConfig(config), name: `${config.name} (cópia)`, environment: "" };
 }
 
 /** Swaps the engine and carries over sensible defaults (port, TLS) without clobbering user input. */

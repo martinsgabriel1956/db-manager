@@ -12,12 +12,12 @@ use crate::adapters::ssh::SshTunnel;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
     DiagramTable, Engine, Environment, ExplainPlan, ExplainResponse, FilterOp, RelationKind,
-    RowBatch, RowChange, RunResponse, SchemaInfo, ScriptOutcome, StatementResult, TableChanges,
-    TableStructure, Target,
+    RowBatch, RowChange, RunResponse, SchemaChange, SchemaInfo, ScriptOutcome, Secrets,
+    StatementResult, TableChanges, TableDdl, TableStructure, Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
-use crate::storage::secrets::SecretStore;
+use crate::storage::secrets::{SecretStore, sentinel_key, ssh_key};
 use crate::use_cases::guard;
 
 /// Rows per batch in the SQL editor (initial result and each `fetch_more`).
@@ -33,11 +33,22 @@ pub async fn connect(
         return Ok(());
     }
     // a file database has no password; MongoDB's secret may be a whole connection string
-    let secret = match config.engine {
+    let password = match config.engine {
         Engine::Sqlite => None,
         _ => secrets.get(&config.id)?,
     };
-    let (live, tunnel) = open(&config, secret).await?;
+    let secrets = Secrets {
+        ssh_password: match config.ssh {
+            Some(_) => secrets.get(&ssh_key(&config.id))?,
+            None => None,
+        },
+        sentinel_password: match config.target {
+            Target::RedisSentinel { .. } => secrets.get(&sentinel_key(&config.id))?,
+            _ => None,
+        },
+        password,
+    };
+    let (live, tunnel) = open(&config, secrets).await?;
     registry.insert_connection(
         &config.id,
         OpenConnection {
@@ -56,12 +67,17 @@ pub async fn connect(
 /// connects to the tunnel's local port instead of the database's host.
 async fn open(
     config: &ConnectionConfig,
-    secret: Option<String>,
+    secrets: Secrets,
 ) -> Result<(Live, Option<SshTunnel>), AppError> {
+    let Secrets {
+        password: secret,
+        ssh_password,
+        sentinel_password,
+    } = secrets;
     let mut config = config.clone();
     let tunnel = match (&config.ssh, &mut config.target) {
         (Some(ssh), Target::Network { host, port, .. }) => {
-            let tunnel = SshTunnel::open(ssh, host, *port).await?;
+            let tunnel = SshTunnel::open(ssh, host, *port, ssh_password.as_deref()).await?;
             *host = "127.0.0.1".to_string();
             *port = tunnel.local_port;
             Some(tunnel)
@@ -71,7 +87,9 @@ async fn open(
     let config = &config;
     let live = match config.engine {
         Engine::Mongo => Live::Mongo(MongoAdapter::connect(config, secret).await?),
-        Engine::Redis => Live::Redis(Box::new(RedisAdapter::connect(config, secret).await?)),
+        Engine::Redis => Live::Redis(Box::new(
+            RedisAdapter::connect(config, secret, sentinel_password).await?,
+        )),
         _ => Live::Sql(SqlConnection::connect(config, secret, config.read_only).await?),
     };
     Ok((live, tunnel))
@@ -79,11 +97,8 @@ async fn open(
 
 /// Connects with a configuration that may not be saved and closes at once:
 /// nothing is registered, stored or written to the keychain.
-pub async fn test_connection(
-    config: &ConnectionConfig,
-    secret: Option<String>,
-) -> Result<(), AppError> {
-    let (live, _tunnel) = open(config, secret).await?;
+pub async fn test_connection(config: &ConnectionConfig, secrets: Secrets) -> Result<(), AppError> {
+    let (live, _tunnel) = open(config, secrets).await?;
     live.close().await;
     Ok(())
 }
@@ -111,6 +126,19 @@ pub async fn table_structure(
         .connection(connection_id)?
         .sql()?
         .table_structure(schema, table)
+        .await
+}
+
+pub async fn table_ddl(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+) -> Result<TableDdl, AppError> {
+    registry
+        .connection(connection_id)?
+        .sql()?
+        .ddl(schema, table)
         .await
 }
 
@@ -193,6 +221,46 @@ pub(crate) fn validate_browse(request: &BrowseRequest) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+/// The database's cheap row estimate, when it keeps one (not SQLite).
+pub async fn estimate_rows(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Option<String>, AppError> {
+    registry
+        .connection(connection_id)?
+        .sql()?
+        .estimate_rows(schema, table)
+        .await
+}
+
+/// `COUNT(*)` under the browse filters, as exact text. Runs like an editor script:
+/// cancellable under `run_id` and bound by the connection's timeout.
+pub async fn count_rows(
+    registry: &Registry,
+    connection_id: &str,
+    run_id: &str,
+    request: BrowseRequest,
+) -> Result<String, AppError> {
+    validate_browse(&request)?;
+    let connection = registry.connection(connection_id)?;
+    let sql = connection.sql()?;
+    let statement = sql_builder::count_sql(sql.dialect(), &request)?;
+    let run = sql
+        .run_script(&[statement], 1, |pid| {
+            registry.start_run(run_id, connection.clone(), pid)
+        })
+        .await;
+    registry.finish_run(run_id);
+    match run?.first.batch.rows.first().and_then(|row| row.first()) {
+        Some(Cell::Int(count)) => Ok(count.clone()),
+        other => Err(AppError::validation(format!(
+            "contagem inesperada: {other:?}"
+        ))),
+    }
 }
 
 /// Splits the script and asks for confirmation when it is destructive (or writes on
@@ -421,6 +489,81 @@ pub async fn apply_changes(
     })
 }
 
+/// One structure change (DDL). Nothing runs before the user saw the exact statement:
+/// without `confirmed`, the answer is always the confirmation, with the guard's reason
+/// when it has one (DROP COLUMN/INDEX are destructive; on prod every change is a write).
+/// Read-only connections are refused before any DDL is generated (the database would
+/// refuse it too): there is nothing to review.
+pub async fn alter_schema(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+    change: SchemaChange,
+    confirmed: bool,
+) -> Result<RunResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    if connection.read_only {
+        return Err(AppError::read_only(&connection.name));
+    }
+    let sql = connection.sql()?;
+    let dialect = sql.dialect();
+    let statement = sql_builder::schema_sql(dialect, schema, table, &change)?;
+    if !confirmed {
+        let statements = vec![statement];
+        let confirmation =
+            guard::confirmation_for(&statements, dialect, connection.environment, false).unwrap_or(
+                Confirmation {
+                    reason: "Alteração de estrutura: confira o comando antes de executar"
+                        .to_string(),
+                    statements,
+                    destructive: false,
+                },
+            );
+        return Ok(RunResponse::NeedsConfirmation { confirmation });
+    }
+
+    let started = Instant::now();
+    let result = sql
+        .run_script(std::slice::from_ref(&statement), 1, |_| {})
+        .await;
+    let duration_ms = elapsed_ms(started);
+    record(
+        history,
+        connection_id,
+        &connection,
+        &format!("{statement};"),
+        duration_ms,
+        result.as_ref().err(),
+    )
+    .await;
+    result?;
+    Ok(RunResponse::Executed {
+        outcome: ScriptOutcome {
+            statement_count: 1,
+            duration_ms,
+            result: StatementResult::Command { rows_affected: 0 },
+        },
+    })
+}
+
+/// MySQL only: where a MODIFY COLUMN starts from.
+pub async fn column_definition(
+    registry: &Registry,
+    connection_id: &str,
+    schema: &str,
+    table: &str,
+    column: &str,
+) -> Result<String, AppError> {
+    match registry.connection(connection_id)?.sql()? {
+        SqlConnection::Mysql(mysql) => mysql.column_definition(schema, table, column).await,
+        _ => Err(AppError::validation(
+            "a definição completa da coluna é só do MySQL",
+        )),
+    }
+}
+
 fn validate_keys(changes: &[RowChange], primary_key: &[String]) -> Result<(), AppError> {
     if primary_key.is_empty() {
         return Err(AppError::validation(
@@ -500,6 +643,7 @@ pub fn close_cursor(registry: &Registry, cursor_id: &str) {
 
 /// Cancels a script that is still running (no-op if it already finished).
 pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppError> {
+    registry.request_cancel(run_id);
     match registry.running(run_id) {
         Some((connection, session)) => match &connection.live {
             Live::Sql(sql) => {
@@ -847,6 +991,443 @@ mod integration_tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("read-only"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn structure_changes_show_the_ddl_first_and_go_through_the_guard() {
+        use crate::domain::{ColumnDefinition, SchemaChange};
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        let alter = |change: SchemaChange, confirmed: bool| {
+            alter_schema(
+                &registry, &history, "it", "public", "items", change, confirmed,
+            )
+        };
+        let confirmation = |response: RunResponse| match response {
+            RunResponse::NeedsConfirmation { confirmation } => confirmation,
+            RunResponse::Executed { .. } => panic!("ran without showing the command"),
+        };
+        let create = SchemaChange::CreateTable {
+            columns: vec![
+                ColumnDefinition {
+                    name: "id".into(),
+                    data_type: "int".into(),
+                    nullable: false,
+                    default: None,
+                },
+                ColumnDefinition {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                    default: Some("'novo'".into()),
+                },
+            ],
+            primary_key: vec!["id".into()],
+        };
+
+        // nothing runs unseen, even a plain CREATE on a local connection
+        let shown = confirmation(alter(create.clone(), false).await.unwrap());
+        assert!(!shown.destructive);
+        assert_eq!(
+            shown.statements,
+            [concat!(
+                "CREATE TABLE \"public\".\"items\" (\n",
+                "    \"id\" int NOT NULL,\n",
+                "    \"name\" text DEFAULT 'novo',\n",
+                "    PRIMARY KEY (\"id\")\n)"
+            )]
+        );
+        assert!(matches!(
+            table_structure(&registry, "it", "public", "items").await,
+            Err(AppError::NotFound(_))
+        ));
+        executed(alter(create, true).await.unwrap());
+
+        let change = SchemaChange::AddColumn {
+            column: ColumnDefinition {
+                name: "price".into(),
+                data_type: "text".into(),
+                nullable: true,
+                default: None,
+            },
+        };
+        executed(alter(change, true).await.unwrap());
+        exec(
+            &registry,
+            &history,
+            "a1",
+            "INSERT INTO items (id, price) VALUES (1, '10')",
+        )
+        .await;
+        executed(
+            alter(
+                SchemaChange::SetType {
+                    column: "price".into(),
+                    data_type: "integer".into(),
+                    using: Some("price::integer".into()),
+                },
+                true,
+            )
+            .await
+            .unwrap(),
+        );
+        executed(
+            alter(
+                SchemaChange::SetNullable {
+                    column: "price".into(),
+                    nullable: false,
+                },
+                true,
+            )
+            .await
+            .unwrap(),
+        );
+        executed(
+            alter(
+                SchemaChange::SetDefault {
+                    column: "price".into(),
+                    default: Some("0".into()),
+                },
+                true,
+            )
+            .await
+            .unwrap(),
+        );
+        executed(
+            alter(
+                SchemaChange::RenameColumn {
+                    column: "name".into(),
+                    new_name: "title".into(),
+                },
+                true,
+            )
+            .await
+            .unwrap(),
+        );
+        executed(
+            alter(
+                SchemaChange::CreateIndex {
+                    name: "items_title".into(),
+                    columns: vec!["title".into()],
+                    unique: false,
+                },
+                true,
+            )
+            .await
+            .unwrap(),
+        );
+        let structure = table_structure(&registry, "it", "public", "items")
+            .await
+            .unwrap();
+        let price = structure
+            .columns
+            .iter()
+            .find(|c| c.name == "price")
+            .unwrap();
+        assert_eq!(
+            (
+                price.data_type.as_str(),
+                price.nullable,
+                price.default.as_deref()
+            ),
+            ("integer", false, Some("0"))
+        );
+        assert!(structure.columns.iter().any(|c| c.name == "title"));
+        assert!(structure.indexes.iter().any(|i| i.name == "items_title"));
+
+        // what the server refuses comes back as its error
+        let err = alter(
+            SchemaChange::SetType {
+                column: "title".into(),
+                data_type: "integer".into(),
+                using: None,
+            },
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, AppError::Database(_)), "{err}");
+
+        // removing a column or an index is destructive
+        let drop_column = SchemaChange::DropColumn {
+            column: "price".into(),
+        };
+        let shown = confirmation(alter(drop_column.clone(), false).await.unwrap());
+        assert!(shown.destructive);
+        assert_eq!(shown.reason, "Comando destrutivo: ALTER TABLE … DROP");
+        let drop_index = SchemaChange::DropIndex {
+            name: "items_title".into(),
+        };
+        let shown = confirmation(alter(drop_index.clone(), false).await.unwrap());
+        assert!(shown.destructive);
+        assert_eq!(shown.statements, [r#"DROP INDEX "public"."items_title""#]);
+        executed(alter(drop_column, true).await.unwrap());
+        executed(alter(drop_index, true).await.unwrap());
+
+        // every change that ran is in the history, as the statement
+        let entries = history
+            .search("ALTER TABLE", Some("it"), false, 50)
+            .await
+            .unwrap();
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.sql == r#"ALTER TABLE "public"."items" DROP COLUMN "price";"#)
+        );
+        assert!(entries.iter().any(|e| !e.success));
+
+        // on prod the reason says so
+        disconnect(&registry, "it").await;
+        config.environment = Environment::Prod;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        let rename = SchemaChange::RenameColumn {
+            column: "title".into(),
+            new_name: "name".into(),
+        };
+        let shown = confirmation(alter(rename.clone(), false).await.unwrap());
+        assert_eq!(
+            shown.reason,
+            "Conexão de produção: confirme antes de escrever"
+        );
+
+        // read-only connections refuse before anything is generated
+        disconnect(&registry, "it").await;
+        config.read_only = true;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        assert!(matches!(
+            alter(rename, false).await,
+            Err(AppError::ReadOnly(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn tables_index_names_and_constraints_change_through_the_guard() {
+        use crate::domain::{Constraint, ReferentialAction, SchemaChange};
+        let (_container, config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        exec(
+            &registry,
+            &history,
+            "t1",
+            r"CREATE TABLE teams (id int PRIMARY KEY);
+              CREATE TABLE people (id int PRIMARY KEY, team_id int, email text, age int);
+              CREATE INDEX people_email ON people (email)",
+        )
+        .await;
+        let alter = |table: &'static str, change: SchemaChange, confirmed: bool| {
+            alter_schema(
+                &registry, &history, "it", "public", table, change, confirmed,
+            )
+        };
+        let shown = |response: RunResponse| match response {
+            RunResponse::NeedsConfirmation { confirmation } => confirmation,
+            RunResponse::Executed { .. } => panic!("ran without showing the command"),
+        };
+        let add = |name: &str, constraint: Constraint| SchemaChange::AddConstraint {
+            name: name.into(),
+            constraint,
+        };
+
+        for change in [
+            add(
+                "people_team",
+                Constraint::ForeignKey {
+                    columns: vec!["team_id".into()],
+                    referenced_table: "teams".into(),
+                    referenced_columns: vec!["id".into()],
+                    on_delete: Some(ReferentialAction::Cascade),
+                },
+            ),
+            add(
+                "people_adult",
+                Constraint::Check {
+                    expression: "age >= 18".into(),
+                },
+            ),
+            add(
+                "people_email_key",
+                Constraint::Unique {
+                    columns: vec!["email".into()],
+                },
+            ),
+            SchemaChange::RenameIndex {
+                name: "people_email".into(),
+                new_name: "people_by_email".into(),
+            },
+        ] {
+            executed(alter("people", change, true).await.unwrap());
+        }
+        let structure = table_structure(&registry, "it", "public", "people")
+            .await
+            .unwrap();
+        assert_eq!(
+            structure.foreign_keys[0].definition,
+            "FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE"
+        );
+        let constraints: Vec<_> = structure
+            .constraints
+            .iter()
+            .map(|c| (c.name.as_str(), c.definition.as_str()))
+            .collect();
+        assert_eq!(
+            constraints,
+            [
+                ("people_adult", "CHECK ((age >= 18))"),
+                ("people_email_key", "UNIQUE (email)")
+            ]
+        );
+        assert!(
+            structure
+                .indexes
+                .iter()
+                .any(|i| i.name == "people_by_email")
+        );
+        // the database enforces what was added
+        let refused = run_script(
+            &registry,
+            &history,
+            "it",
+            "t2",
+            "INSERT INTO people VALUES (1, NULL, 'a', 10)",
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.to_string().contains("people_adult"), "{refused}");
+
+        // dropping a constraint or a table is destructive
+        let drop_check = SchemaChange::DropConstraint {
+            name: "people_adult".into(),
+        };
+        assert!(shown(alter("people", drop_check.clone(), false).await.unwrap()).destructive);
+        executed(alter("people", drop_check, true).await.unwrap());
+
+        let rename = SchemaChange::RenameTable {
+            new_name: "persons".into(),
+        };
+        assert!(!shown(alter("people", rename.clone(), false).await.unwrap()).destructive);
+        executed(alter("people", rename, true).await.unwrap());
+        let drop = shown(
+            alter("persons", SchemaChange::DropTable, false)
+                .await
+                .unwrap(),
+        );
+        assert!(drop.destructive);
+        assert_eq!(drop.statements, [r#"DROP TABLE "public"."persons""#]);
+        executed(
+            alter("persons", SchemaChange::DropTable, true)
+                .await
+                .unwrap(),
+        );
+        let tables: Vec<String> = list_schemas(&registry, "it")
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|schema| schema.name == "public")
+            .unwrap()
+            .relations
+            .into_iter()
+            .map(|relation| relation.name)
+            .collect();
+        assert_eq!(tables, ["teams"]);
+    }
+
+    #[tokio::test]
+    async fn rows_are_estimated_and_counted_on_demand_cancellably() {
+        use crate::domain::{Filter, FilterOp};
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config.clone())
+            .await
+            .unwrap();
+        exec(
+            &registry,
+            &history,
+            "c1",
+            r"CREATE TABLE items (id int PRIMARY KEY, kind text);
+              INSERT INTO items SELECT g, CASE WHEN g % 3 = 0 THEN 'x' END FROM generate_series(1, 3000) g;
+              CREATE VIEW slow AS SELECT 1 AS s FROM pg_sleep(30)",
+        )
+        .await;
+        let request = |table: &str, filters: Vec<Filter>| BrowseRequest {
+            schema: "public".into(),
+            table: table.into(),
+            filters,
+            sort: None,
+            page: 0,
+            page_size: 100,
+        };
+
+        // the planner's estimate once analyzed; views have none
+        exec(&registry, &history, "c2", "ANALYZE items").await;
+        assert_eq!(
+            estimate_rows(&registry, "it", "public", "items")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("3000")
+        );
+        assert_eq!(
+            estimate_rows(&registry, "it", "public", "slow")
+                .await
+                .unwrap(),
+            None
+        );
+
+        assert_eq!(
+            count_rows(&registry, "it", "c3", request("items", vec![]))
+                .await
+                .unwrap(),
+            "3000"
+        );
+        let only_x = vec![Filter {
+            column: "kind".into(),
+            op: FilterOp::Eq,
+            value: Some("x".into()),
+        }];
+        assert_eq!(
+            count_rows(&registry, "it", "c4", request("items", only_x))
+                .await
+                .unwrap(),
+            "1000"
+        );
+
+        // cancellable like an editor run
+        let running = count_rows(&registry, "it", "c5", request("slow", vec![]));
+        let cancel = async {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while registry.running("c5").is_none() && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            cancel_run(&registry, "c5").await.unwrap();
+        };
+        let (result, ()) = tokio::join!(running, cancel);
+        assert!(matches!(result, Err(AppError::Cancelled(_))), "{result:?}");
+        assert!(registry.running("c5").is_none());
+
+        // and bound by the connection's timeout
+        disconnect(&registry, "it").await;
+        config.timeout_secs = 1;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        assert!(matches!(
+            count_rows(&registry, "it", "c6", request("slow", vec![])).await,
+            Err(AppError::Timeout(_))
+        ));
     }
 
     #[tokio::test]
@@ -1269,6 +1850,7 @@ mod integration_tests {
             },
             key_separator: None,
             ssh: None,
+            group: None,
         };
         let registry = Registry::default();
         let history = HistoryStore::in_memory().await;
