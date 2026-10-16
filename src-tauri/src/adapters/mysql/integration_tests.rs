@@ -15,7 +15,7 @@ use crate::domain::{
     FilterOp, KeyValue, RelationKind, RowChange, Sort, SortDirection, Target, TlsConfig, TlsMode,
 };
 
-async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
+pub(crate) async fn start() -> (ContainerAsync<Mysql>, ConnectionConfig) {
     let container = Mysql::default()
         .start()
         .await
