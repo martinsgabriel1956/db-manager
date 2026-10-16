@@ -4,13 +4,14 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use testcontainers_modules::redis::Redis;
+use testcontainers_modules::testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
-use testcontainers_modules::testcontainers::{ContainerAsync, ImageExt};
+use testcontainers_modules::testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
 use super::{MAX_ELEMENTS, RedisAdapter};
 use crate::domain::{
-    AppError, ConnectionConfig, Engine, Environment, RedisText, RedisValue, Target, TlsConfig,
-    TlsMode,
+    AppError, ConnectionConfig, Engine, Environment, NodeAddress, RedisText, RedisValue, Target,
+    TlsConfig, TlsMode,
 };
 
 pub(crate) async fn start() -> (ContainerAsync<Redis>, ConnectionConfig) {
@@ -21,7 +22,11 @@ pub(crate) async fn start() -> (ContainerAsync<Redis>, ConnectionConfig) {
         .await
         .expect("docker is required for integration tests");
     let port = container.get_host_port_ipv4(6379).await.unwrap();
-    let config = ConnectionConfig {
+    (container, config(port))
+}
+
+fn config(port: u16) -> ConnectionConfig {
+    ConnectionConfig {
         id: "redis".into(),
         name: "redis".into(),
         engine: Engine::Redis,
@@ -40,8 +45,7 @@ pub(crate) async fn start() -> (ContainerAsync<Redis>, ConnectionConfig) {
         },
         key_separator: Some(":".into()),
         ssh: None,
-    };
-    (container, config)
+    }
 }
 
 pub(crate) async fn run(redis: &RedisAdapter, db: u8, line: &str) -> String {
@@ -255,4 +259,157 @@ async fn wrong_password_fails_on_connect() {
             .await
             .is_ok()
     );
+}
+
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+/// Three primaries in one container. Each listens on the same port inside and outside
+/// and announces 127.0.0.1, so the addresses the cluster hands out work from the host
+/// and the nodes still reach each other inside the container.
+async fn start_cluster() -> (ContainerAsync<GenericImage>, ConnectionConfig) {
+    let ports = [free_port(), free_port(), free_port()];
+    let mut script: Vec<String> = ports
+        .iter()
+        .enumerate()
+        .map(|(index, port)| {
+            format!(
+                "redis-server --port {port} --cluster-enabled yes --cluster-port {} \
+                 --cluster-config-file nodes-{port}.conf --cluster-announce-ip 127.0.0.1 \
+                 --save '' --appendonly no --daemonize yes",
+                17000 + index
+            )
+        })
+        .collect();
+    script.push("sleep 1".into());
+    script.push(format!(
+        "redis-cli --cluster create {} --cluster-replicas 0 --cluster-yes",
+        ports.map(|port| format!("127.0.0.1:{port}")).join(" ")
+    ));
+    script.push("tail -f /dev/null".into());
+
+    let mut image = GenericImage::new("redis", "7.4-alpine")
+        .with_wait_for(WaitFor::message_on_stdout("All 16384 slots covered"))
+        .with_cmd(["sh", "-c", &script.join(" && ")]);
+    for port in ports {
+        image = image.with_mapped_port(port, ContainerPort::Tcp(port));
+    }
+    let container = image
+        .start()
+        .await
+        .expect("docker is required for integration tests");
+    let config = ConnectionConfig {
+        target: Target::RedisCluster {
+            // one seed is enough: the client discovers the other nodes
+            nodes: vec![NodeAddress {
+                host: "127.0.0.1".into(),
+                port: ports[0],
+            }],
+            username: String::new(),
+        },
+        ..config(0)
+    };
+    (container, config)
+}
+
+/// The nodes agree on the slots a moment after `--cluster create` returns.
+async fn connect_cluster(config: &ConnectionConfig) -> RedisAdapter {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        match RedisAdapter::connect(config, None).await {
+            Ok(redis)
+                if run(&redis, 0, "CLUSTER INFO")
+                    .await
+                    .contains("cluster_state:ok") =>
+            {
+                return redis;
+            }
+            result if Instant::now() > deadline => panic!("cluster not ready: {:?}", result.err()),
+            _ => tokio::time::sleep(Duration::from_millis(200)).await,
+        }
+    }
+}
+
+#[tokio::test]
+async fn cluster_scans_every_primary_and_routes_by_key() {
+    let (_container, config) = start_cluster().await;
+    let redis = connect_cluster(&config).await;
+    assert_eq!(redis.primaries().await.unwrap().len(), 3);
+
+    // more than one page, spread over the three primaries by key
+    let names: HashSet<String> = (0..3000).map(|index| format!("k:{index}")).collect();
+    futures_util::future::try_join_all(names.iter().map(|name| async {
+        let args = [b"SET".to_vec(), name.as_bytes().to_vec(), b"v".to_vec()];
+        redis.command(0, &args).await
+    }))
+    .await
+    .unwrap();
+
+    let databases = redis.databases().await.unwrap();
+    assert_eq!(databases.len(), 1);
+    assert_eq!((databases[0].index, databases[0].keys), (0, 3000));
+
+    let mut found = HashSet::new();
+    let mut cursor = "0".to_string();
+    let mut pages = 0;
+    loop {
+        let page = redis.scan(0, "k:*", &cursor).await.unwrap();
+        found.extend(page.keys.into_iter().map(|key| key.name));
+        cursor = page.cursor;
+        pages += 1;
+        if cursor == "0" {
+            break;
+        }
+        assert!(cursor.contains(':'), "{cursor}");
+    }
+    assert!(pages > 1);
+    assert_eq!(found, names);
+
+    // reads and edits go to the key's node
+    redis
+        .atomic(
+            0,
+            &[vec![
+                "HSET".into(),
+                "user:1".into(),
+                "name".into(),
+                "Ana".into(),
+            ]],
+        )
+        .await
+        .unwrap();
+    let detail = redis.read_key(0, "user:1").await.unwrap();
+    assert!(matches!(detail.value, RedisValue::Hash { entries } if entries.len() == 1));
+    assert_eq!(run(&redis, 0, "GET k:7").await, "\"v\"");
+
+    // keys in different slots: the server's refusal, explained
+    let err = redis
+        .command(0, &[b"SINTER".to_vec(), b"a".to_vec(), b"b".to_vec()])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, AppError::Database(m) if m.contains("slots diferentes") && m.contains("don't hash to the same slot")),
+        "{err:?}"
+    );
+    // renaming across slots goes inside MULTI/EXEC
+    run(&redis, 0, "SET a 1").await;
+    let err = redis
+        .atomic(0, &[vec!["RENAMENX".into(), "a".into(), "b".into()]])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, AppError::Database(m) if m.contains("slots diferentes")),
+        "{err:?}"
+    );
+    run(&redis, 0, "SADD {t}:a x").await;
+    assert_eq!(run(&redis, 0, "SINTER {t}:a {t}:b").await, "(empty array)");
+
+    assert!(redis.read_key(1, "user:1").await.is_err());
+    let info = redis.info(None).await.unwrap();
+    assert_eq!(info[0].name, "Cluster");
 }

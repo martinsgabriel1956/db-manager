@@ -36,8 +36,8 @@ pub struct TlsConfig {
     pub ca_cert_path: Option<String>,
 }
 
-/// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite)
-/// or a connection string (MongoDB).
+/// Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
+/// a connection string (MongoDB) or a Redis Cluster.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Target {
@@ -55,6 +55,20 @@ pub enum Target {
     /// database to open by default is stored here.
     #[serde(rename_all = "camelCase")]
     Uri { database: String },
+    /// Redis Cluster: the seed nodes; the client discovers the rest from them.
+    /// A cluster only has database 0.
+    #[serde(rename_all = "camelCase")]
+    RedisCluster {
+        nodes: Vec<NodeAddress>,
+        username: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeAddress {
+    pub host: String,
+    pub port: u16,
 }
 
 /// SSH tunnel to reach a network target through a bastion. Runs the system `ssh`,

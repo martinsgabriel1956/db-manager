@@ -81,7 +81,10 @@ export function defaultSchemaFor(connection: ConnectionConfig): string {
   if (engine === "sqlite") {
     return "main";
   }
-  if ((engine === "mysql" || engine === "mongo") && target.kind !== "file") {
+  if (
+    (engine === "mysql" || engine === "mongo") &&
+    (target.kind === "network" || target.kind === "uri")
+  ) {
     return target.database;
   }
   return "public";

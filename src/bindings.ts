@@ -335,6 +335,11 @@ export type KeychainOutcome = {
 	keychainWarning: string | null,
 };
 
+export type NodeAddress = {
+	host: string,
+	port: number,
+};
+
 /**  A logical database (SELECT index) and how many keys it holds. */
 export type RedisDatabase = {
 	index: number,
@@ -440,8 +445,8 @@ export type TableStructure = {
 };
 
 /**
- *  Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite)
- *  or a connection string (MongoDB).
+ *  Where the database lives: a server (Postgres, MySQL, Mongo, Redis), a file (SQLite),
+ *  a connection string (MongoDB) or a Redis Cluster.
  */
 export type Target = { kind: "network"; host: string; port: number; database: string; username: string } | { kind: "file"; path: string } | 
 /**
@@ -449,7 +454,12 @@ export type Target = { kind: "network"; host: string; port: number; database: st
  *  carries credentials, so it is the secret kept in the keychain; only the
  *  database to open by default is stored here.
  */
-{ kind: "uri"; database: string };
+{ kind: "uri"; database: string } | 
+/**
+ *  Redis Cluster: the seed nodes; the client discovers the rest from them.
+ *  A cluster only has database 0.
+ */
+{ kind: "redisCluster"; nodes: NodeAddress[]; username: string };
 
 export type TlsConfig = {
 	mode: TlsMode,

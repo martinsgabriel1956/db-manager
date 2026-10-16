@@ -6,6 +6,7 @@ import {
   fromConfig,
   parseConnectionUrl,
   parseForm,
+  parseNodes,
   type ConnectionFormValues
 } from "@/features/connections/form";
 
@@ -320,4 +321,77 @@ test("a pasted connection URL fills the fields it states", () => {
   });
   expect(parseConnectionUrl("mongodb://x")).toBeNull();
   expect(parseConnectionUrl("not a url")).toBeNull();
+});
+
+describe("redis cluster", () => {
+  test("parses seed nodes, IPv6 in brackets and the default port", () => {
+    expect(parseNodes(" a:7000,b  [::1]:7001 ", 6379)).toEqual([
+      { host: "a", port: 7000 },
+      { host: "b", port: 6379 },
+      { host: "::1", port: 7001 }
+    ]);
+    expect(parseNodes("a:0", 6379)).toBeNull();
+    expect(parseNodes("::1", 6379)).toBeNull();
+  });
+
+  test("builds a cluster target without database or tunnel", () => {
+    const result = parseForm(
+      form({
+        name: "r",
+        engine: "redis",
+        redisMode: "cluster",
+        redisNodes: "a:7000, b:7001",
+        username: " app ",
+        database: "16",
+        sshEnabled: true,
+        sshHost: "bastion"
+      }),
+      "1"
+    );
+
+    expect(result.success && result.config).toMatchObject({
+      target: {
+        kind: "redisCluster",
+        nodes: [
+          { host: "a", port: 7000 },
+          { host: "b", port: 7001 }
+        ],
+        username: "app"
+      },
+      ssh: null
+    });
+  });
+
+  test("requires a node that parses", () => {
+    const errors = (redisNodes: string) => {
+      const result = parseForm(
+        form({ name: "r", engine: "redis", redisMode: "cluster", redisNodes }),
+        "1"
+      );
+      return result.success === false && result.errors;
+    };
+
+    expect(errors(" ")).toEqual({ redisNodes: "Informe ao menos um nó" });
+    expect(errors("a:x")).toEqual({ redisNodes: "Use host:porta, separados por vírgula" });
+  });
+
+  test("round-trips through fromConfig", () => {
+    const config: ConnectionConfig = {
+      ...postgresConfig,
+      engine: "redis",
+      target: {
+        kind: "redisCluster",
+        nodes: [
+          { host: "a", port: 7000 },
+          { host: "::1", port: 7001 }
+        ],
+        username: "me"
+      },
+      tls: { mode: "require", caCertPath: null },
+      keySeparator: ":"
+    };
+
+    expect(fromConfig(config).redisNodes).toBe("a:7000, [::1]:7001");
+    expect(parseForm(fromConfig(config), "1")).toMatchObject({ success: true, config });
+  });
 });

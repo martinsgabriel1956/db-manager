@@ -3,6 +3,7 @@ import type {
   ConnectionConfig,
   Engine,
   Environment,
+  NodeAddress,
   SecretChange,
   Target,
   TlsMode
@@ -37,6 +38,10 @@ export type ConnectionFormValues = {
   mongoMode: "network" | "uri";
   /** the connection string; kept in the keychain like a password */
   uri: string;
+  /** Redis only: one server, or a cluster reached through its seed nodes */
+  redisMode: "standalone" | "cluster";
+  /** "host:porta" separated by commas or spaces */
+  redisNodes: string;
   /** host/port targets only: reach the server through the system ssh */
   sshEnabled: boolean;
   sshHost: string;
@@ -70,6 +75,8 @@ export const EMPTY_FORM: ConnectionFormValues = {
   keySeparator: DEFAULT_REDIS_SEPARATOR,
   mongoMode: "network",
   uri: "",
+  redisMode: "standalone",
+  redisNodes: "",
   sshEnabled: false,
   sshHost: "",
   sshPort: "",
@@ -133,6 +140,29 @@ function collect<T>(schema: z.ZodType<T>, input: unknown, errors: FormErrors): T
   return undefined;
 }
 
+/**
+ * "host:porta" separated by commas or spaces, IPv6 in brackets; a node without a port
+ * gets `defaultPort`. Null when a node does not parse.
+ */
+export function parseNodes(text: string, defaultPort: number): NodeAddress[] | null {
+  const nodes: NodeAddress[] = [];
+  for (const part of text.split(/[\s,]+/).filter(Boolean)) {
+    const match = /^(\[[^\]]+\]|[^:[\]]+)(?::(\d+))?$/.exec(part);
+    const port = match?.[2] === undefined ? defaultPort : Number(match[2]);
+    if (!match || port < 1 || port > 65535) {
+      return null;
+    }
+    nodes.push({ host: match[1].replace(/^\[(.*)\]$/, "$1"), port });
+  }
+  return nodes;
+}
+
+export function formatNodes(nodes: NodeAddress[]): string {
+  return nodes
+    .map(({ host, port }) => `${host.includes(":") ? `[${host}]` : host}:${port}`)
+    .join(", ");
+}
+
 function toTarget(
   file: z.infer<typeof fileSchema> | undefined,
   network: z.infer<typeof networkSchema> | undefined,
@@ -148,6 +178,10 @@ function toTarget(
     return { kind: "network", ...network };
   }
   return undefined;
+}
+
+function isClusterMode(values: ConnectionFormValues): boolean {
+  return values.engine === "redis" && values.redisMode === "cluster";
 }
 
 function isUriMode(values: ConnectionFormValues): boolean {
@@ -177,12 +211,28 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
   const isSqlite = values.engine === "sqlite";
   const isRedis = values.engine === "redis";
   const isUri = isUriMode(values);
+  const isCluster = isClusterMode(values);
 
   const common = collect(commonSchema, values, errors);
-  const network = isSqlite || isUri ? undefined : collect(networkSchema, values, errors);
+  const network =
+    isSqlite || isUri || isCluster ? undefined : collect(networkSchema, values, errors);
   const file = isSqlite ? collect(fileSchema, values, errors) : undefined;
-  const redis = isRedis ? collect(redisSchema, values, errors) : undefined;
-  const hasSsh = values.sshEnabled && !isSqlite && !isUri;
+  const redis = isRedis
+    ? collect(isCluster ? redisSchema.pick({ keySeparator: true }) : redisSchema, values, errors)
+    : undefined;
+  // the cluster's nodes announce their own addresses, which a tunnel cannot follow
+  const hasSsh = values.sshEnabled && !isSqlite && !isUri && !isCluster;
+  let cluster: Target | undefined;
+  if (isCluster) {
+    const nodes = parseNodes(values.redisNodes, DEFAULT_PORT.redis);
+    if (!nodes) {
+      errors.redisNodes = "Use host:porta, separados por vírgula";
+    } else if (nodes.length === 0) {
+      errors.redisNodes = "Informe ao menos um nó";
+    } else {
+      cluster = { kind: "redisCluster", nodes, username: values.username.trim() };
+    }
+  }
   const ssh = hasSsh ? collect(sshSchema, values, errors) : undefined;
   if (hasSsh && values.tlsMode === "verifyFull") {
     errors.tlsMode = 'Pelo túnel SSH o certificado não confere com o host: use "Exigir"';
@@ -196,7 +246,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
     }
   }
 
-  const target = toTarget(file, network, isUri ? values.database.trim() : undefined);
+  const target = cluster ?? toTarget(file, network, isUri ? values.database.trim() : undefined);
   const environment = values.environment === "" ? null : values.environment;
   if (!environment) {
     errors.environment = "Escolha o ambiente: ele define as proteções desta conexão";
@@ -239,6 +289,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
 export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
   const network = config.target.kind === "network" ? config.target : null;
   const uri = config.target.kind === "uri" ? config.target : null;
+  const cluster = config.target.kind === "redisCluster" ? config.target : null;
   return {
     ...EMPTY_FORM,
     name: config.name,
@@ -249,12 +300,14 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
     host: network?.host ?? "",
     port: network ? String(network.port) : "",
     database: network?.database ?? uri?.database ?? "",
-    username: network?.username ?? "",
+    username: network?.username ?? cluster?.username ?? "",
     filePath: config.target.kind === "file" ? config.target.path : "",
     tlsMode: config.tls.mode,
     caCertPath: config.tls.caCertPath ?? "",
     keySeparator: config.keySeparator ?? DEFAULT_REDIS_SEPARATOR,
     mongoMode: uri ? "uri" : "network",
+    redisMode: cluster ? "cluster" : "standalone",
+    redisNodes: cluster ? formatNodes(cluster.nodes) : "",
     sshEnabled: Boolean(config.ssh),
     sshHost: config.ssh?.host ?? "",
     sshPort: config.ssh?.port == null ? "" : String(config.ssh.port),

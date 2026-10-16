@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 import {
+  formatNodes,
   parseConnectionUrl,
   type ConnectionFormValues,
   type FormErrors
 } from "@/features/connections/form";
 import {
+  DEFAULT_PORT,
   ENGINE_LABEL,
   ENGINES,
   ENVIRONMENT_STYLE,
@@ -92,6 +94,7 @@ export function ConnectionFields({
   const isRedis = values.engine === "redis";
   const isMongo = values.engine === "mongo";
   const isUri = isMongo && values.mongoMode === "uri";
+  const isCluster = isRedis && values.redisMode === "cluster";
   // TLS comes from the URI itself, and a file has none
   const hasTls = !isSqlite && !isUri;
   const advancedError = Boolean(errors.timeoutSecs || errors.caCertPath || errors.tlsMode);
@@ -135,7 +138,37 @@ export function ConnectionFields({
         </Field>
       </div>
 
-      {!isSqlite && !isMongo && <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />}
+      {!isSqlite && !isMongo && !isCluster && (
+        <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />
+      )}
+
+      {isRedis && (
+        <fieldset className="flex gap-4 text-sm">
+          <legend className="sr-only">Topologia do Redis</legend>
+          {(["standalone", "cluster"] as const).map(mode => (
+            <label key={mode} className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="redisMode"
+                checked={values.redisMode === mode}
+                onChange={() =>
+                  onChange({
+                    redisMode: mode,
+                    // the server already typed is the natural first seed
+                    redisNodes:
+                      values.redisNodes === "" && values.host !== ""
+                        ? formatNodes([
+                            { host: values.host, port: Number(values.port) || DEFAULT_PORT.redis }
+                          ])
+                        : values.redisNodes
+                  })
+                }
+              />
+              {mode === "standalone" ? "Servidor único" : "Cluster"}
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       {isMongo && (
         <fieldset className="flex gap-4 text-sm">
@@ -185,22 +218,42 @@ export function ConnectionFields({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-[1fr_8rem] gap-4">
-            <Field id="host" label="Host" error={errors.host}>
-              {textInput("host")}
-            </Field>
-            <Field id="port" label="Porta" error={errors.port}>
-              {textInput("port", { type: "number" })}
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          {isCluster ? (
             <Field
-              id="database"
-              label={isRedis ? "Banco (0–15)" : "Banco de dados"}
-              error={errors.database}
+              id="redisNodes"
+              label="Nós semente"
+              error={errors.redisNodes}
+              hint="host:porta, separados por vírgula. Um basta: os outros nós vêm dele. O cluster só tem o banco 0."
             >
-              {textInput("database")}
+              <Input
+                id="redisNodes"
+                value={values.redisNodes}
+                placeholder="10.0.0.1:7000, 10.0.0.2:7000"
+                aria-invalid={errors.redisNodes ? true : undefined}
+                aria-describedby={describedBy("redisNodes", errors.redisNodes, true)}
+                onChange={event => onChange({ redisNodes: event.target.value })}
+              />
             </Field>
+          ) : (
+            <div className="grid grid-cols-[1fr_8rem] gap-4">
+              <Field id="host" label="Host" error={errors.host}>
+                {textInput("host")}
+              </Field>
+              <Field id="port" label="Porta" error={errors.port}>
+                {textInput("port", { type: "number" })}
+              </Field>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            {!isCluster && (
+              <Field
+                id="database"
+                label={isRedis ? "Banco (0–15)" : "Banco de dados"}
+                error={errors.database}
+              >
+                {textInput("database")}
+              </Field>
+            )}
             <Field id="username" label="Usuário" error={errors.username}>
               {textInput("username")}
             </Field>
@@ -232,22 +285,29 @@ export function ConnectionFields({
               Remover senha salva
             </label>
           )}
-          <div className="grid gap-1">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={values.sshEnabled}
-                aria-describedby="sshEnabled-hint"
-                onChange={event => onChange({ sshEnabled: event.target.checked })}
-              />
-              Conectar por túnel SSH
-            </label>
-            <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
-              Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Só chave ou
-              agente, sem senha. Host e porta acima são vistos a partir do servidor SSH.
+          {isCluster ? (
+            <p className="text-xs text-muted-foreground">
+              Sem túnel SSH no cluster: os nós anunciam os próprios endereços, e o túnel só alcança
+              um host e porta.
             </p>
-          </div>
-          {values.sshEnabled && (
+          ) : (
+            <div className="grid gap-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={values.sshEnabled}
+                  aria-describedby="sshEnabled-hint"
+                  onChange={event => onChange({ sshEnabled: event.target.checked })}
+                />
+                Conectar por túnel SSH
+              </label>
+              <p id="sshEnabled-hint" className="pl-6 text-xs text-muted-foreground">
+                Usa o ssh do sistema: valem o ~/.ssh/config, o agente e o known_hosts. Só chave ou
+                agente, sem senha. Host e porta acima são vistos a partir do servidor SSH.
+              </p>
+            </div>
+          )}
+          {values.sshEnabled && !isCluster && (
             <>
               <div className="grid grid-cols-[1fr_8rem] gap-4">
                 <Field id="sshHost" label="Host SSH" error={errors.sshHost}>
