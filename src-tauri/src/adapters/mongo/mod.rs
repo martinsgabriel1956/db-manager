@@ -186,17 +186,38 @@ impl MongoAdapter {
             .into_iter()
             .map(|model| {
                 let options = model.options.unwrap_or_default();
-                let unique = if options.unique == Some(true) {
-                    " UNIQUE"
-                } else {
-                    ""
-                };
+                let mut definition = ejson::to_text(model.keys);
+                if options.unique == Some(true) {
+                    definition.push_str(" UNIQUE");
+                }
+                if options.sparse == Some(true) {
+                    definition.push_str(" SPARSE");
+                }
+                if let Some(ttl) = options.expire_after {
+                    definition.push_str(&format!(" expireAfterSeconds: {}", ttl.as_secs()));
+                }
+                if let Some(filter) = options.partial_filter_expression {
+                    definition.push_str(&format!(
+                        " partialFilterExpression: {}",
+                        ejson::to_text(filter)
+                    ));
+                }
                 IndexInfo {
                     name: options.name.unwrap_or_default(),
-                    definition: format!("{}{unique}", ejson::to_text(model.keys)),
+                    definition,
                 }
             })
             .collect())
+    }
+
+    /// createIndexes / dropIndexes, run as built so the confirmed command is the one that runs.
+    pub async fn run_command(&self, database: &str, command: Document) -> Result<(), AppError> {
+        self.client
+            .database(database)
+            .run_command(command)
+            .await
+            .map(drop)
+            .map_err(|err| self.error(err))
     }
 
     /// One page; `page_size + 1` documents are read to know whether more exist.

@@ -288,6 +288,12 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     search_history: () => [],
     browse_collection: () => ({ documents: mongoDocuments, hasMore: true }),
     collection_indexes: () => [{ name: "_id_", definition: '{"_id":1}' }],
+    index_statement: args => {
+      const { index } = args as { index: { collection: string; keys: { field: string }[] } };
+      return `shop.runCommand({"createIndexes":"${index.collection}","keys":"${index.keys.map(k => k.field).join(",")}"})`;
+    },
+    create_index: () => ({ status: "applied" }),
+    drop_index: () => ({ status: "applied" }),
     run_aggregation: () => ({
       status: "executed",
       outcome: { documents: ['{"_id":"even","total":110}'], truncated: false, durationMs: 4 }

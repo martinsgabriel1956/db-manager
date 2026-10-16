@@ -1,11 +1,12 @@
 use std::time::Instant;
 
-use mongodb::bson::Document;
+use mongodb::bson::{Bson, Document, doc};
 
 use crate::adapters::mongo::{ejson, schema};
 use crate::domain::{
     AggregateOutcome, AggregateResponse, AppError, Confirmation, DocumentPage, DocumentWrite,
-    Environment, FindRequest, IndexInfo, SchemaSample, WatchMessage, WriteRequest, WriteResponse,
+    Environment, FindRequest, IndexInfo, IndexKind, IndexResponse, NewIndex, SchemaSample,
+    WatchMessage, WriteRequest, WriteResponse,
 };
 use crate::registry::Registry;
 use crate::storage::history::HistoryStore;
@@ -88,6 +89,161 @@ pub async fn watch_collection(
     });
     registry.insert_watch(watch_id, connection_id, task.abort_handle());
     Ok(())
+}
+
+/// The createIndexes command for one index, as Extended JSON text (what the UI
+/// previews and confirms) with the command itself.
+fn create_index_command(index: &NewIndex) -> Result<(String, Document), AppError> {
+    if index.keys.is_empty() {
+        return Err(AppError::validation(
+            "o índice precisa de ao menos uma chave",
+        ));
+    }
+    let mut key = Document::new();
+    for index_key in &index.keys {
+        let field = index_key.field.trim();
+        if field.is_empty() {
+            return Err(AppError::validation("toda chave precisa de um campo"));
+        }
+        if key.contains_key(field) {
+            return Err(AppError::validation(format!(
+                "campo repetido nas chaves: {field}"
+            )));
+        }
+        let value = match index_key.kind {
+            IndexKind::Asc => Bson::Int32(1),
+            IndexKind::Desc => Bson::Int32(-1),
+            IndexKind::Text => "text".into(),
+            IndexKind::Hashed => "hashed".into(),
+            IndexKind::Sphere2d => "2dsphere".into(),
+            IndexKind::Flat2d => "2d".into(),
+        };
+        key.insert(field, value);
+    }
+    // the drivers' default name: field_value for each key
+    let name = match index.name.trim() {
+        "" => key
+            .iter()
+            .map(|(field, value)| match value {
+                Bson::String(kind) => format!("{field}_{kind}"),
+                other => format!("{field}_{other}"),
+            })
+            .collect::<Vec<_>>()
+            .join("_"),
+        name => name.to_string(),
+    };
+    let mut spec = doc! { "key": key, "name": name };
+    if index.unique {
+        spec.insert("unique", true);
+    }
+    if index.sparse {
+        spec.insert("sparse", true);
+    }
+    if let Some(seconds) = index.expire_after_seconds {
+        let seconds = i32::try_from(seconds)
+            .map_err(|_| AppError::validation("expireAfterSeconds grande demais"))?;
+        spec.insert("expireAfterSeconds", seconds);
+    }
+    let filter = ejson::parse_document(&index.partial_filter, "partialFilterExpression")?;
+    if !filter.is_empty() {
+        spec.insert("partialFilterExpression", filter);
+    }
+    let command = doc! { "createIndexes": index.collection.as_str(), "indexes": [spec] };
+    let statement = format!(
+        "{}.runCommand({})",
+        index.database,
+        ejson::to_text(command.clone())
+    );
+    Ok((statement, command))
+}
+
+/// The exact command `create_index` would run, for the form to show while it is filled.
+pub fn index_statement(index: &NewIndex) -> Result<String, AppError> {
+    create_index_command(index).map(|(statement, _)| statement)
+}
+
+/// Refused on read-only connections, confirmed on prod.
+pub async fn create_index(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    index: NewIndex,
+    confirmed: bool,
+) -> Result<IndexResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let mongo = connection.mongo()?;
+    if connection.read_only {
+        return Err(AppError::read_only(&connection.name));
+    }
+    let (statement, command) = create_index_command(&index)?;
+    if connection.environment == Environment::Prod && !confirmed {
+        return Ok(IndexResponse::NeedsConfirmation {
+            confirmation: Confirmation {
+                reason: PROD_REASON.to_string(),
+                statements: vec![statement],
+                destructive: false,
+            },
+        });
+    }
+    let started = Instant::now();
+    let result = mongo.run_command(&index.database, command).await;
+    record(
+        history,
+        connection_id,
+        &connection,
+        &statement,
+        elapsed_ms(started),
+        result.as_ref().err(),
+    )
+    .await;
+    result.map(|()| IndexResponse::Applied)
+}
+
+/// Destructive: always confirmed. `_id_` cannot be dropped, and `*` (which
+/// dropIndexes reads as "every index") is refused.
+#[allow(clippy::too_many_arguments)]
+pub async fn drop_index(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    database: &str,
+    collection: &str,
+    name: &str,
+    confirmed: bool,
+) -> Result<IndexResponse, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let mongo = connection.mongo()?;
+    if connection.read_only {
+        return Err(AppError::read_only(&connection.name));
+    }
+    match name {
+        "_id_" => return Err(AppError::validation("o índice _id_ não pode ser removido")),
+        "" | "*" => return Err(AppError::validation("informe o nome de um índice")),
+        _ => {}
+    }
+    let command = doc! { "dropIndexes": collection, "index": name };
+    let statement = format!("{database}.runCommand({})", ejson::to_text(command.clone()));
+    if !confirmed {
+        return Ok(IndexResponse::NeedsConfirmation {
+            confirmation: Confirmation {
+                reason: "Comando destrutivo: remove o índice".to_string(),
+                statements: vec![statement],
+                destructive: true,
+            },
+        });
+    }
+    let started = Instant::now();
+    let result = mongo.run_command(database, command).await;
+    record(
+        history,
+        connection_id,
+        &connection,
+        &statement,
+        elapsed_ms(started),
+        result.as_ref().err(),
+    )
+    .await;
+    result.map(|()| IndexResponse::Applied)
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -341,6 +497,63 @@ mod tests {
                 replaces: true
             }
         );
+    }
+
+    fn index(keys: Vec<(&str, IndexKind)>) -> NewIndex {
+        NewIndex {
+            database: "shop".into(),
+            collection: "items".into(),
+            keys: keys
+                .into_iter()
+                .map(|(field, kind)| crate::domain::IndexKey {
+                    field: field.into(),
+                    kind,
+                })
+                .collect(),
+            name: String::new(),
+            unique: false,
+            sparse: false,
+            expire_after_seconds: None,
+            partial_filter: String::new(),
+        }
+    }
+
+    #[test]
+    fn index_commands() {
+        let compound = index(vec![("kind", IndexKind::Asc), ("n", IndexKind::Desc)]);
+        assert_eq!(
+            index_statement(&compound).unwrap(),
+            r#"shop.runCommand({"createIndexes":"items","indexes":[{"key":{"kind":1,"n":-1},"name":"kind_1_n_-1"}]})"#
+        );
+
+        let mut ttl = index(vec![("at", IndexKind::Asc)]);
+        ttl.name = "expira".into();
+        ttl.unique = true;
+        ttl.expire_after_seconds = Some(3600);
+        ttl.partial_filter = r#"{"n": {"$gt": {"$numberLong": "5"}}}"#.into();
+        assert_eq!(
+            index_statement(&ttl).unwrap(),
+            r#"shop.runCommand({"createIndexes":"items","indexes":[{"key":{"at":1},"name":"expira","unique":true,"expireAfterSeconds":3600,"partialFilterExpression":{"n":{"$gt":{"$numberLong":"5"}}}}]})"#
+        );
+
+        assert!(
+            index_statement(&index(vec![("loc", IndexKind::Sphere2d)]))
+                .unwrap()
+                .contains(r#""key":{"loc":"2dsphere"},"name":"loc_2dsphere""#)
+        );
+        for bad in [
+            index(vec![]),
+            index(vec![(" ", IndexKind::Asc)]),
+            index(vec![("a", IndexKind::Asc), ("a", IndexKind::Desc)]),
+        ] {
+            assert!(matches!(
+                index_statement(&bad),
+                Err(AppError::Validation(_))
+            ));
+        }
+        let mut bad_filter = index(vec![("a", IndexKind::Asc)]);
+        bad_filter.partial_filter = "[1]".into();
+        assert!(index_statement(&bad_filter).is_err());
     }
 
     #[test]
@@ -649,6 +862,126 @@ mod integration_tests {
         sql::disconnect(&registry, "rs").await;
         assert!(!registry.is_watching("w"));
         assert_eq!(next(&mut events).await, None);
+    }
+
+    #[tokio::test]
+    async fn indexes_are_created_and_dropped_under_the_write_rules() {
+        let (_container, mut config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        open(&registry, &config).await;
+        let new_index = |field: &str| NewIndex {
+            database: "shop".into(),
+            collection: "items".into(),
+            keys: vec![crate::domain::IndexKey {
+                field: field.into(),
+                kind: IndexKind::Asc,
+            }],
+            name: String::new(),
+            unique: false,
+            sparse: false,
+            expire_after_seconds: None,
+            partial_filter: String::new(),
+        };
+        let create = |index: NewIndex, confirmed: bool| {
+            create_index(&registry, &history, "mongo", index, confirmed)
+        };
+        let drop = |name: &'static str, confirmed: bool| {
+            drop_index(
+                &registry, &history, "mongo", "shop", "items", name, confirmed,
+            )
+        };
+        async fn definitions(registry: &Registry) -> Vec<String> {
+            collection_indexes(registry, "mongo", "shop", "items")
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|index| format!("{} {}", index.name, index.definition))
+                .collect()
+        }
+
+        // local: creation runs at once (the form already showed the command)
+        let mut email = new_index("email");
+        email.unique = true;
+        email.sparse = true;
+        assert_eq!(create(email, false).await.unwrap(), IndexResponse::Applied);
+        let mut ttl = new_index("at");
+        ttl.name = "expira".into();
+        ttl.expire_after_seconds = Some(60);
+        ttl.partial_filter = r#"{"kind": "temp"}"#.into();
+        assert_eq!(create(ttl, false).await.unwrap(), IndexResponse::Applied);
+        assert_eq!(
+            definitions(&registry).await,
+            vec![
+                r#"_id_ {"_id":1}"#,
+                r#"email_1 {"email":1} UNIQUE SPARSE"#,
+                r#"expira {"at":1} expireAfterSeconds: 60 partialFilterExpression: {"kind":"temp"}"#,
+            ]
+        );
+        // the server's own errors come through
+        let mut mixed = new_index("x");
+        mixed.sparse = true;
+        mixed.partial_filter = r#"{"x": 1}"#.into();
+        assert!(matches!(
+            create(mixed, false).await,
+            Err(AppError::Database(_))
+        ));
+
+        // dropping always asks, and never _id_ or every index at once
+        let response = drop("email_1", false).await.unwrap();
+        let IndexResponse::NeedsConfirmation { confirmation } = response else {
+            panic!("expected confirmation");
+        };
+        assert!(confirmation.destructive);
+        assert_eq!(
+            confirmation.statements,
+            vec![r#"shop.runCommand({"dropIndexes":"items","index":"email_1"})"#]
+        );
+        assert_eq!(drop("email_1", true).await.unwrap(), IndexResponse::Applied);
+        assert!(matches!(
+            drop("_id_", true).await,
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            drop("*", true).await,
+            Err(AppError::Validation(_))
+        ));
+        assert_eq!(definitions(&registry).await.len(), 2);
+
+        let recorded = history.search("runCommand", None, false, 10).await.unwrap();
+        // the two creations, the failed one and the confirmed drop
+        assert_eq!(recorded.len(), 4);
+
+        // prod: creating asks first, with the exact command
+        config.environment = Environment::Prod;
+        open(&registry, &config).await;
+        let response = create(new_index("n"), false).await.unwrap();
+        let IndexResponse::NeedsConfirmation { confirmation } = response else {
+            panic!("expected confirmation");
+        };
+        assert!(!confirmation.destructive);
+        assert_eq!(
+            confirmation.statements,
+            vec![
+                r#"shop.runCommand({"createIndexes":"items","indexes":[{"key":{"n":1},"name":"n_1"}]})"#
+            ]
+        );
+        assert_eq!(
+            create(new_index("n"), true).await.unwrap(),
+            IndexResponse::Applied
+        );
+
+        // read-only: refused before reaching the server
+        config.read_only = true;
+        open(&registry, &config).await;
+        assert!(matches!(
+            create(new_index("m"), true).await,
+            Err(AppError::ReadOnly(_))
+        ));
+        assert!(matches!(
+            drop("n_1", true).await,
+            Err(AppError::ReadOnly(_))
+        ));
     }
 
     #[tokio::test]
