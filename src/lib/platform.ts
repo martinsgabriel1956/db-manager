@@ -4,3 +4,4 @@ const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 export const RUN_SHORTCUT = isMac ? "⌘+Enter" : "Ctrl+Enter";
 export const SIDEBAR_SHORTCUT = isMac ? "⌘+B" : "Ctrl+B";
 export const FORMAT_SHORTCUT = isMac ? "⌘+Shift+F" : "Ctrl+Shift+F";
+export const EXPLAIN_SHORTCUT = isMac ? "⌘+Shift+E" : "Ctrl+Shift+E";

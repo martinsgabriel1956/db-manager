@@ -13,6 +13,7 @@ import {
   SQLite,
   type SQLNamespace
 } from "@codemirror/lang-sql";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { Compartment, EditorSelection, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
@@ -28,6 +29,8 @@ type SqlEditorProps = {
   onRun: (sql: string) => void;
   /** after each format: null when it worked, otherwise why nothing changed */
   onFormatted: (error: string | null) => void;
+  /** receives the selection, or the statement under the cursor */
+  onExplain: (sql: string) => void;
   completion: CompletionTable[] | undefined;
   engine: Engine;
   defaultSchema: string;
@@ -39,9 +42,14 @@ type SqlEditorProps = {
 
 /**
  * `prepareRun` closes a completion left open and returns what to run, as Mod-Enter does;
- * `format` formats the selection or everything, as Mod-Shift-F does.
+ * `prepareExplain` does the same for what to explain, as Mod-Shift-E does; `format` formats
+ * the selection or everything, as Mod-Shift-F does.
  */
-export type SqlEditorApi = { prepareRun: () => string; format: () => void };
+export type SqlEditorApi = {
+  prepareRun: () => string;
+  prepareExplain: () => string;
+  format: () => void;
+};
 
 /** `{ schema: { table: [columns] } }` for CodeMirror's schema-aware autocomplete. */
 export function toNamespace(tables: CompletionTable[]): SQLNamespace {
@@ -56,6 +64,29 @@ export function toNamespace(tables: CompletionTable[]): SQLNamespace {
 export function textToRun(state: EditorState): string {
   const { from, to } = state.selection.main;
   return from === to ? state.doc.toString() : state.sliceDoc(from, to);
+}
+
+/**
+ * The selection, or the statement under the cursor: the last one starting at or before it
+ * (a cursor on the blank line after a statement still means that statement).
+ */
+export function statementAt(state: EditorState): string {
+  const { from, to, head } = state.selection.main;
+  if (from !== to) {
+    return state.sliceDoc(from, to);
+  }
+  const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
+  let statement: { from: number; to: number } | null = null;
+  for (let node = tree.topNode.firstChild; node; node = node.nextSibling) {
+    if (node.name !== "Statement") {
+      continue;
+    }
+    if (node.from > head && statement) {
+      break;
+    }
+    statement = { from: node.from, to: node.to };
+  }
+  return statement ? state.sliceDoc(statement.from, statement.to) : "";
 }
 
 const DIALECT = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
@@ -105,6 +136,7 @@ export function SqlEditor({
   onChange,
   onRun,
   onFormatted,
+  onExplain,
   completion,
   engine,
   defaultSchema,
@@ -119,13 +151,15 @@ export function SqlEditor({
   const onRunRef = useRef(onRun);
   const onFormattedRef = useRef(onFormatted);
   const engineRef = useRef(engine);
+  const onExplainRef = useRef(onExplain);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     onRunRef.current = onRun;
+    onExplainRef.current = onExplain;
     onFormattedRef.current = onFormatted;
     engineRef.current = engine;
-  }, [onChange, onRun, onFormatted, engine]);
+  }, [onChange, onRun, onExplain, onFormatted, engine]);
 
   useEffect(() => {
     // one transaction, so Ctrl+Z brings the text back; a formatted selection stays selected
@@ -163,6 +197,14 @@ export function SqlEditor({
                   return true;
                 }
               },
+              {
+                key: "Mod-Shift-e",
+                run: editor => {
+                  closeCompletion(editor);
+                  onExplainRef.current(statementAt(editor.state));
+                  return true;
+                }
+              },
               { key: "Mod-Shift-f", run: format }
             ])
           ),
@@ -186,6 +228,10 @@ export function SqlEditor({
       prepareRun: () => {
         closeCompletion(view);
         return textToRun(view.state);
+      },
+      prepareExplain: () => {
+        closeCompletion(view);
+        return statementAt(view.state);
       },
       format: () => format(view)
     };
