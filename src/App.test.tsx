@@ -254,6 +254,37 @@ test("editing with 'remove saved password' sends a clear secret change", async (
   );
 });
 
+test("duplicating opens a new connection that copies the stored password on save", async () => {
+  const calls = fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await rowAction(user, "Postgres prod", "Duplicar conexão");
+
+  expect(screen.getByRole("heading", { name: /^Duplicar conexão/ })).toBeInTheDocument();
+  expect(screen.getByLabelText("Nome")).toHaveValue("Postgres prod (cópia)");
+  expect(screen.getByLabelText("Host")).toHaveValue("db");
+  // prod is not carried over: the copy chooses its environment again
+  expect(screen.getByLabelText("Ambiente")).toHaveValue("");
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  expect(callsTo(calls, "save_connection")).toHaveLength(0);
+
+  await user.selectOptions(screen.getByLabelText("Ambiente"), "staging");
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+  await waitFor(() => expect(callsTo(calls, "save_connection")).toHaveLength(1));
+  const save = callsTo(calls, "save_connection")[0] as {
+    config: ConnectionConfig;
+    secret: unknown;
+  };
+  expect(save.config.id).not.toBe(prodPostgres.id);
+  expect(save.config).toMatchObject({ name: "Postgres prod (cópia)", environment: "staging" });
+  expect(save.secret).toEqual({ action: "copyFrom", value: prodPostgres.id });
+  expect(
+    await screen.findByRole("treeitem", { name: /^Postgres prod \(cópia\)/ })
+  ).toBeInTheDocument();
+});
+
 test("delete asks for confirmation before calling the backend", async () => {
   const calls = fakeBackend([prodPostgres]);
   const user = userEvent.setup();
