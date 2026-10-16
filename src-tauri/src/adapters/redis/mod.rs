@@ -255,29 +255,43 @@ impl RedisAdapter {
             Server::Cluster { seed, .. } => seed.clone(),
         };
         let client = Client::open(info).map_err(|err| self.error(err))?;
-        let mut pubsub = tokio::time::timeout(CONNECT_TIMEOUT, client.get_async_pubsub())
+        let pubsub = tokio::time::timeout(CONNECT_TIMEOUT, client.get_async_pubsub())
             .await
             .map_err(|_| AppError::Timeout("falha ao conectar: tempo esgotado".into()))?
             .map_err(|err| self.error(err))?;
+        let (mut sink, mut messages) = pubsub.split();
         if !channels.is_empty() {
-            pubsub
-                .subscribe(channels)
+            sink.subscribe(channels)
                 .await
                 .map_err(|err| self.error(err))?;
         }
         if !patterns.is_empty() {
-            pubsub
-                .psubscribe(patterns)
+            sink.psubscribe(patterns)
                 .await
                 .map_err(|err| self.error(err))?;
         }
+        let (channels, patterns) = (channels.to_vec(), patterns.to_vec());
         let (stop, mut stopped) = oneshot::channel();
         lock(&self.streams).insert(id.to_string(), stop);
         tokio::spawn(async move {
-            let mut messages = pubsub.into_on_message();
             let reason = loop {
                 tokio::select! {
-                    _ = &mut stopped => break "assinatura encerrada",
+                    _ = &mut stopped => {
+                        // "ended" has to be true when it is said: the socket closes only
+                        // after this task drops it, so leave on the server first and wait
+                        // for its answer. Failing that, dropping the connection ends it anyway.
+                        let _ = tokio::time::timeout(CONNECT_TIMEOUT, async {
+                            if !channels.is_empty() {
+                                sink.unsubscribe(&channels).await?;
+                            }
+                            if !patterns.is_empty() {
+                                sink.punsubscribe(&patterns).await?;
+                            }
+                            Ok::<_, redis::RedisError>(())
+                        })
+                        .await;
+                        break "assinatura encerrada";
+                    }
                     message = messages.next() => match message {
                         Some(message) => {
                             if !send(pubsub_event(&message)) {
