@@ -40,7 +40,8 @@ Resultado da sessão de grill de 2026-10-10. Uso pessoal, um único usuário.
 - CRUD por documento (`replaceOne` por `_id`, sem stage).
 - **Extended JSON obrigatório** (ObjectId/Date/Decimal128/Binary preservados).
 - Editor de pipeline de aggregation (JSON). Export JSON/NDJSON.
-- Fora: builder visual, inferência de schema, gestão de índices, change streams.
+- Builder visual de agregação depois da v1 (ver "Depois da v1").
+- Fora: inferência de schema, gestão de índices, change streams.
 
 ## UI Redis
 
@@ -112,7 +113,7 @@ src-tauri/src/
 
 ## v2+
 
-Redis cluster, edição de schema pela UI, builder de aggregation, pub/sub.
+Redis cluster, edição de schema pela UI, pub/sub. (O builder de aggregation saiu antes: ver "Depois da v1".)
 
 ## Notas de implementação
 
@@ -207,3 +208,4 @@ Decisões tomadas durante a implementação, que refinam ou adiam itens acima.
 - **Revisão e execução** como no CSV: `import_documents` sem `confirmed` lê e valida o arquivo todo (documento quebrado aparece com a linha antes de qualquer escrita) e devolve o total e o primeiro documento **como será gravado** (`db.coll.insertMany([…, …])`, no formato da tela), em todo ambiente; em prod, com a faixa. Depois, `insertMany` ordenado em lotes de 1000, com o run id como `comment` (o `cancel_run` faz `killOp`) e a marca de cancelamento olhada antes de cada lote.
 - **Sem transação no Mongo** (exigiria replica set): um documento recusado (ex.: `_id` duplicado) para a importação, e o erro diz a linha e quantos documentos já ficaram gravados ("linha 1201: E11000 … 1200 documentos já ficaram gravados"); cancelar diz o mesmo. O aviso também está no texto da confirmação.
 - **Componente comum** (`features/import/ImportRun.tsx`): rodar sob um run id, "Cancelar importação", resultado e recarregar a tela, para o CSV e para os documentos.
+- **Builder visual de agregação sobre o texto do pipeline**: os blocos são recortes do JSON do editor, achados por um varredor de profundidade/strings (`pipeline.ts`), e voltam ao editor juntados como texto. Nada passa por `JSON.parse` + `stringify`, que trocaria `1.0` (Double) por `1` (Int32) e arredondaria inteiros acima de 2^53; o `JSON.parse` só valida. O JSON continua sendo o que roda: editar o texto refaz os blocos, editar um bloco reescreve o texto (com a formatação do builder). Estágio desligado não existe em JSON, então fica só no builder e **fora do texto e da execução**, guardando o lugar entre os ligados quando o texto muda. Bloco com JSON inválido não mexe no pipeline (que mantém a última versão válida) e bloqueia Executar e a prévia. Reordenar é por botões (o foco segue o estágio movido), não por arrastar. A prévia roda os estágios ligados até o escolhido mais `{ "$limit": 20 }`, dito na tela, pelo mesmo `run_aggregation` (com cancelamento, timeout e histórico); se algum deles for `$out`/`$merge`, a prévia é recusada no front, porque uma prévia não escreve e nada pode vir depois desses estágios. Executar segue as regras de escrita e confirmação de sempre. Prévia automática a cada edição ficou de fora: em produção, cada tecla viraria uma agregação.
