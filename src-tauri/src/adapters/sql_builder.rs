@@ -4,7 +4,8 @@
 
 use crate::adapters::dialect::Dialect;
 use crate::domain::{
-    AppError, BrowseRequest, Cell, ColumnValue, FilterOp, KeyValue, RowChange, SortDirection,
+    AppError, BrowseRequest, Cell, ColumnValue, Filter, FilterOp, KeyValue, RowChange,
+    SortDirection,
 };
 
 fn table_ref(dialect: Dialect, schema: &str, table: &str) -> String {
@@ -37,12 +38,39 @@ pub fn select_sql(
     primary_key: &[String],
 ) -> Result<String, AppError> {
     let mut sql = format!(
-        "SELECT * FROM {}",
-        table_ref(dialect, &request.schema, &request.table)
+        "SELECT * FROM {}{}",
+        table_ref(dialect, &request.schema, &request.table),
+        where_clause(dialect, &request.filters)?
     );
+    let order: Vec<String> = match &request.sort {
+        Some(sort) => {
+            let direction = match sort.direction {
+                SortDirection::Asc => "ASC",
+                SortDirection::Desc => "DESC",
+            };
+            vec![format!("{} {direction}", dialect.quote_ident(&sort.column))]
+        }
+        None => primary_key.iter().map(|c| dialect.quote_ident(c)).collect(),
+    };
+    if !order.is_empty() {
+        sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
+    }
+    Ok(sql)
+}
 
+/// `COUNT(*)` of the table under the request's filters (order and paging ignored).
+pub fn count_sql(dialect: Dialect, request: &BrowseRequest) -> Result<String, AppError> {
+    Ok(format!(
+        "SELECT COUNT(*) FROM {}{}",
+        table_ref(dialect, &request.schema, &request.table),
+        where_clause(dialect, &request.filters)?
+    ))
+}
+
+/// ` WHERE …` joining every filter with AND; empty without filters.
+fn where_clause(dialect: Dialect, filters: &[Filter]) -> Result<String, AppError> {
     let mut conditions = Vec::new();
-    for filter in &request.filters {
+    for filter in filters {
         let column = dialect.quote_ident(&filter.column);
         let value = filter.value.as_deref().unwrap_or_default();
         let compare = |operator: &str| -> Result<String, AppError> {
@@ -74,24 +102,11 @@ pub fn select_sql(
             FilterOp::IsNotNull => format!("{column} IS NOT NULL"),
         });
     }
-    if !conditions.is_empty() {
-        sql.push_str(&format!(" WHERE {}", conditions.join(" AND ")));
-    }
-
-    let order: Vec<String> = match &request.sort {
-        Some(sort) => {
-            let direction = match sort.direction {
-                SortDirection::Asc => "ASC",
-                SortDirection::Desc => "DESC",
-            };
-            vec![format!("{} {direction}", dialect.quote_ident(&sort.column))]
-        }
-        None => primary_key.iter().map(|c| dialect.quote_ident(c)).collect(),
-    };
-    if !order.is_empty() {
-        sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
-    }
-    Ok(sql)
+    Ok(if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    })
 }
 
 /// The values of an IN filter: comma-separated, trimmed, blanks dropped.
@@ -457,6 +472,16 @@ mod tests {
             browse_sql(MYSQL, &req, &[])
                 .unwrap()
                 .contains("WHERE CAST(`email` AS CHAR) LIKE '%@x.com'")
+        );
+        // the count keeps the filters, drops order and paging
+        req.filters.truncate(2);
+        assert_eq!(
+            count_sql(Dialect::Postgres, &req).unwrap(),
+            r#"SELECT COUNT(*) FROM "public"."users" WHERE "email"::text LIKE '%@x.com' AND "age" = '30'"#
+        );
+        assert_eq!(
+            count_sql(MYSQL, &request()).unwrap(),
+            "SELECT COUNT(*) FROM `public`.`users`"
         );
     }
 

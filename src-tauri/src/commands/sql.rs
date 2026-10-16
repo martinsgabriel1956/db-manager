@@ -94,6 +94,28 @@ pub async fn browse_table(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn estimate_rows(
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: String,
+    table: String,
+) -> Result<Option<String>, AppError> {
+    sql::estimate_rows(&state.registry, &connection_id, &schema, &table).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn count_rows(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    request: BrowseRequest,
+) -> Result<String, AppError> {
+    sql::count_rows(&state.registry, &connection_id, &run_id, request).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn run_script(
     state: State<'_, AppState>,
     connection_id: String,

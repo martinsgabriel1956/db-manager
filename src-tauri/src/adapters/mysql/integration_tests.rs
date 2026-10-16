@@ -175,6 +175,23 @@ async fn values_types_and_introspection() {
     );
     assert_eq!(key.referenced_columns, ["id"]);
     assert_eq!(db.primary_key("test", "people").await.unwrap(), vec!["id"]);
+    // TABLE_ROWS is an estimate; a view has none
+    assert!(db.estimate_rows("test", "teams").await.unwrap().is_some());
+    assert_eq!(db.estimate_rows("test", "sad_people").await.unwrap(), None);
+    let count = crate::adapters::sql_builder::count_sql(
+        db.dialect(),
+        &BrowseRequest {
+            schema: "test".into(),
+            table: "people".into(),
+            filters: vec![],
+            sort: None,
+            page: 0,
+            page_size: 1,
+        },
+    )
+    .unwrap();
+    let rows = run(&db, &count).await.unwrap().first.batch.rows;
+    assert_eq!(rows, vec![vec![Cell::Int("1".into())]]);
     assert!(matches!(
         db.table_structure("test", "missing").await,
         Err(AppError::NotFound(_))

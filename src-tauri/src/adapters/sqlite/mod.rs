@@ -348,6 +348,15 @@ impl SqliteAdapter {
         Ok(tables)
     }
 
+    /// SQLite keeps no row estimate (only `sqlite_stat1` after ANALYZE, per index).
+    pub async fn estimate_rows(
+        &self,
+        _schema: &str,
+        _table: &str,
+    ) -> Result<Option<String>, AppError> {
+        Ok(None)
+    }
+
     /// Declared primary key only: a rowid table without one stays read-only.
     pub async fn primary_key(&self, schema: &str, table: &str) -> Result<Vec<String>, AppError> {
         Ok(sqlx::query_scalar(

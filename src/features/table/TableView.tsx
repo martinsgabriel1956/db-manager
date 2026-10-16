@@ -16,6 +16,7 @@ import { connected, useBrowse, useStructure } from "@/features/explorer/queries"
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
+import { RowCount } from "@/features/table/RowCount";
 import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
 import { tableKey, useTabs } from "@/features/tabs/store";
@@ -378,6 +379,12 @@ function TableData({
               <ChevronRight />
             </Button>
           </div>
+          {/* a new filter or a save makes the count speak of other rows: it starts over */}
+          <RowCount
+            key={`${JSON.stringify(filters)}|${edit.saves}`}
+            connectionId={connectionId}
+            request={request}
+          />
           {!dirty && browse.isFetching && (
             <span className="text-xs text-muted-foreground">atualizando…</span>
           )}
