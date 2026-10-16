@@ -66,3 +66,25 @@ pub async fn export_collection(
     )
     .await
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn export_keys(
+    state: State<'_, AppState>,
+    connection_id: String,
+    run_id: String,
+    db: u8,
+    pattern: String,
+    path: String,
+) -> Result<ExportOutcome, AppError> {
+    export::export_keys(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        &run_id,
+        db,
+        &pattern,
+        &path,
+    )
+    .await
+}

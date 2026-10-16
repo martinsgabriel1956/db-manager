@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { BrowseRequest, ExportOutcome, FindRequest } from "@/bindings";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
-import { callsTo, devMongo, devPostgres, fakeBackend } from "@/test/fakeBackend";
+import { callsTo, devMongo, devPostgres, fakeBackend, localRedis } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
 type SaveArgs = { options: { defaultPath: string; filters: { extensions: string[] }[] } };
@@ -143,4 +143,28 @@ test("a collection exports the applied filter as NDJSON or a JSON array", async 
   const save = callsTo(calls, "plugin:dialog|save")[0] as SaveArgs;
   expect(save.options.defaultPath).toBe("customers.json");
   expect(await screen.findByText(/2 itens → customers.json/)).toBeInTheDocument();
+});
+
+test("Redis keys export as NDJSON with the searched pattern", async () => {
+  const calls = fakeBackend([localRedis], { "plugin:dialog|save": () => "/tmp/db0.ndjson" });
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+  await user.click(await screen.findByRole("treeitem", { name: /^Cache/ }));
+  await user.click(await screen.findByRole("treeitem", { name: /^db0/ }));
+  await user.type(await screen.findByLabelText("Padrão de chaves"), "user:*");
+  await user.click(screen.getByRole("button", { name: "Buscar" }));
+  await user.click(screen.getByRole("button", { name: /Exportar NDJSON/ }));
+
+  expect(await screen.findByText("4 itens → db0.ndjson")).toBeInTheDocument();
+  const save = callsTo(calls, "plugin:dialog|save")[0] as SaveArgs;
+  expect(save.options.defaultPath).toBe("db0.ndjson");
+  expect(callsTo(calls, "export_keys")).toEqual([
+    {
+      connectionId: "redis-1",
+      runId: expect.any(String),
+      db: 0,
+      pattern: "user:*",
+      path: "/tmp/db0.ndjson"
+    }
+  ]);
 });

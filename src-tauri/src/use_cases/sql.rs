@@ -520,8 +520,11 @@ pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppErro
             }
             // MongoDB operations are tagged with the run id
             Live::Mongo(mongo) => mongo.kill(run_id).await,
-            // Redis commands never register a run: they only have the timeout
-            Live::Redis(_) => Ok(()),
+            // only the key export registers a run: it checks between keys and stops
+            Live::Redis(_) => {
+                registry.finish_run(run_id);
+                Ok(())
+            }
         },
         None => Ok(()),
     }

@@ -1,8 +1,11 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Plus, RefreshCw } from "lucide-react";
+import { commands } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { connected } from "@/features/explorer/queries";
+import { ExportButton } from "@/features/export/ExportButton";
 import { KeyDetailView } from "@/features/redis/KeyDetailView";
 import { KeyTreeView } from "@/features/redis/KeyTreeView";
 import { NewKeyDialog } from "@/features/redis/NewKeyDialog";
@@ -69,13 +72,25 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
             {keys.length} {keys.length === 1 ? "chave" : "chaves"}
             {scan.hasNextPage && " (busca incompleta)"}
           </span>
+          {/* every key matching the searched pattern, not only the pages loaded */}
+          <span className="ml-auto">
+            <ExportButton
+              baseName={`db${db}`}
+              formats={[
+                {
+                  id: "ndjson",
+                  label: "NDJSON",
+                  extension: "ndjson",
+                  run: (path, runId) =>
+                    connected(connectionId, () =>
+                      commands.exportKeys(connectionId, runId, db, pattern, path)
+                    )
+                }
+              ]}
+            />
+          </span>
           {!readOnly && (
-            <Button
-              size="xs"
-              variant="outline"
-              className="ml-auto"
-              onClick={() => setCreating(true)}
-            >
+            <Button size="xs" variant="outline" onClick={() => setCreating(true)}>
               <Plus /> Nova chave
             </Button>
           )}

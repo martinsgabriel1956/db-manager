@@ -1,5 +1,5 @@
-//! Exports stream straight to a file: rows (SQL → CSV) or documents (MongoDB →
-//! NDJSON / JSON array) are written batch by batch, never held in memory. The file
+//! Exports stream straight to a file: rows (SQL → CSV), documents (MongoDB →
+//! NDJSON / JSON array) or keys (Redis → NDJSON) are written batch by batch, never held in memory. The file
 //! is written next to the target as `<name>.part` and renamed at the end, so a
 //! failed or cancelled export leaves an existing file untouched.
 
@@ -213,6 +213,76 @@ pub async fn export_collection(
             target.display(),
             request.database,
             request.collection
+        ),
+        duration_ms,
+        result.as_ref().err(),
+    )
+    .await;
+    Ok(ExportOutcome {
+        rows: result?,
+        duration_ms,
+    })
+}
+
+/// Every key of `db` matching `pattern` (SCAN MATCH, never KEYS), one NDJSON line
+/// per key. Only reads: allowed everywhere without asking. `cancel_run` stops it
+/// between keys.
+// ponytail: SCAN may return a key twice while the server rehashes; the file then has it twice
+pub async fn export_keys(
+    registry: &Registry,
+    history: &HistoryStore,
+    connection_id: &str,
+    run_id: &str,
+    db: u8,
+    pattern: &str,
+    path: &str,
+) -> Result<ExportOutcome, AppError> {
+    let connection = registry.connection(connection_id)?;
+    let redis = connection.redis()?;
+    let target = target_path(path)?;
+    let pattern = match pattern.trim() {
+        "" => "*",
+        pattern => pattern,
+    };
+
+    registry.start_run(run_id, connection.clone(), 0);
+    let started = Instant::now();
+    let result = async {
+        let mut out = BufWriter::new(File::create(part_path(&target))?);
+        let mut cursor = "0".to_string();
+        let mut count: u32 = 0;
+        loop {
+            let (next, names) = redis.scan_names(db, pattern, &cursor).await?;
+            for name in names {
+                // cancel_run on Redis just ends the run
+                if registry.running(run_id).is_none() {
+                    return Err(AppError::Cancelled("export cancelado".to_string()));
+                }
+                if let Some(line) = redis.export_key(db, &name).await? {
+                    writeln!(out, "{line}")?;
+                    count = count.saturating_add(1);
+                }
+            }
+            cursor = next;
+            if cursor == "0" {
+                break;
+            }
+        }
+        out.flush()?;
+        Ok(count)
+    }
+    .await;
+    registry.finish_run(run_id);
+    let result = finish(result, &target);
+    let duration_ms = elapsed_ms(started);
+    record(
+        history,
+        connection_id,
+        &connection,
+        &format!(
+            "# export NDJSON → {}\nSELECT {db}\nSCAN 0 MATCH {}",
+            target.display(),
+            crate::adapters::redis::reply::command_line(&[pattern])
         ),
         duration_ms,
         result.as_ref().err(),
@@ -517,6 +587,122 @@ mod integration_tests {
             e.sql.ends_with(r#"shop.items.find({"kind": "a"})"#) && e.error.is_none()
         }));
         // the refused filter is in the history too, with its error
+        assert!(entries.iter().any(|e| e.error.is_some()));
+    }
+
+    #[tokio::test]
+    async fn redis_exports_every_key_as_ndjson_without_loss() {
+        let (_container, config) = crate::adapters::redis::integration_tests::start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        let id = config.id.clone();
+        sql::connect(&registry, &Password(None), config)
+            .await
+            .unwrap();
+        let connection = registry.connection(&id).unwrap();
+        let redis = connection.redis().unwrap();
+        for line in [
+            "SET s:text São",
+            r#"SET s:bin "\xff\x00a""#,
+            "EXPIRE s:text 600",
+            r#"HSET h:1 name Ana "\xfe" x"#,
+            "RPUSH l:1 a b a",
+            "SADD set:1 x",
+            "ZADD z:1 1.5 m +inf top",
+            "XADD x:1 1-1 f v",
+            "SET other 1",
+        ] {
+            crate::adapters::redis::integration_tests::run(redis, 0, line).await;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = path_in(&dir, "keys.ndjson");
+
+        let outcome = export_keys(&registry, &history, &id, "r1", 0, "*:*", &path)
+            .await
+            .unwrap();
+        assert_eq!(outcome.rows, 7);
+        let mut lines: Vec<serde_json::Value> = read(&path)
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        lines.sort_by_key(|line| line["key"].to_string());
+        let by_key = |key: &str| {
+            lines
+                .iter()
+                .find(|line| line["key"] == key)
+                .unwrap_or_else(|| panic!("{key} exported"))
+        };
+        let text = by_key("s:text");
+        assert_eq!(text["type"], "string");
+        assert_eq!(text["value"], "São");
+        assert!(text["pttl"].as_i64().unwrap() > 590_000);
+        assert_eq!(
+            by_key("s:bin")["value"],
+            serde_json::json!({"$base64": "/wBh"})
+        );
+        assert!(by_key("s:bin")["pttl"].is_null());
+        assert_eq!(
+            by_key("h:1")["value"],
+            serde_json::json!([["name", "Ana"], [{"$base64": "/g=="}, "x"]])
+        );
+        assert_eq!(by_key("l:1")["value"], serde_json::json!(["a", "b", "a"]));
+        assert_eq!(by_key("set:1")["value"], serde_json::json!(["x"]));
+        assert_eq!(
+            by_key("z:1")["value"],
+            serde_json::json!([["m", "1.5"], ["top", "inf"]])
+        );
+        assert_eq!(
+            by_key("x:1")["value"],
+            serde_json::json!([{"id": "1-1", "fields": [["f", "v"]]}])
+        );
+        assert!(!read(&path).contains("other"));
+
+        // a big collection comes whole, past the viewer's limit
+        let values: Vec<String> = (0..2500).map(|n| n.to_string()).collect();
+        redis
+            .atomic(
+                0,
+                &values
+                    .iter()
+                    .map(|n| vec!["RPUSH".to_string(), "big".to_string(), n.clone()])
+                    .collect::<Vec<_>>(),
+            )
+            .await
+            .unwrap();
+        let big = path_in(&dir, "big.ndjson");
+        export_keys(&registry, &history, &id, "r2", 0, "big", &big)
+            .await
+            .unwrap();
+        let line: serde_json::Value = serde_json::from_str(read(&big).trim()).unwrap();
+        assert_eq!(line["value"].as_array().unwrap().len(), 2500);
+        assert_eq!(line["value"][2499], "2499");
+
+        // cancelled between keys: nothing written, an existing file kept
+        std::fs::write(&path, "old").unwrap();
+        let many: Vec<Vec<String>> = (0..3000)
+            .map(|n| vec!["SET".to_string(), format!("many:{n}"), "v".to_string()])
+            .collect();
+        redis.atomic(0, &many).await.unwrap();
+        let (result, cancelled) = tokio::join!(
+            export_keys(&registry, &history, &id, "r3", 0, "*", &path),
+            async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                sql::cancel_run(&registry, "r3").await
+            }
+        );
+        cancelled.unwrap();
+        assert!(matches!(result, Err(AppError::Cancelled(_))), "{result:?}");
+        assert_eq!(read(&path), "old");
+
+        let entries = history
+            .search("export NDJSON", Some(&id), false, 10)
+            .await
+            .unwrap();
+        assert!(
+            entries
+                .iter()
+                .any(|e| { e.sql.ends_with("SELECT 0\nSCAN 0 MATCH *:*") && e.error.is_none() })
+        );
         assert!(entries.iter().any(|e| e.error.is_some()));
     }
 }

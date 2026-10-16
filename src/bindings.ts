@@ -43,6 +43,7 @@ export const commands = {
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
+	exportKeys: (connectionId: string, runId: string, db: number, pattern: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_keys", { connectionId, runId, db, pattern, path }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	runAggregation: (connectionId: string, runId: string, database: string, collection: string, pipeline: string, confirmed: boolean) => __TAURI_INVOKE<AggregateResponse>("run_aggregation", { connectionId, runId, database, collection, pipeline, confirmed }),
