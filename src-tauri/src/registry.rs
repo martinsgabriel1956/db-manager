@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use crate::adapters::SqlConnection;
 use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
+use crate::adapters::ssh::SshTunnel;
 use crate::adapters::stream::Cursor;
 use crate::domain::{AppError, Environment, SchemaInfo};
 
@@ -33,6 +34,8 @@ pub struct OpenConnection {
     pub name: String,
     pub environment: Environment,
     pub read_only: bool,
+    /// kept alive with the session; dropping it ends the ssh process
+    pub tunnel: Option<SshTunnel>,
 }
 
 impl OpenConnection {

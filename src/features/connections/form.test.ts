@@ -22,7 +22,8 @@ const postgresConfig: ConnectionConfig = {
   timeoutSecs: 10,
   target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
   tls: { mode: "verifyFull", caCertPath: "/ca.pem" },
-  keySeparator: null
+  keySeparator: null,
+  ssh: null
 };
 
 test("a new connection has no environment until one is chosen", () => {
@@ -58,7 +59,8 @@ describe("parseForm", () => {
         timeoutSecs: 30,
         target: { kind: "network", host: "db", port: 5433, database: "app", username: "me" },
         tls: { mode: "prefer", caCertPath: null },
-        keySeparator: null
+        keySeparator: null,
+        ssh: null
       },
       secret: { action: "set", value: "pw" }
     });
@@ -145,6 +147,51 @@ describe("parseForm", () => {
       database: "Use um número de 0 a 15",
       keySeparator: "Informe o separador"
     });
+  });
+});
+
+describe("ssh tunnel", () => {
+  test("empty optional fields become null, left to ~/.ssh/config", () => {
+    const result = parseForm(form({ name: "pg", sshEnabled: true, sshHost: " bastion " }), "1");
+
+    expect(result.success && result.config.ssh).toEqual({
+      host: "bastion",
+      port: null,
+      user: null,
+      identityFile: null
+    });
+  });
+
+  test("requires a host, a valid port and no certificate verification", () => {
+    const result = parseForm(
+      form({ name: "pg", sshEnabled: true, sshPort: "70000", tlsMode: "verifyFull" }),
+      "1"
+    );
+
+    expect(result.success === false && result.errors).toEqual({
+      sshHost: "Informe o host SSH",
+      sshPort: "Porta inválida",
+      tlsMode: 'Pelo túnel SSH o certificado não confere com o host: use "Exigir"'
+    });
+  });
+
+  test("is dropped for sqlite and mongo URIs", () => {
+    const sqlite = parseForm(
+      form({ name: "f", engine: "sqlite", filePath: "/a.db", sshEnabled: true }),
+      "1"
+    );
+
+    expect(sqlite.success && sqlite.config.ssh).toBeNull();
+  });
+
+  test("round-trips through fromConfig", () => {
+    const config: ConnectionConfig = {
+      ...postgresConfig,
+      tls: { mode: "require", caCertPath: null },
+      ssh: { host: "bastion", port: 2222, user: "deploy", identityFile: "~/.ssh/id" }
+    };
+
+    expect(parseForm(fromConfig(config), "1")).toMatchObject({ success: true, config });
   });
 });
 

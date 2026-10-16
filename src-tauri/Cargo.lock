@@ -3574,6 +3574,7 @@ version = "0.3.0"
 dependencies = [
  "futures-util",
  "keyring",
+ "libc",
  "mongodb",
  "redis",
  "serde",

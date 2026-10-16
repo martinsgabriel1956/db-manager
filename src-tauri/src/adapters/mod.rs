@@ -7,6 +7,7 @@ pub mod redis;
 pub mod split;
 pub mod sql_builder;
 pub mod sqlite;
+pub mod ssh;
 pub mod stream;
 
 use crate::domain::{

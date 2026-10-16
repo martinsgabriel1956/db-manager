@@ -39,6 +39,7 @@ pub(crate) async fn start() -> (ContainerAsync<Redis>, ConnectionConfig) {
             ca_cert_path: None,
         },
         key_separator: Some(":".into()),
+        ssh: None,
     };
     (container, config)
 }

@@ -73,6 +73,10 @@ impl MongoAdapter {
                     );
                 }
                 options.tls = tls(config);
+                // through a tunnel only this address is reachable: no replica set discovery
+                if config.ssh.is_some() {
+                    options.direct_connection = Some(true);
+                }
                 (options, non_empty(database))
             }
             Target::File { .. } => {
