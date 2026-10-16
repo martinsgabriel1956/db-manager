@@ -52,6 +52,10 @@ export const commands = {
 	editKey: (connectionId: string, request: KeyEditRequest, confirmed: boolean) => __TAURI_INVOKE<KeyEditResponse>("edit_key", { connectionId, request, confirmed }),
 	runRedisCommand: (connectionId: string, db: number, command: string, confirmed: boolean) => __TAURI_INVOKE<CommandResponse>("run_redis_command", { connectionId, db, command, confirmed }),
 	serverInfo: (connectionId: string) => __TAURI_INVOKE<InfoSection[]>("server_info", { connectionId }),
+	checkUpdate: () => __TAURI_INVOKE<UpdateCheck>("check_update"),
+	/**  Only after the user said yes (and dropped staged edits): installs, then restarts. */
+	installUpdate: () => __TAURI_INVOKE<null>("install_update"),
+	openReleasePage: () => __TAURI_INVOKE<null>("open_release_page"),
 };
 
 /* Types */
@@ -457,6 +461,14 @@ export type TlsConfig = {
 };
 
 export type TlsMode = "disable" | "prefer" | "require" | "verifyFull";
+
+export type UpdateCheck = {
+	current: string,
+	/**  the newer version on GitHub Releases, if any */
+	available: string | null,
+	/**  the updater can replace this install; false = point to the release page */
+	installable: boolean,
+};
 
 export type WriteRequest = {
 	database: string,
