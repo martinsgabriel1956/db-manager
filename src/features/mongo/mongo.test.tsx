@@ -430,14 +430,120 @@ test("schema sample wording", () => {
   expect(presence(1, 3)).toBe("1 de 3 (33%)");
 });
 
-test("indexes are listed", async () => {
-  fakeBackend([devMongo], { list_schemas: () => schemas });
+const twoIndexes = () => [
+  { name: "_id_", definition: '{"_id":1}' },
+  { name: "email_1", definition: '{"email":1} UNIQUE' }
+];
+
+test("indexes are listed; _id_ cannot be removed", async () => {
+  fakeBackend([devMongo], { list_schemas: () => schemas, collection_indexes: twoIndexes });
   const user = await openCustomers();
 
   await user.click(screen.getByRole("tab", { name: "Índices" }));
 
   expect(await screen.findByText("_id_")).toBeInTheDocument();
-  expect(screen.getByText('{"_id":1}')).toBeInTheDocument();
+  expect(screen.getByText('{"email":1} UNIQUE')).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remover índice email_1" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Remover índice _id_" })).not.toBeInTheDocument();
+});
+
+test("a new index shows the backend's command while it is filled, then is created", async () => {
+  const calls = fakeBackend([devMongo], { list_schemas: () => schemas });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Índices" }));
+  await user.click(await screen.findByRole("button", { name: "Novo índice" }));
+  const dialog = screen.getByRole("dialog");
+
+  await user.type(within(dialog).getByLabelText("Campo da chave 1"), "email");
+  await user.click(within(dialog).getByRole("button", { name: "Adicionar chave" }));
+  await user.type(within(dialog).getByLabelText("Campo da chave 2"), "at");
+  await user.selectOptions(within(dialog).getByLabelText("Tipo da chave 2"), "desc");
+  await user.click(within(dialog).getByLabelText("unique"));
+  expect(
+    await within(dialog).findByText(
+      'shop.runCommand({"createIndexes":"customers","keys":"email,at"})'
+    )
+  ).toBeInTheDocument();
+
+  // a TTL that is not a whole number never reaches the backend
+  const ttl = within(dialog).getByLabelText(/expireAfterSeconds/);
+  await user.type(ttl, "1.5");
+  expect(within(dialog).getByRole("button", { name: "Criar índice" })).toBeDisabled();
+  await user.clear(ttl);
+  await user.type(ttl, "3600");
+
+  await user.click(await within(dialog).findByRole("button", { name: "Criar índice" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(callsTo(calls, "create_index")).toEqual([
+    {
+      connectionId: devMongo.id,
+      confirmed: false,
+      index: {
+        database: "shop",
+        collection: "customers",
+        keys: [
+          { field: "email", kind: "asc" },
+          { field: "at", kind: "desc" }
+        ],
+        name: "",
+        unique: true,
+        sparse: false,
+        expireAfterSeconds: 3600,
+        partialFilter: ""
+      }
+    }
+  ]);
+});
+
+test("removing an index confirms the exact dropIndexes command", async () => {
+  const statement = 'shop.runCommand({"dropIndexes":"customers","index":"email_1"})';
+  const calls = fakeBackend([devMongo], {
+    list_schemas: () => schemas,
+    collection_indexes: twoIndexes,
+    drop_index: args =>
+      (args as { confirmed: boolean }).confirmed
+        ? { status: "applied" }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              destructive: true,
+              reason: "Comando destrutivo: remove o índice",
+              statements: [statement]
+            }
+          }
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Índices" }));
+  await user.click(await screen.findByRole("button", { name: "Remover índice email_1" }));
+
+  const confirm = await screen.findByRole("alertdialog");
+  expect(within(confirm).getByText(statement)).toBeInTheDocument();
+  await user.click(within(confirm).getByRole("button", { name: "Executar" }));
+
+  await waitFor(() =>
+    expect(
+      (callsTo(calls, "drop_index") as { name: string; confirmed: boolean }[]).map(c => [
+        c.name,
+        c.confirmed
+      ])
+    ).toEqual([
+      ["email_1", false],
+      ["email_1", true]
+    ])
+  );
+});
+
+test("read-only connections cannot change indexes", async () => {
+  fakeBackend([{ ...devMongo, readOnly: true }], {
+    list_schemas: () => schemas,
+    collection_indexes: twoIndexes
+  });
+  const user = await openCustomers();
+  await user.click(screen.getByRole("tab", { name: "Índices" }));
+
+  expect(await screen.findByText("email_1")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Novo índice" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Remover índice/ })).not.toBeInTheDocument();
 });
 
 test("an applied filter lights the magenta chip with the query; edits not yet applied promote Aplicar", async () => {

@@ -77,6 +77,54 @@ pub enum WriteResponse {
     },
 }
 
+/// How a field is indexed: ascending/descending, or a special index type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub enum IndexKind {
+    #[serde(rename = "asc")]
+    Asc,
+    #[serde(rename = "desc")]
+    Desc,
+    #[serde(rename = "text")]
+    Text,
+    #[serde(rename = "hashed")]
+    Hashed,
+    #[serde(rename = "2dsphere")]
+    Sphere2d,
+    #[serde(rename = "2d")]
+    Flat2d,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexKey {
+    pub field: String,
+    pub kind: IndexKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NewIndex {
+    pub database: String,
+    pub collection: String,
+    /// in order: the order of a compound index matters
+    pub keys: Vec<IndexKey>,
+    /// empty: generated from the keys, as the drivers do (`email_1`)
+    pub name: String,
+    pub unique: bool,
+    pub sparse: bool,
+    /// TTL
+    pub expire_after_seconds: Option<u32>,
+    /// Extended JSON; empty means none
+    pub partial_filter: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum IndexResponse {
+    Applied,
+    NeedsConfirmation { confirmation: Confirmation },
+}
+
 /// What a `$sample` of the collection holds: a sample, not the collection's schema.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

@@ -2,8 +2,8 @@ use tauri::State;
 
 use crate::AppState;
 use crate::domain::{
-    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, SchemaSample, WriteRequest,
-    WriteResponse,
+    AggregateResponse, AppError, DocumentPage, FindRequest, IndexInfo, IndexResponse, NewIndex,
+    SchemaSample, WriteRequest, WriteResponse,
 };
 use crate::use_cases::mongo;
 
@@ -26,6 +26,52 @@ pub async fn collection_indexes(
     collection: String,
 ) -> Result<Vec<IndexInfo>, AppError> {
     mongo::collection_indexes(&state.registry, &connection_id, &database, &collection).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn index_statement(index: NewIndex) -> Result<String, AppError> {
+    mongo::index_statement(&index)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn create_index(
+    state: State<'_, AppState>,
+    connection_id: String,
+    index: NewIndex,
+    confirmed: bool,
+) -> Result<IndexResponse, AppError> {
+    mongo::create_index(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        index,
+        confirmed,
+    )
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn drop_index(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    collection: String,
+    name: String,
+    confirmed: bool,
+) -> Result<IndexResponse, AppError> {
+    mongo::drop_index(
+        &state.registry,
+        &state.history,
+        &connection_id,
+        &database,
+        &collection,
+        &name,
+        confirmed,
+    )
+    .await
 }
 
 #[tauri::command]
