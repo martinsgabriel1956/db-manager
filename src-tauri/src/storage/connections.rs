@@ -57,6 +57,7 @@ mod tests {
             },
             key_separator: None,
             ssh: None,
+            group: None,
         }
     }
 
@@ -77,6 +78,21 @@ mod tests {
 
         assert_eq!(store.load().unwrap(), vec![sqlite_config()]);
         assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn load_reads_files_saved_before_the_tunnel_and_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.json");
+        let mut old = serde_json::to_value([sqlite_config()]).unwrap();
+        old[0].as_object_mut().unwrap().remove("ssh");
+        old[0].as_object_mut().unwrap().remove("group");
+        fs::write(&path, old.to_string()).unwrap();
+
+        assert_eq!(
+            ConnectionStore::new(path).load().unwrap(),
+            vec![sqlite_config()]
+        );
     }
 
     #[test]

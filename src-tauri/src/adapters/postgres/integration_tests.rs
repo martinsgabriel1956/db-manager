@@ -40,6 +40,7 @@ pub(crate) async fn start() -> (ContainerAsync<Postgres>, ConnectionConfig) {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     };
     (container, config)
 }

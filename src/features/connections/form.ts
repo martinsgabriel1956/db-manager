@@ -18,6 +18,8 @@ import {
 
 export type ConnectionFormValues = {
   name: string;
+  /** folder in the sidebar; empty = ungrouped */
+  group: string;
   engine: Engine;
   /** empty until chosen: the protection regime is never a silent default */
   environment: Environment | "";
@@ -44,16 +46,20 @@ export type ConnectionFormValues = {
   sshPort: string;
   sshUser: string;
   sshIdentityFile: string;
+  /** the user's password or the key's passphrase; kept in the keychain apart from the database's */
+  sshPassword: string;
+  clearSshPassword: boolean;
 };
 
 export type FormErrors = Partial<Record<keyof ConnectionFormValues, string>>;
 
 export type ParsedForm =
-  | { success: true; config: ConnectionConfig; secret: SecretChange }
+  | { success: true; config: ConnectionConfig; secret: SecretChange; sshSecret: SecretChange }
   | { success: false; errors: FormErrors };
 
 export const EMPTY_FORM: ConnectionFormValues = {
   name: "",
+  group: "",
   engine: "postgres",
   environment: "",
   readOnly: false,
@@ -74,7 +80,9 @@ export const EMPTY_FORM: ConnectionFormValues = {
   sshHost: "",
   sshPort: "",
   sshUser: "",
-  sshIdentityFile: ""
+  sshIdentityFile: "",
+  sshPassword: "",
+  clearSshPassword: false
 };
 
 const CONNECTION_STRING = /^mongodb(\+srv)?:\/\//;
@@ -154,13 +162,19 @@ function isUriMode(values: ConnectionFormValues): boolean {
   return values.engine === "mongo" && values.mongoMode === "uri";
 }
 
-function secretChange(values: ConnectionFormValues): SecretChange {
+/** Left empty on a copy, the original's stored secret is copied by the backend. */
+function keepSecret(copyOf: string | undefined): SecretChange {
+  return copyOf ? { action: "copyFrom", value: copyOf } : { action: "keep" };
+}
+
+function secretChange(values: ConnectionFormValues, copyOf: string | undefined): SecretChange {
+  const keep = keepSecret(copyOf);
   if (values.engine === "sqlite") {
     return { action: "keep" };
   }
   if (isUriMode(values)) {
     const uri = values.uri.trim();
-    return uri === "" ? { action: "keep" } : { action: "set", value: uri };
+    return uri === "" ? keep : { action: "set", value: uri };
   }
   if (values.clearPassword) {
     return { action: "clear" };
@@ -168,11 +182,19 @@ function secretChange(values: ConnectionFormValues): SecretChange {
   if (values.password !== "") {
     return { action: "set", value: values.password };
   }
-  return { action: "keep" };
+  return keep;
 }
 
-/** `isEditing`: an existing connection may leave secrets empty to keep the stored ones. */
-export function parseForm(values: ConnectionFormValues, id: string, isEditing = false): ParsedForm {
+/**
+ * `isEditing`: an existing connection may leave secrets empty to keep the stored ones.
+ * `copyOf`: the id of the connection being duplicated, whose stored secrets an empty field copies.
+ */
+export function parseForm(
+  values: ConnectionFormValues,
+  id: string,
+  isEditing = false,
+  copyOf?: string
+): ParsedForm {
   const errors: FormErrors = {};
   const isSqlite = values.engine === "sqlite";
   const isRedis = values.engine === "redis";
@@ -189,7 +211,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
   }
   if (isUri) {
     const uri = values.uri.trim();
-    if (uri === "" && !isEditing) {
+    if (uri === "" && !isEditing && !copyOf) {
       errors.uri = "Informe a URI de conexão";
     } else if (uri !== "" && !CONNECTION_STRING.test(uri)) {
       errors.uri = "Use mongodb:// ou mongodb+srv://";
@@ -213,6 +235,7 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
     config: {
       id,
       name: common.name,
+      group: values.group.trim() || null,
       engine: values.engine,
       environment,
       readOnly: values.readOnly,
@@ -232,7 +255,15 @@ export function parseForm(values: ConnectionFormValues, id: string, isEditing = 
           }
         : null
     },
-    secret: secretChange(values)
+    secret: secretChange(values, copyOf),
+    // without the tunnel the backend drops its password; nothing to send
+    sshSecret: !ssh
+      ? { action: "keep" }
+      : values.clearSshPassword
+        ? { action: "clear" }
+        : values.sshPassword !== ""
+          ? { action: "set", value: values.sshPassword }
+          : keepSecret(copyOf)
   };
 }
 
@@ -242,6 +273,7 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
   return {
     ...EMPTY_FORM,
     name: config.name,
+    group: config.group ?? "",
     engine: config.engine,
     environment: config.environment,
     readOnly: config.readOnly,
@@ -261,6 +293,14 @@ export function fromConfig(config: ConnectionConfig): ConnectionFormValues {
     sshUser: config.ssh?.user ?? "",
     sshIdentityFile: config.ssh?.identityFile ?? ""
   };
+}
+
+/**
+ * A copy of a connection as a new one. The environment comes back empty: the protection
+ * regime is chosen again, never carried over silently.
+ */
+export function duplicateForm(config: ConnectionConfig): ConnectionFormValues {
+  return { ...fromConfig(config), name: `${config.name} (cópia)`, environment: "" };
 }
 
 /** Swaps the engine and carries over sensible defaults (port, TLS) without clobbering user input. */
