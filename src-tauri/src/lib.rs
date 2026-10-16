@@ -42,6 +42,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::completion_tables,
             commands::sql::browse_table,
             commands::sql::run_script,
+            commands::sql::explain,
             commands::sql::fetch_more,
             commands::sql::close_cursor,
             commands::sql::cancel_run,
@@ -65,6 +66,9 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::redis::edit_key,
             commands::redis::run_redis_command,
             commands::redis::server_info,
+            commands::update::check_update,
+            commands::update::install_update,
+            commands::update::open_release_page,
         ])
 }
 
@@ -91,6 +95,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         // "save as" for exports, "open" for imports
         .plugin(tauri_plugin_dialog::init())
+        // signed updates from GitHub Releases, see commands/update.rs
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(builder.invoke_handler())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;

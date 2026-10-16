@@ -4,16 +4,26 @@ import {
   commands,
   type Cell,
   type Confirmation,
+  type ExplainPlan,
   type ResultColumn,
   type ScriptOutcome
 } from "@/bindings";
 import { errorMessage } from "@/lib/errors";
 
+/** Set when the run asks for the plan instead; ANALYZE executes the statement. */
+export type ExplainMode = { analyze: boolean };
+
 export type RunState =
   | { status: "idle" }
   | { status: "running"; runId: string }
   /** destructive script, or a write on prod: waits for the user */
-  | { status: "confirm"; runId: string; sql: string; confirmation: Confirmation }
+  | {
+      status: "confirm";
+      runId: string;
+      sql: string;
+      explain: ExplainMode | null;
+      confirmation: Confirmation;
+    }
   /** the confirmation was dismissed: nothing ran, the previous result is still shown */
   | { status: "cancelled"; runId: string; previous: SettledRun | null }
   | SettledRun;
@@ -21,6 +31,7 @@ export type RunState =
 /** A run that finished; `confirmed` when it went through the confirmation first. */
 export type SettledRun =
   | { status: "error"; runId: string; message: string }
+  | { status: "plan"; runId: string; confirmed: boolean; plan: ExplainPlan }
   | {
       status: "command";
       runId: string;
@@ -85,7 +96,7 @@ export function useScriptRunner(connectionId: string) {
   }, [releaseCursor]);
 
   const run = useCallback(
-    async (sql: string, confirmed = false) => {
+    async (sql: string, confirmed = false, explain: ExplainMode | null = null) => {
       if (sql.trim() === "") {
         return;
       }
@@ -97,12 +108,18 @@ export function useScriptRunner(connectionId: string) {
       });
       try {
         await commands.connectDatabase(connectionId);
-        const response = await commands.runScript(connectionId, runId, sql, confirmed);
+        const response = explain
+          ? await commands.explain(connectionId, runId, sql, explain.analyze, confirmed)
+          : await commands.runScript(connectionId, runId, sql, confirmed);
         if (response.status === "needsConfirmation") {
-          setState({ status: "confirm", runId, sql, confirmation: response.confirmation });
+          setState({ status: "confirm", runId, sql, explain, confirmation: response.confirmation });
           return;
         }
         queryClient.invalidateQueries({ queryKey: ["history"] });
+        if (response.status === "explained") {
+          setState({ status: "plan", runId, confirmed, plan: response.plan });
+          return;
+        }
         const { outcome } = response;
         const { result } = outcome;
         if (result.kind === "command") {
@@ -142,7 +159,7 @@ export function useScriptRunner(connectionId: string) {
 
   const confirm = useCallback(() => {
     if (state.status === "confirm") {
-      run(state.sql, true);
+      run(state.sql, true, state.explain);
     }
   }, [state, run]);
 

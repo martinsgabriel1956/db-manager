@@ -1,6 +1,7 @@
 //! Runs against real SQLite files in a temp dir.
 
 use super::SqliteAdapter;
+use crate::adapters::explain::{self, tests::labels};
 use crate::adapters::sql_builder;
 use crate::adapters::stream::ScriptRun;
 use crate::domain::{
@@ -288,4 +289,41 @@ async fn read_only_opens_the_file_read_only() {
     let err = run(&db, "INSERT INTO t VALUES (1)").await.err().unwrap();
 
     assert!(err.to_string().contains("readonly"), "{err}");
+}
+
+#[tokio::test]
+async fn explain_query_plan_nests_by_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = database(
+        &dir,
+        "plan.db",
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+         CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total REAL)",
+    )
+    .await;
+    let db = SqliteAdapter::connect(&config, false).await.unwrap();
+
+    let sql = explain::explain_sql(
+        SqliteAdapter::DIALECT,
+        "SELECT * FROM orders WHERE user_id IN (SELECT id FROM users WHERE name = 'a')",
+        false,
+    )
+    .unwrap();
+    let output = run(&db, &sql).await.unwrap();
+    let root = explain::parse(SqliteAdapter::DIALECT, &output.first.batch).unwrap();
+
+    assert_eq!(root.label, "QUERY PLAN");
+    assert_eq!(root.cost, None);
+    let all = labels(&root);
+    assert!(all.contains(&"SCAN orders".to_string()), "{all:?}");
+    // the subquery's own steps sit under it, not beside it
+    let subquery = root
+        .children
+        .iter()
+        .find(|node| !node.children.is_empty())
+        .unwrap_or_else(|| panic!("no nested step: {root:?}"));
+    assert!(
+        labels(subquery).iter().any(|label| label.contains("users")),
+        "{subquery:?}"
+    );
 }

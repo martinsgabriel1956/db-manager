@@ -341,6 +341,8 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
           },
     fetch_more: () => ({ columns: [], rows: [], hasMore: false }),
     close_cursor: () => null,
+    // the launch check finds nothing new unless a test says otherwise
+    check_update: () => ({ current: "0.3.0", available: null, installable: true }),
     cancel_run: () => null
   };
 
