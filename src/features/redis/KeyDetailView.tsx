@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
 import { Input } from "@/components/ui/input";
+import { JsonEditor } from "@/features/mongo/JsonEditor";
+import { isValidJson } from "@/features/mongo/ejson";
 import { EntryTable, RedisTextView } from "@/features/redis/EntryTable";
+import { prettyJson } from "@/features/redis/json";
 import { entriesOf, isCollection, removeEdit, saveEdits } from "@/features/redis/entries";
 import { useKey, type useKeyEdit } from "@/features/redis/queries";
 import { errorMessage } from "@/lib/errors";
@@ -77,12 +80,12 @@ export function KeyDetailView({
               <span
                 className="block h-full bg-warning"
                 style={{
-                  width: `${Math.min(100, ((value.kind === "string" ? STRING_LIMIT_BYTES : ELEMENT_LIMIT) / Math.max(1, detail.data.length)) * 100)}%`
+                  width: `${Math.min(100, ((value.kind === "string" || value.kind === "json" ? STRING_LIMIT_BYTES : ELEMENT_LIMIT) / Math.max(1, detail.data.length)) * 100)}%`
                 }}
               />
             </span>
             <p>
-              {value.kind === "string"
+              {value.kind === "string" || value.kind === "json"
                 ? "Valor grande: mostrando só o primeiro 1 MiB, edição desativada."
                 : `Mostrando os primeiros ${ELEMENT_LIMIT} de ${detail.data.length} elementos.`}
             </p>
@@ -114,9 +117,19 @@ export function KeyDetailView({
           />
         )}
         {value.kind === "stream" && <StreamTable entries={value.entries} />}
+        {value.kind === "json" && (
+          <JsonValueEditor
+            key={value.json}
+            initial={value.json}
+            editable={!readOnly && !detail.data.truncated}
+            pending={editor.isPending}
+            onSave={json => submit([{ op: "jsonSet", json }])}
+          />
+        )}
         {value.kind === "unsupported" && (
           <p className="text-sm text-muted-foreground">
-            Tipo {value.typeName} (módulo) não é suportado; use o console.
+            Tipo de módulo {value.typeName}: o Ordo não lê este valor, só o nome do tipo. Use o
+            console com os comandos do módulo.
           </p>
         )}
       </div>
@@ -140,8 +153,9 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const ttlSecs = Number(ttl);
   const validTtl = ttl !== "" && Number.isInteger(ttlSecs) && ttlSecs > 0;
+  const kind = detail.value.kind === "unsupported" ? detail.value.typeName : detail.value.kind;
   const unit =
-    detail.value.kind === "string"
+    detail.value.kind === "string" || detail.value.kind === "json"
       ? detail.length === 1
         ? "byte"
         : "bytes"
@@ -154,11 +168,11 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
       {/* the key is printed whole: the tree truncates, so this is where it is read in full */}
       <div className="flex items-baseline gap-2">
         <Badge variant="outline" className="self-center">
-          {detail.value.kind}
+          {kind}
         </Badge>
         <h3 className="min-w-0 font-mono text-sm font-semibold break-all">{detail.key}</h3>
         <span className="shrink-0 text-xs text-muted-foreground">
-          {detail.length} {unit} ·{" "}
+          {detail.value.kind !== "unsupported" && `${detail.length} ${unit} · `}
           {detail.ttlSecs === null ? "sem expiração" : `expira em ${detail.ttlSecs}s`}
         </span>
       </div>
@@ -273,6 +287,56 @@ function StringEditor({ initial, editable, pending, onSave }: StringEditorProps)
           onClick={() => onSave(text)}
         >
           Salvar valor
+        </Button>
+      )}
+    </div>
+  );
+}
+
+type JsonValueEditorProps = {
+  initial: string;
+  editable: boolean;
+  pending: boolean;
+  onSave: (json: string) => void;
+};
+
+/** RedisJSON: the document re-indented as text (never parsed: big numbers stay exact). */
+function JsonValueEditor({ initial, editable, pending, onSave }: JsonValueEditorProps) {
+  const [original] = useState(() => prettyJson(initial));
+  const [text, setText] = useState(original);
+  const [invalid, setInvalid] = useState(false);
+
+  function save() {
+    if (!editable) {
+      return;
+    }
+    // only checks the syntax; the text sent is the one typed
+    const valid = isValidJson(text);
+    setInvalid(!valid);
+    if (valid) {
+      onSave(text);
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="h-96">
+        <JsonEditor
+          label="Documento JSON"
+          value={text}
+          onChange={setText}
+          onRun={save}
+          readOnly={!editable}
+        />
+      </div>
+      {invalid && (
+        <p role="alert" className="text-sm text-destructive">
+          JSON inválido
+        </p>
+      )}
+      {editable && (
+        <Button size="sm" className="w-fit" disabled={pending || text === original} onClick={save}>
+          Salvar JSON
         </Button>
       )}
     </div>

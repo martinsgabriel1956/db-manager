@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use testcontainers_modules::redis::Redis;
-use testcontainers_modules::testcontainers::core::{ContainerPort, WaitFor};
+use testcontainers_modules::testcontainers::core::{ContainerPort, IntoContainerPort, WaitFor};
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
@@ -47,6 +47,18 @@ fn config(port: u16) -> ConnectionConfig {
         ssh: None,
         group: None,
     }
+}
+
+/// Redis Stack: RedisJSON, Bloom and the other modules loaded.
+pub(crate) async fn start_stack() -> (ContainerAsync<GenericImage>, ConnectionConfig) {
+    let container = GenericImage::new("redis/redis-stack-server", "7.4.0-v3")
+        .with_exposed_port(6379.tcp())
+        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
+        .start()
+        .await
+        .expect("docker is required for integration tests");
+    let port = container.get_host_port_ipv4(6379).await.unwrap();
+    (container, config(port))
 }
 
 pub(crate) async fn run(redis: &RedisAdapter, db: u8, line: &str) -> String {

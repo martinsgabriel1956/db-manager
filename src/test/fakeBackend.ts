@@ -353,6 +353,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       status: "executed",
       outcome: { output: "(integer) 1", durationMs: 1 }
     }),
+    server_modules: () => [{ name: "ReJSON", version: "20609" }],
     server_info: () => [
       { name: "Server", entries: [["redis_version", "7.4.0"]] },
       { name: "Memory", entries: [["used_memory_human", "1.2M"]] }

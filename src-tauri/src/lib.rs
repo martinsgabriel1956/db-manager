@@ -88,6 +88,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::redis::redis_publish,
             commands::redis::redis_master,
             commands::redis::redis_monitor,
+            commands::redis::server_modules,
         ])
 }
 

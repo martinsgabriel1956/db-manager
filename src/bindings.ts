@@ -86,6 +86,7 @@ export const commands = {
 	 *  `stop_redis_session` or the limits. Prod asks first.
 	 */
 	redisMonitor: (connectionId: string, sessionId: string, confirmed: boolean, onEvent: Channel<MonitorEvent>) => __TAURI_INVOKE<LiveStart>("redis_monitor", { connectionId, sessionId, confirmed, onEvent }),
+	serverModules: (connectionId: string) => __TAURI_INVOKE<RedisModule[]>("server_modules", { connectionId }),
 };
 
 /* Types */
@@ -436,7 +437,9 @@ export type KeyEdit = { op: "setString"; value: string } | { op: "hashSet"; fiel
 /**  first element equal to `value` (LREM count 1) */
 { op: "listRemove"; value: string } | { op: "setAdd"; member: string } | { op: "setRemove"; member: string } | { op: "zsetAdd"; member: string; score: string } | { op: "zsetRemove"; member: string } | 
 /**  None removes the expiry */
-{ op: "expire"; ttlSecs: number | null } | { op: "rename"; newKey: string } | { op: "delete" };
+{ op: "expire"; ttlSecs: number | null } | 
+/**  RedisJSON: replaces the whole document (JSON.SET key $ json) */
+{ op: "jsonSet"; json: string } | { op: "rename"; newKey: string } | { op: "delete" };
 
 export type KeyEditRequest = {
 	db: number,
@@ -538,6 +541,13 @@ export type RedisDatabase = {
 	keys: number,
 };
 
+/**  A loaded module (MODULE LIST). */
+export type RedisModule = {
+	name: string,
+	/**  as the module reports it (RedisJSON 2.6.9 is 20609) */
+	version: string,
+};
+
 /**
  *  A Redis value as text. Values that are not UTF-8 come as a redis-cli style
  *  escaped preview (`\xff`) with `binary: true`, and cannot be edited.
@@ -548,7 +558,12 @@ export type RedisText = {
 };
 
 export type RedisValue = { kind: "string"; value: RedisText } | { kind: "hash"; entries: HashEntry[] } | { kind: "list"; items: RedisText[] } | { kind: "set"; members: RedisText[] } | { kind: "zset"; entries: ZsetEntry[] } | { kind: "stream"; entries: StreamEntry[] } | 
-/**  module types (RedisJSON, …): shown by name only */
+/**
+ *  RedisJSON (ReJSON-RL): the document as JSON.GET returns it, never parsed,
+ *  so big numbers keep every digit
+ */
+{ kind: "json"; json: string } | 
+/**  other module types: shown by name only */
 { kind: "unsupported"; typeName: string };
 
 /**  What a foreign key does when the referenced row is deleted: a closed list, not SQL text. */

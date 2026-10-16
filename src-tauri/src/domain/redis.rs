@@ -80,7 +80,12 @@ pub enum RedisValue {
     Stream {
         entries: Vec<StreamEntry>,
     },
-    /// module types (RedisJSON, …): shown by name only
+    /// RedisJSON (ReJSON-RL): the document as JSON.GET returns it, never parsed,
+    /// so big numbers keep every digit
+    Json {
+        json: String,
+    },
+    /// other module types: shown by name only
     #[serde(rename_all = "camelCase")]
     Unsupported {
         type_name: String,
@@ -143,6 +148,10 @@ pub enum KeyEdit {
     #[serde(rename_all = "camelCase")]
     Expire {
         ttl_secs: Option<u32>,
+    },
+    /// RedisJSON: replaces the whole document (JSON.SET key $ json)
+    JsonSet {
+        json: String,
     },
     #[serde(rename_all = "camelCase")]
     Rename {
@@ -224,4 +233,13 @@ pub enum MonitorEvent {
 pub enum LiveStart {
     Started,
     NeedsConfirmation { confirmation: Confirmation },
+}
+
+/// A loaded module (MODULE LIST).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RedisModule {
+    pub name: String,
+    /// as the module reports it (RedisJSON 2.6.9 is 20609)
+    pub version: String,
 }

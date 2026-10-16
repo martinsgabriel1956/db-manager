@@ -4,7 +4,7 @@ use tauri::ipc::Channel;
 use crate::AppState;
 use crate::domain::{
     AppError, CommandResponse, InfoSection, KeyDetail, KeyEditRequest, KeyEditResponse, KeyPage,
-    LiveStart, MonitorEvent, PubSubEvent, RedisDatabase,
+    LiveStart, MonitorEvent, PubSubEvent, RedisDatabase, RedisModule,
 };
 use crate::use_cases::redis;
 
@@ -167,4 +167,13 @@ pub async fn redis_monitor(
         move |event| on_event.send(event).is_ok(),
     )
     .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn server_modules(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Vec<RedisModule>, AppError> {
+    redis::server_modules(&state.registry, &connection_id).await
 }

@@ -11,10 +11,11 @@ type JsonEditorProps = {
   /** Mod-Enter (Ctrl, or Cmd on macOS) */
   onRun?: () => void;
   label: string;
+  readOnly?: boolean;
 };
 
 /** CodeMirror with JSON syntax. Created once; later `value` changes replace the text. */
-export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
+export function JsonEditor({ value, onChange, onRun, label, readOnly = false }: JsonEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -51,7 +52,8 @@ export function JsonEditor({ value, onChange, onRun, label }: JsonEditorProps) {
             }
           }),
           editorTheme,
-          labelRef.current.of(editorLabel(label))
+          labelRef.current.of(editorLabel(label)),
+          EditorState.readOnly.of(readOnly)
         ]
       })
     });
