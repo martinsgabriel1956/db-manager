@@ -9,7 +9,7 @@ use crate::domain::{
     FilterOp, KeyValue, RelationKind, RowChange, Target, TlsConfig, TlsMode,
 };
 
-fn config(path: &std::path::Path) -> ConnectionConfig {
+pub(crate) fn config(path: &std::path::Path) -> ConnectionConfig {
     ConnectionConfig {
         id: "lite".into(),
         name: "lite".into(),
@@ -26,6 +26,7 @@ fn config(path: &std::path::Path) -> ConnectionConfig {
         },
         key_separator: None,
         ssh: None,
+        group: None,
     }
 }
 

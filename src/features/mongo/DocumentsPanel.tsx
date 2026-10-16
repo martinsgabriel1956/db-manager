@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { connected } from "@/features/explorer/queries";
 import { ExportButton, type ExportFormat } from "@/features/export/ExportButton";
+import { ImportDocumentsButton } from "@/features/import/ImportDocumentsButton";
 import { prettyJson } from "@/features/results/format";
 import { DocumentCard, type DocumentView } from "@/features/mongo/DocumentCard";
 import { DocumentEditorDialog } from "@/features/mongo/DocumentEditorDialog";
@@ -200,7 +201,15 @@ export function DocumentsPanel({
         {documents.isFetching && (
           <span className="text-xs text-muted-foreground">atualizando…</span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-4">
+          {/* somente leitura: the backend refuses the insert anyway */}
+          {!readOnly && (
+            <ImportDocumentsButton
+              connectionId={connectionId}
+              database={database}
+              collection={collection}
+            />
+          )}
           <ExportButton baseName={collection} formats={exportFormats} />
         </div>
       </div>

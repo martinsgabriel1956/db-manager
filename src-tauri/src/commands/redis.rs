@@ -137,3 +137,13 @@ pub async fn redis_publish(
     )
     .await
 }
+
+/// The master address the sentinels resolved; null when not behind Sentinel.
+#[tauri::command]
+#[specta::specta]
+pub async fn redis_master(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Option<String>, AppError> {
+    Ok(state.registry.connection(&connection_id)?.redis()?.master())
+}

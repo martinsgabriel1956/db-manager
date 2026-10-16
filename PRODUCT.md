@@ -14,7 +14,7 @@ web
 
 ## Product Purpose
 
-Cliente desktop para gerenciar bancos que já existem (na linha de TablePlus/DBeaver), com cinco engines num só app: **Postgres, MySQL, SQLite, MongoDB e Redis (standalone)**. Três modelos de interface, um por modelo de dados: grade relacional (SQL), documentos (Mongo) e chave-valor (Redis).
+Cliente desktop para gerenciar bancos que já existem (na linha de TablePlus/DBeaver), com cinco engines num só app: **Postgres, MySQL, SQLite, MongoDB e Redis (standalone, cluster ou sentinel)**. Três modelos de interface, um por modelo de dados: grade relacional (SQL), documentos (Mongo) e chave-valor (Redis).
 
 Sucesso: trocar de banco e de ambiente sem trocar de ferramenta, sem nunca executar sem querer um comando destrutivo, e sem ver um valor diferente do que está gravado.
 
@@ -30,16 +30,16 @@ O que um vizinho não pode copiar de forma honesta, e que o design futuro precis
 ## Operating Context
 
 - App desktop Tauri; a interface roda num webview (WebKitGTK no Linux). Janela padrão 1200×800, mínimo 960×600. Tema claro/escuro segue o sistema operacional.
-- Layout de trabalho: árvore de conexões na lateral (conexão → schema/database → tabelas/coleções, ou databases 0–15 no Redis) e abas persistidas na área principal (tabelas, editores SQL, coleções, databases Redis, diagramas ER, histórico).
-- Fluxos centrais: cadastrar conexão (senha/URI no keychain do SO, túnel SSH opcional); navegar tabela paginada com filtro e ordenação; editar células em stage e salvar numa transação; rodar SQL com autocomplete, cancelamento real e timeout; CRUD de documentos e pipeline de agregação no Mongo; navegar chaves por `SCAN`, editar por tipo, TTL, renomear, console e pub/sub no Redis; histórico pesquisável; export em streaming (CSV, NDJSON, JSON); diagrama ER somente leitura.
+- Layout de trabalho: árvore de conexões na lateral, com grupos opcionais como pastas (conexão → schema/database → tabelas/coleções, ou databases 0–15 no Redis) e abas persistidas na área principal (tabelas, editores SQL, coleções, databases Redis, diagramas ER, histórico).
+- Fluxos centrais: cadastrar ou duplicar conexão (senha/URI no keychain do SO, túnel SSH opcional); navegar tabela paginada com filtro e ordenação; editar células em stage e salvar numa transação; rodar SQL com autocomplete, cancelamento real e timeout; CRUD de documentos, pipeline de agregação (em JSON ou em blocos de estágios), schema por amostra (`$sample`), índices e change streams (aba "Ao vivo") no Mongo; navegar chaves por `SCAN`, editar por tipo, TTL, renomear, console e pub/sub no Redis; histórico pesquisável; export em streaming (CSV, NDJSON, JSON); diagrama ER somente leitura.
 - Ritual de segurança: a conexão `prod` marca a janela inteira (borda e faixa "Produção") e toda escrita passa pelo diálogo que mostra o comando.
 - Bancos de demonstração locais em `dev/demo` (Docker Compose + SQLite gerado) para desenvolver e demonstrar.
 
 ## Capabilities and Constraints
 
 - Decisões e escopo de cada marco (M0–M6) em `docs/decisions.md`; é a fonte de verdade técnica.
-- **Fora da v1:** builder visual de agregação, inferência de schema, gestão de índices, change streams, MONITOR, módulos, Redis cluster/sentinel, export no Redis. Cluster e builder de agregação estão previstos para v2+. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md). Edição de schema também saiu (abaixo).
-- **Edição de schema (SQL), depois da v1:** criar tabela, adicionar, renomear e remover coluna, mudar tipo, default e NULL, criar e remover índice. A UI gera o DDL e sempre mostra o comando exato antes de rodar; remover coluna ou índice é destrutivo; o que a engine não faz (o SQLite não altera coluna sem recriar a tabela) é dito na tela, não escondido.
+- **Fora da v1:** MONITOR, módulos, export no Redis. O builder visual de agregação, a inferência de schema por amostra no Mongo e a edição de schema também saíram da lista depois da v1. Assinatura e auto-update saíram desta lista: as atualizações são assinadas e o app se atualiza com o consentimento do usuário (ver docs/decisions.md).
+- **Edição de schema (SQL), depois da v1:** criar, renomear e remover tabela; adicionar, renomear e remover coluna; mudar tipo, default e NULL; criar, renomear e remover índice; adicionar e remover chave estrangeira, CHECK e UNIQUE. A UI gera o DDL e sempre mostra o comando exato antes de rodar; remover tabela, coluna, índice ou constraint é destrutivo; o que a engine não faz (o SQLite não altera coluna nem constraint sem recriar a tabela) é dito na tela, não escondido.
 - Edição inline só em tabela com chave primária editável; senão a tabela é somente leitura. Mongo e Redis editam na hora, sem stage.
 - Redis: sempre `SCAN`, nunca `KEYS`. Sem cancelamento no Redis e no SQLite (só timeout).
 - Distribuição só Linux (AppImage + `.deb`) via GitHub Releases; sem builds de macOS/Windows por enquanto.

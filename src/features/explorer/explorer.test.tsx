@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
 import type { AppError, BrowseRequest } from "@/bindings";
-import { callsTo, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import { callsTo, devMongo, devPostgres, fakeBackend, prodPostgres } from "@/test/fakeBackend";
+import { useExplorer } from "@/features/explorer/store";
 import { filterText } from "@/features/table/BrowseToolbar";
 import { pageLabel } from "@/features/table/TableView";
 import { renderWithClient, rowAction } from "@/test/render";
@@ -267,4 +268,34 @@ test("a copy the backend refuses says why", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Não copiado: a coluna foto tem um valor que a grade só mostra em parte"
   );
+});
+
+test("groups fold into folders below the ungrouped connections, by keyboard too", async () => {
+  fakeBackend([
+    { ...devPostgres, group: "Clientes" },
+    prodPostgres,
+    { ...devMongo, group: "Clientes" }
+  ]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  const group = await screen.findByRole("treeitem", { name: /^Clientes/ });
+  expect(group).toHaveAccessibleName("Clientes · 2 conexões");
+  const levels = screen.getAllByRole("treeitem").map(item => item.getAttribute("aria-level"));
+  // Postgres prod (no group) first, then the folder and its two connections one level down
+  expect(levels).toEqual(["1", "1", "2", "2"]);
+  expect(screen.getAllByRole("treeitem")[0]).toHaveAccessibleName(/^Postgres prod/);
+  expect(group).toHaveAttribute("aria-expanded", "true");
+
+  // ← from a connection inside goes up to its folder, ← again folds it
+  screen.getByRole("treeitem", { name: /^Postgres dev/ }).focus();
+  await user.keyboard("{ArrowLeft}");
+  expect(group).toHaveFocus();
+  await user.keyboard("{ArrowLeft}");
+  expect(group).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("treeitem", { name: /^Postgres dev/ })).not.toBeInTheDocument();
+  expect(useExplorer.getState().collapsedGroups).toEqual(["Clientes"]);
+
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("treeitem", { name: /^Mongo dev/ })).toBeInTheDocument();
 });
