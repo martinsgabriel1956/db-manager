@@ -443,3 +443,46 @@ pub struct HistoryEntry {
     pub error: Option<String>,
     pub starred: bool,
 }
+
+/// What a schema comparison found different in a table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum DiffKind {
+    Column,
+    PrimaryKey,
+    Index,
+    Constraint,
+    ForeignKey,
+}
+
+/// One difference; `None` on the side that does not have it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffItem {
+    pub kind: DiffKind,
+    pub name: String,
+    pub source: Option<String>,
+    pub target: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDiff {
+    pub table: String,
+    pub items: Vec<DiffItem>,
+}
+
+/// The source schema compared with the target one, table by table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDiff {
+    pub only_in_source: Vec<String>,
+    pub only_in_target: Vec<String>,
+    /// tables on both sides that differ
+    pub changed: Vec<TableDiff>,
+    /// tables on both sides with nothing different
+    pub equal: u32,
+    /// what would bring the target to the source, shown and never run by the app;
+    /// None where there is no generator yet (MySQL, SQLite)
+    pub ddl: Option<String>,
+}

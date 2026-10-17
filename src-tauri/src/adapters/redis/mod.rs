@@ -1,3 +1,4 @@
+pub mod clients;
 pub mod reply;
 
 #[cfg(test)]
@@ -23,8 +24,8 @@ use tokio::sync::oneshot;
 
 use crate::domain::{
     AppError, ConnectionConfig, HashEntry, InfoSection, KeyDetail, KeyEntry, KeyPage, MonitorEvent,
-    NodeAddress, PubSubEvent, RedisDatabase, RedisModule, RedisValue, StreamEntry, Target, TlsMode,
-    ZsetEntry,
+    NodeAddress, PubSubEvent, RedisDatabase, RedisModule, RedisValue, SessionInfo, SlowCommand,
+    StreamEntry, Target, TlsMode, ZsetEntry,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -989,6 +990,43 @@ impl RedisAdapter {
             .query(self.default_db, redis::cmd("MODULE").arg("LIST"))
             .await?;
         Ok(parse_modules(&reply))
+    }
+
+    /// CLIENT LIST and the last 128 SLOWLOG entries. `CLIENT ID` goes in the same
+    /// pipeline, on the same connection, so the listing marks the app's own client.
+    // ponytail: refused in a cluster, where each node has its own clients and slowlog
+    pub async fn clients(&self) -> Result<(Vec<SessionInfo>, Vec<SlowCommand>), AppError> {
+        if let Server::Cluster { .. } = self.server {
+            return Err(AppError::validation(
+                "em cluster cada nó tem os seus clientes: a lista de sessões é só de servidor único ou Sentinel",
+            ));
+        }
+        let mut pipe = redis::pipe();
+        pipe.cmd("CLIENT")
+            .arg("ID")
+            .cmd("CLIENT")
+            .arg("LIST")
+            .cmd("SLOWLOG")
+            .arg("GET")
+            .arg(128);
+        let mut connection = self.connection(self.default_db).await?;
+        let (own, list, slow): (i64, String, Value) = pipe
+            .query_async(&mut connection)
+            .await
+            .map_err(|err| self.fail(self.default_db, err))?;
+        Ok((
+            clients::parse_client_list(&list, own),
+            clients::parse_slowlog(&slow),
+        ))
+    }
+
+    /// `CLIENT KILL ID <id>`: how many clients it closed (0 = no such client).
+    pub async fn kill_client(&self, id: u64) -> Result<i64, AppError> {
+        self.query(
+            self.default_db,
+            redis::cmd("CLIENT").arg("KILL").arg("ID").arg(id),
+        )
+        .await
     }
 
     /// INFO (or one section of it), parsed into sections.

@@ -5,4 +5,6 @@ pub mod guard;
 pub mod import;
 pub mod mongo;
 pub mod redis;
+pub mod schema_diff;
+pub mod sessions;
 pub mod sql;

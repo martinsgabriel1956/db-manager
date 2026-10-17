@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronLeft, ChevronRight, Plus, Trash2, Undo2 } from "lucide-react";
 import { commands, type BrowseRequest, type Filter, type Sort } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -12,15 +13,22 @@ import { useConnections } from "@/features/connections/queries";
 import { ExportButton } from "@/features/export/ExportButton";
 import { ImportCsvButton } from "@/features/import/ImportCsvButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
-import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
+import { connected, structureQuery, useBrowse, useStructure } from "@/features/explorer/queries";
 import {
   CellDetail,
   DetailSplit,
   DetailToggle,
   useCellDetail
 } from "@/features/results/CellDetail";
-import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
+import { ResultGrid, type CellLink, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
+import {
+  keyOfColumn,
+  matchFilters,
+  type Hop,
+  type IncomingKey
+} from "@/features/table/foreignKeys";
+import { ReferencesMenu } from "@/features/table/ReferencesMenu";
 import { RowCount } from "@/features/table/RowCount";
 import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
@@ -29,6 +37,9 @@ import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
+
+/** `initialFilters`: the filter a foreign key opened the table with */
+type TableViewOwnProps = TableViewProps & { initialFilters?: Filter[] };
 
 type TableDataProps = TableViewProps & {
   sort: Sort | null;
@@ -47,11 +58,11 @@ export function nextSort(current: Sort | null, column: string): Sort | null {
   return current.direction === "asc" ? { column, direction: "desc" } : null;
 }
 
-export function TableView(props: TableViewProps) {
+export function TableView({ initialFilters = [], ...props }: TableViewOwnProps) {
   const [tab, setTab] = useState("data");
   // owned here so the export matches what the grid shows
   const [sort, setSort] = useState<Sort | null>(null);
-  const [filters, setFilters] = useState<Filter[]>([]);
+  const [filters, setFilters] = useState<Filter[]>(initialFilters);
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
@@ -144,7 +155,12 @@ function TableData({
   const detail = useCellDetail();
   const detailOpen = detail.open;
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const [referencesOpen, setReferencesOpen] = useState(false);
+  /** following a key was refused (the other table holds staged edits) or failed */
+  const [followError, setFollowError] = useState<string | null>(null);
   const structure = useStructure(connectionId, schema, table);
+  const queryClient = useQueryClient();
+  const followTable = useTabs(state => state.followTable);
 
   const request: BrowseRequest = {
     schema,
@@ -216,6 +232,85 @@ function TableData({
     wasDirty.current = dirty;
   }, [dirty]);
 
+  const foreignKeys = structure.data?.foreignKeys ?? [];
+  /** a stored row: an added one is not saved, nothing points at it yet */
+  const storedRow = (row: number) => batch?.rows[row] ?? null;
+  const selectedStored = selected ? storedRow(selected.row) : null;
+
+  function open(hop: Hop | null, keyName: string) {
+    if (!hop) {
+      setFollowError(`${keyName}: um dos valores é NULL ou não pode ser comparado`);
+      return;
+    }
+    const target = { connectionId, schema: hop.schema, table: hop.table };
+    setFollowError(
+      followTable(target, hop.filters)
+        ? null
+        : `${hop.table} tem alterações pendentes: salve ou descarte lá antes de abrir com filtro.`
+    );
+  }
+
+  /** A key's columns on the other side; SQLite may leave them implicit (its primary key). */
+  async function keyColumns(otherSchema: string, otherTable: string, named: string[]) {
+    if (named.length > 0) {
+      return named;
+    }
+    const other = await queryClient.fetchQuery(
+      structureQuery(connectionId, otherSchema, otherTable)
+    );
+    return other.columns.filter(column => column.isPrimaryKey).map(column => column.name);
+  }
+
+  async function follow(row: number, column: number) {
+    const stored = storedRow(row);
+    const key = batch ? keyOfColumn(foreignKeys, batch.columns[column].name) : null;
+    if (!batch || !stored || !key) {
+      return;
+    }
+    try {
+      const to = await keyColumns(key.referencedSchema, key.referencedTable, key.referencedColumns);
+      const filters = matchFilters(batch.columns, stored, key.columns, to);
+      open(
+        filters && { schema: key.referencedSchema, table: key.referencedTable, filters },
+        key.name
+      );
+    } catch (err) {
+      setFollowError(errorMessage(err));
+    }
+  }
+
+  async function followBack(incoming: IncomingKey) {
+    if (!batch || !selectedStored) {
+      return;
+    }
+    try {
+      const from = await keyColumns(schema, table, incoming.key.referencedColumns);
+      const filters = matchFilters(batch.columns, selectedStored, from, incoming.key.columns);
+      open(
+        filters && { schema: incoming.schema, table: incoming.table, filters },
+        incoming.key.name
+      );
+    } catch (err) {
+      setFollowError(errorMessage(err));
+    }
+  }
+
+  const link: CellLink = {
+    label: (row, column) => {
+      const stored = storedRow(row);
+      const key = batch ? keyOfColumn(foreignKeys, batch.columns[column].name) : null;
+      // a composite key with a NULL anywhere points at no row
+      if (!batch || !stored || !key) {
+        return null;
+      }
+      if (!matchFilters(batch.columns, stored, key.columns, key.columns)) {
+        return null;
+      }
+      return `Abrir ${key.referencedTable} filtrada por ${key.columns.join(", ")}`;
+    },
+    follow: (row, column) => void follow(row, column)
+  };
+
   function restart(update: () => void) {
     update();
     setPage(0);
@@ -235,6 +330,12 @@ function TableData({
       className="flex min-h-0 flex-1 flex-col"
       // Ctrl+S develops the staged edits from anywhere in this view (the grid, the detail)
       onKeyDown={event => {
+        // Alt+Shift+Enter: the rows elsewhere that point at the selected one
+        if (event.altKey && event.shiftKey && event.key === "Enter" && selectedStored) {
+          event.preventDefault();
+          setReferencesOpen(true);
+          return;
+        }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
           event.preventDefault();
           if (dirty && !edit.saving) {
@@ -252,6 +353,11 @@ function TableData({
         onChange={next => restart(() => onFiltersChange(next))}
         onClearSort={() => restart(() => onSortChange(() => null))}
       />
+      {followError && (
+        <p role="alert" className="px-3 py-2 text-sm text-destructive">
+          {followError}
+        </p>
+      )}
       {edit.saveError && (
         <p role="alert" className="px-3 py-2 text-sm text-destructive">
           {edit.saveError}
@@ -326,6 +432,7 @@ function TableData({
               label={`Linhas de ${table}`}
               detailOpen={detailOpen}
               onToggleDetail={detail.toggle}
+              link={foreignKeys.length > 0 ? link : undefined}
               readOnlyHint={
                 readOnly
                   ? "Conexão somente leitura: a célula não pode ser editada"
@@ -407,6 +514,17 @@ function TableData({
             <span className="text-xs text-muted-foreground">atualizando…</span>
           )}
           {batch && <DetailToggle open={detailOpen} onToggle={detail.toggle} />}
+          {batch && (
+            <ReferencesMenu
+              connectionId={connectionId}
+              schema={schema}
+              table={table}
+              enabled={selectedStored !== null}
+              open={referencesOpen}
+              onOpenChange={setReferencesOpen}
+              onPick={incoming => void followBack(incoming)}
+            />
+          )}
           {batch && (
             <CopyRowsMenu
               columns={batch.columns}

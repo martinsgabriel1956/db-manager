@@ -11,6 +11,7 @@ import type {
   RunResponse,
   SchemaInfo,
   ScriptOutcome,
+  SessionList,
   TableStructure
 } from "@/bindings";
 
@@ -252,6 +253,34 @@ export const rowsOutcome: ScriptOutcome = {
   }
 };
 
+export const sessionList: SessionList = {
+  statement: "SELECT pid, usename … FROM pg_stat_activity",
+  actions: ["cancelQuery", "endSession"],
+  slowLog: [],
+  sessions: [
+    {
+      id: "101",
+      user: "me",
+      database: "app",
+      state: "active",
+      seconds: 0,
+      client: "10.0.0.5:5000 · ordo",
+      query: "SELECT pid, usename … FROM pg_stat_activity",
+      own: true
+    },
+    {
+      id: "202",
+      user: "worker",
+      database: "app",
+      state: "active",
+      seconds: 3725,
+      client: "10.0.0.9:6000 · jobs",
+      query: "UPDATE jobs SET done = true",
+      own: false
+    }
+  ]
+};
+
 export function executed(outcome: ScriptOutcome): RunResponse {
   return { status: "executed", outcome };
 }
@@ -367,6 +396,8 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
       { name: "Memory", entries: [["used_memory_human", "1.2M"]] }
     ],
     schema_diagram: () => diagram,
+    list_sessions: () => sessionList,
+    kill_session: () => ({ status: "done" }),
     export_query: () => ({ rows: 1, durationMs: 3 }),
     export_table: () => ({ rows: 1234, durationMs: 3 }),
     export_collection: () => ({ rows: 2, durationMs: 3 }),
