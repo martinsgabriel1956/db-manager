@@ -91,6 +91,11 @@ export function statementAt(state: EditorState): string {
 
 const DIALECT = { postgres: PostgreSQL, mysql: MySQL, sqlite: SQLite };
 
+/** The lang-sql dialect the editor parses `engine` with. */
+export function sqlDialect(engine: Engine) {
+  return engine === "mysql" || engine === "sqlite" ? DIALECT[engine] : DIALECT.postgres;
+}
+
 type LanguageOptions = Pick<SqlEditorProps, "completion" | "engine" | "defaultSchema">;
 
 /**
@@ -115,7 +120,7 @@ export function tagNames(source: CompletionSource, schemas: Set<string>): Comple
 }
 
 function sqlLanguage({ completion, engine, defaultSchema }: LanguageOptions) {
-  const dialect = engine === "mysql" || engine === "sqlite" ? DIALECT[engine] : DIALECT.postgres;
+  const dialect = sqlDialect(engine);
   const tables = completion ?? [];
   const schemaSource = schemaCompletionSource({
     dialect,

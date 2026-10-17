@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { ParamInput } from "@/features/editor/params";
 import { tauriStorage } from "@/features/tabs/storage";
 
 export type TableTarget = { connectionId: string; schema: string; table: string };
@@ -11,6 +12,8 @@ export type EditorTab = {
   connectionId: string;
   title: string;
   sql: string;
+  /** the `:name` values last used in this editor; absent in tabs saved before parameters */
+  params?: Record<string, ParamInput>;
 };
 export type RedisTarget = { connectionId: string; db: number };
 export type RedisTab = { id: string; kind: "redis" } & RedisTarget;
@@ -55,6 +58,7 @@ type TabsState = {
   /** drops tabs of connections that no longer exist (deleted, or stale persisted state) */
   keepConnections: (connectionIds: string[]) => void;
   setSql: (id: string, sql: string) => void;
+  setParams: (id: string, params: Record<string, ParamInput>) => void;
   /** staged edit count per table (not persisted: staged edits die with the window) */
   pending: Record<string, number>;
   setPending: (key: string, count: number) => void;
@@ -264,6 +268,12 @@ export const useTabs = create<TabsState>()(
         set(state => ({
           tabs: state.tabs.map(tab =>
             tab.id === id && tab.kind === "editor" ? { ...tab, sql } : tab
+          )
+        })),
+      setParams: (id, params) =>
+        set(state => ({
+          tabs: state.tabs.map(tab =>
+            tab.id === id && tab.kind === "editor" ? { ...tab, params } : tab
           )
         }))
     }),

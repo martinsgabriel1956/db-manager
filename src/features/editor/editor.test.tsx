@@ -21,6 +21,8 @@ function Workspace({ initialSql }: { initialSql: string }) {
       defaultSchema="public"
       sql={sql}
       onSqlChange={setSql}
+      params={{}}
+      onParamsChange={() => undefined}
     />
   );
 }

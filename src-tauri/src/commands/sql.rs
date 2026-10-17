@@ -5,8 +5,8 @@ use tauri::{AppHandle, State};
 use crate::AppState;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, ExplainResponse,
-    HistoryEntry, RowBatch, RunResponse, SchemaChange, SchemaInfo, TableChanges, TableDdl,
-    TableStructure,
+    HistoryEntry, ParamValue, RowBatch, RunResponse, SchemaChange, SchemaInfo, TableChanges,
+    TableDdl, TableStructure,
 };
 use crate::tray;
 use crate::use_cases::{connections, sql};
@@ -175,6 +175,17 @@ pub fn copy_as_insert(
         &columns,
         &rows,
     )
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn fill_params(
+    state: State<'_, AppState>,
+    connection_id: String,
+    parts: Vec<String>,
+    values: Vec<ParamValue>,
+) -> Result<String, AppError> {
+    sql::fill_params(&state.registry, &connection_id, &parts, &values)
 }
 
 #[tauri::command]

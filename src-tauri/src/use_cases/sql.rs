@@ -11,9 +11,9 @@ use crate::adapters::sql_builder;
 use crate::adapters::ssh::SshTunnel;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
-    DiagramTable, Engine, Environment, ExplainPlan, ExplainResponse, FilterOp, RelationKind,
-    RowBatch, RowChange, RunResponse, SchemaChange, SchemaInfo, ScriptOutcome, Secrets,
-    StatementResult, TableChanges, TableDdl, TableStructure, Target,
+    DiagramTable, Engine, Environment, ExplainPlan, ExplainResponse, FilterOp, ParamValue,
+    RelationKind, RowBatch, RowChange, RunResponse, SchemaChange, SchemaInfo, ScriptOutcome,
+    Secrets, StatementResult, TableChanges, TableDdl, TableStructure, Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
@@ -424,6 +424,20 @@ pub fn copy_as_insert(
 ) -> Result<String, AppError> {
     let dialect = registry.connection(connection_id)?.sql()?.dialect();
     sql_builder::insert_sql(dialect, schema, table, columns, rows)
+}
+
+/// The editor's SQL with its `:name` placeholders filled, as literals of the open
+/// connection's dialect (MySQL's NO_BACKSLASH_ESCAPES included). The front runs,
+/// explains or exports the result as any other SQL: the guard, the confirmation and
+/// the history all see the final text.
+pub fn fill_params(
+    registry: &Registry,
+    connection_id: &str,
+    parts: &[String],
+    values: &[ParamValue],
+) -> Result<String, AppError> {
+    let dialect = registry.connection(connection_id)?.sql()?.dialect();
+    sql_builder::fill_params(dialect, parts, values)
 }
 
 /// Applies staged grid edits in one transaction. Rows are identified by the whole
@@ -994,6 +1008,81 @@ mod integration_tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("read-only"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn filled_params_are_what_the_guard_confirms_runs_and_records() {
+        let (_container, mut config) = start().await;
+        config.environment = Environment::Prod;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+        executed(
+            run_script(
+                &registry,
+                &history,
+                "it",
+                "p1",
+                "CREATE TABLE t (id int PRIMARY KEY, name text); INSERT INTO t VALUES (1, 'a''b'), (2, 'c')",
+                true,
+            )
+            .await
+            .unwrap(),
+        );
+
+        // :name and :id filled; the ::text cast stays a cast
+        let parts: Vec<String> = ["DELETE FROM t WHERE name::text = ", " OR id = ", ""]
+            .map(String::from)
+            .into();
+        let sql = fill_params(
+            &registry,
+            "it",
+            &parts,
+            &[
+                ParamValue::Text("x' OR '1'='1".into()),
+                ParamValue::Number("2".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            sql,
+            "DELETE FROM t WHERE name::text = 'x'' OR ''1''=''1' OR id = 2"
+        );
+        let RunResponse::NeedsConfirmation { confirmation } =
+            run_script(&registry, &history, "it", "p2", &sql, false)
+                .await
+                .unwrap()
+        else {
+            panic!("prod writes ask first");
+        };
+        assert_eq!(confirmation.statements, vec![sql.clone()]);
+        // the injection attempt is a literal: only id 2 goes
+        let deleted = executed(
+            run_script(&registry, &history, "it", "p3", &sql, true)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            deleted.result,
+            StatementResult::Command { rows_affected: 1 }
+        );
+        let entries = history
+            .search("DELETE", Some("it"), false, 10)
+            .await
+            .unwrap();
+        assert_eq!(entries[0].sql, sql);
+
+        let parts: Vec<String> = ["SELECT name FROM t WHERE id = ", ""]
+            .map(String::from)
+            .into();
+        let sql = fill_params(&registry, "it", &parts, &[ParamValue::Text("1".into())]).unwrap();
+        let outcome = exec(&registry, &history, "p4", &sql).await;
+        let StatementResult::Rows { batch, .. } = outcome.result else {
+            panic!("expected rows");
+        };
+        assert_eq!(batch.rows, vec![vec![Cell::Text("a'b".into())]]);
     }
 
     #[tokio::test]

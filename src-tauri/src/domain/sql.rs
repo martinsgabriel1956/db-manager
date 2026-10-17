@@ -253,6 +253,16 @@ pub enum ExplainResponse {
     NeedsConfirmation { confirmation: Confirmation },
 }
 
+/// The value typed for a `:name` placeholder of the SQL editor. Text becomes a string
+/// literal of the dialect; a number goes in bare after a check, so `LIMIT :n` works.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+pub enum ParamValue {
+    Null,
+    Text(String),
+    Number(String),
+}
+
 /// Original value of a primary-key column, identifying the row to change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

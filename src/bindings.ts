@@ -42,6 +42,7 @@ export const commands = {
 	alterSchema: (connectionId: string, schema: string, table: string, change: SchemaChange, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("alter_schema", { connectionId, schema, table, change, confirmed }),
 	columnDefinition: (connectionId: string, schema: string, table: string, column: string) => __TAURI_INVOKE<string>("column_definition", { connectionId, schema, table, column }),
 	copyAsInsert: (connectionId: string, schema: string, table: string, columns: string[], rows: Cell[][]) => __TAURI_INVOKE<string>("copy_as_insert", { connectionId, schema, table, columns, rows }),
+	fillParams: (connectionId: string, parts: string[], values: ParamValue[]) => __TAURI_INVOKE<string>("fill_params", { connectionId, parts, values }),
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
 	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),
@@ -509,6 +510,12 @@ export type NodeAddress = {
 	host: string,
 	port: number,
 };
+
+/**
+ *  The value typed for a `:name` placeholder of the SQL editor. Text becomes a string
+ *  literal of the dialect; a number goes in bare after a check, so `LIMIT :n` works.
+ */
+export type ParamValue = { kind: "null" } | { kind: "text"; value: string } | { kind: "number"; value: string };
 
 /**
  *  One step of a query plan, in the engine's own words and units. Costs are the

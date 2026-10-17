@@ -6,6 +6,7 @@ import type {
   DiagramTable,
   KeyDetail,
   KeychainOutcome,
+  ParamValue,
   RowBatch,
   RunResponse,
   SchemaInfo,
@@ -289,6 +290,13 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     estimate_rows: () => "12345",
     count_rows: () => "12346",
     run_script: () => executed(rowsOutcome),
+    // the real one quotes per dialect in Rust; this keeps the shape: 'text', bare number, NULL
+    fill_params: args => {
+      const { parts, values } = args as { parts: string[]; values: ParamValue[] };
+      const literal = (value: ParamValue) =>
+        value.kind === "null" ? "NULL" : value.kind === "number" ? value.value : `'${value.value}'`;
+      return parts.reduce((sql, part, index) => `${sql}${literal(values[index - 1])}${part}`);
+    },
     apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
     alter_schema: args => {
       const { change, confirmed } = args as { change: { kind: string }; confirmed: boolean };

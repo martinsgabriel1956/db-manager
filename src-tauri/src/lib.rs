@@ -54,6 +54,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::alter_schema,
             commands::sql::column_definition,
             commands::sql::copy_as_insert,
+            commands::sql::fill_params,
             commands::sql::search_history,
             commands::sql::star_history,
             commands::sql::schema_diagram,

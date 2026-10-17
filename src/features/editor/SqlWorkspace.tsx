@@ -13,12 +13,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
-import { useScriptRunner, type RunState } from "@/features/editor/useScriptRunner";
+import { ParamsDialog } from "@/features/editor/ParamsDialog";
+import {
+  findParams,
+  paramValue,
+  uniqueNames,
+  type FoundParams,
+  type ParamInput
+} from "@/features/editor/params";
+import {
+  useScriptRunner,
+  type ExplainMode,
+  type RunState
+} from "@/features/editor/useScriptRunner";
 import { ExportButton } from "@/features/export/ExportButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
 import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
 import { PlanView } from "@/features/results/PlanView";
+import { errorMessage } from "@/lib/errors";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { EXPLAIN_SHORTCUT, FORMAT_SHORTCUT, RUN_SHORTCUT } from "@/lib/platform";
 
@@ -28,8 +41,14 @@ type SqlWorkspaceProps = {
   defaultSchema: string;
   sql: string;
   onSqlChange: (sql: string) => void;
+  /** the `:name` values last used in this tab, offered again the next time */
+  params: Record<string, ParamInput>;
+  onParamsChange: (params: Record<string, ParamInput>) => void;
   autoFocus?: boolean;
 };
+
+/** SQL with placeholders, waiting for their values before it runs or is explained. */
+type ParamRequest = { found: FoundParams; explain: ExplainMode | null };
 
 type ResultsPanelProps = {
   connectionId: string;
@@ -72,6 +91,8 @@ export function SqlWorkspace({
   defaultSchema,
   sql,
   onSqlChange,
+  params,
+  onParamsChange,
   autoFocus = false
 }: SqlWorkspaceProps) {
   const completion = useCompletion(connectionId);
@@ -80,19 +101,64 @@ export function SqlWorkspace({
   const [lastSql, setLastSql] = useState("");
   // why the last format changed nothing; gone with the next edit
   const [formatError, setFormatError] = useState<string | null>(null);
+  const [paramRequest, setParamRequest] = useState<ParamRequest | null>(null);
+  const [paramError, setParamError] = useState<string | null>(null);
+  const [filling, setFilling] = useState(false);
   const isRunning = runner.state.status === "running";
 
-  function runFromEditor(text: string) {
-    if (!isRunning) {
+  /** the export re-runs `lastSql`: with placeholders, that is the filled text */
+  function execute(text: string, explain: ExplainMode | null) {
+    if (explain) {
+      runner.run(text, false, explain);
+    } else {
       setLastSql(text);
       runner.run(text);
     }
   }
 
-  function explainFromEditor(text: string, analyze = false) {
-    if (!isRunning) {
-      runner.run(text, false, { analyze });
+  function start(text: string, explain: ExplainMode | null) {
+    if (isRunning || text.trim() === "") {
+      return;
     }
+    const found = findParams(text, engine);
+    if (found.names.length === 0) {
+      execute(text, explain);
+      return;
+    }
+    setParamError(null);
+    setParamRequest({ found, explain });
+  }
+
+  async function fill(values: Record<string, ParamInput>) {
+    if (!paramRequest) {
+      return;
+    }
+    onParamsChange({ ...params, ...values });
+    setFilling(true);
+    try {
+      const { found, explain } = paramRequest;
+      const filled = await connected(connectionId, () =>
+        commands.fillParams(
+          connectionId,
+          found.parts,
+          found.names.map(name => paramValue(values[name]))
+        )
+      );
+      setParamRequest(null);
+      execute(filled, explain);
+    } catch (error) {
+      setParamError(errorMessage(error));
+    } finally {
+      setFilling(false);
+    }
+  }
+
+  function runFromEditor(text: string) {
+    start(text, null);
+  }
+
+  function explainFromEditor(text: string, analyze = false) {
+    start(text, { analyze });
   }
 
   const explainText = () => editorApi.current?.prepareExplain() ?? sql;
@@ -203,6 +269,16 @@ export function SqlWorkspace({
           />
         </Panel>
       </Group>
+      {paramRequest && (
+        <ParamsDialog
+          names={uniqueNames(paramRequest.found.names)}
+          remembered={params}
+          error={paramError}
+          pending={filling}
+          onSubmit={fill}
+          onCancel={() => setParamRequest(null)}
+        />
+      )}
       <ConfirmDialog
         connectionId={connectionId}
         confirmation={runner.state.status === "confirm" ? runner.state.confirmation : null}
