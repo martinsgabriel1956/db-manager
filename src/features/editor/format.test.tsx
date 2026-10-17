@@ -19,6 +19,8 @@ function Workspace({ initialSql, engine }: { initialSql: string; engine: Engine 
       defaultSchema="public"
       sql={text}
       onSqlChange={setText}
+      params={{}}
+      onParamsChange={() => undefined}
     />
   );
 }

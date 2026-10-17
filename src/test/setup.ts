@@ -23,6 +23,14 @@ Range.prototype.getClientRects = () =>
     [Symbol.iterator]: [][Symbol.iterator]
   }) as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect = () => new DOMRect();
+// every jsdom rect sits at 0,0 like user-event's pointer: resizable panels would read each
+// press as a grab of their separator (and move focus there), so separators live off-screen
+const elementRect = HTMLElement.prototype.getBoundingClientRect;
+HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+  return this.hasAttribute("data-separator")
+    ? new DOMRect(-1000, -1000, 1, 1)
+    : elementRect.call(this);
+};
 // resizable panels observe their size; jsdom never resizes, so observing is a no-op
 globalThis.ResizeObserver = class {
   observe() {}

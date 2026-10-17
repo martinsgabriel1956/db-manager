@@ -6,6 +6,7 @@ import type {
   DiagramTable,
   KeyDetail,
   KeychainOutcome,
+  ParamValue,
   RowBatch,
   RunResponse,
   SchemaInfo,
@@ -318,6 +319,13 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     estimate_rows: () => "12345",
     count_rows: () => "12346",
     run_script: () => executed(rowsOutcome),
+    // the real one quotes per dialect in Rust; this keeps the shape: 'text', bare number, NULL
+    fill_params: args => {
+      const { parts, values } = args as { parts: string[]; values: ParamValue[] };
+      const literal = (value: ParamValue) =>
+        value.kind === "null" ? "NULL" : value.kind === "number" ? value.value : `'${value.value}'`;
+      return parts.reduce((sql, part, index) => `${sql}${literal(values[index - 1])}${part}`);
+    },
     apply_changes: () => ({ status: "applied", rowsChanged: 1 }),
     alter_schema: args => {
       const { change, confirmed } = args as { change: { kind: string }; confirmed: boolean };
@@ -394,6 +402,25 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     export_table: () => ({ rows: 1234, durationMs: 3 }),
     export_collection: () => ({ rows: 2, durationMs: 3 }),
     export_keys: () => ({ rows: 4, durationMs: 3 }),
+    backup_database: args => ({
+      command: `PGSSLMODE=require pg_dump --host=db --port=5432 --username=me --dbname=app --no-password --format=custom --file=${(args as { path: string }).path}.part`,
+      bytes: 1536,
+      durationMs: 40
+    }),
+    restore_database: args => {
+      const { path, confirmed } = args as { path: string; confirmed: boolean };
+      const command = `PGSSLMODE=require pg_restore --host=db --port=5432 --username=me --dbname=app --no-password --clean --if-exists --no-owner --single-transaction --exit-on-error ${path}`;
+      return confirmed
+        ? { status: "restored", command, durationMs: 90 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Restaurar app.dump em app: os objetos do backup são apagados e recriados",
+              statements: [command],
+              destructive: true
+            }
+          };
+    },
     "plugin:dialog|save": () => "/tmp/export.csv",
     "plugin:dialog|open": () => "/tmp/users.csv",
     preview_csv: () => ({

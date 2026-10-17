@@ -1,3 +1,4 @@
+mod backup;
 mod cell;
 mod connection;
 mod error;
@@ -8,6 +9,7 @@ mod redis;
 mod session;
 mod sql;
 
+pub use backup::*;
 pub use cell::*;
 pub use connection::*;
 pub use error::*;

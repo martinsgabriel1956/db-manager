@@ -1,4 +1,5 @@
 pub mod app;
+pub mod backup;
 pub mod connections;
 pub mod export;
 pub mod import;

@@ -801,6 +801,7 @@ function Wordmark() {
 
 function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const setSql = useTabs(state => state.setSql);
+  const setParams = useTabs(state => state.setParams);
   const freshEditorId = useTabs(state => state.freshEditorId);
   const openTable = useTabs(state => state.openTable);
 
@@ -866,6 +867,8 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
       defaultSchema={defaultSchemaFor(connection)}
       sql={tab.sql}
       onSqlChange={sql => setSql(tab.id, sql)}
+      params={tab.params ?? {}}
+      onParamsChange={params => setParams(tab.id, params)}
     />
   );
 }

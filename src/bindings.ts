@@ -42,6 +42,7 @@ export const commands = {
 	alterSchema: (connectionId: string, schema: string, table: string, change: SchemaChange, confirmed: boolean) => __TAURI_INVOKE<RunResponse>("alter_schema", { connectionId, schema, table, change, confirmed }),
 	columnDefinition: (connectionId: string, schema: string, table: string, column: string) => __TAURI_INVOKE<string>("column_definition", { connectionId, schema, table, column }),
 	copyAsInsert: (connectionId: string, schema: string, table: string, columns: string[], rows: Cell[][]) => __TAURI_INVOKE<string>("copy_as_insert", { connectionId, schema, table, columns, rows }),
+	fillParams: (connectionId: string, parts: string[], values: ParamValue[]) => __TAURI_INVOKE<string>("fill_params", { connectionId, parts, values }),
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
 	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),
@@ -57,6 +58,8 @@ export const commands = {
 	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
 	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
 	exportKeys: (connectionId: string, runId: string, db: number, pattern: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_keys", { connectionId, runId, db, pattern, path }),
+	backupDatabase: (connectionId: string, runId: string, format: BackupFormat, path: string) => __TAURI_INVOKE<BackupOutcome>("backup_database", { connectionId, runId, format, path }),
+	restoreDatabase: (connectionId: string, runId: string, path: string, confirmed: boolean) => __TAURI_INVOKE<RestoreResponse>("restore_database", { connectionId, runId, path, confirmed }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	indexStatement: (index: NewIndex) => __TAURI_INVOKE<string>("index_statement", { index }),
@@ -115,6 +118,22 @@ export type AppError = { kind: "validation"; message: string } | { kind: "notFou
 { kind: "conflict"; message: string } | { kind: "readOnly"; message: string };
 
 export type ApplyResponse = { status: "applied"; rowsChanged: number } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+export type BackupFormat = 
+/**  Postgres `pg_dump --format=custom`: compressed, restored by `pg_restore` */
+"custom" | 
+/**  SQL text: `pg_dump --format=plain` or `mysqldump`, restored by `psql` / `mysql` */
+"sql" | 
+/**  SQLite: a consistent copy of the database file (`VACUUM INTO`) */
+"sqliteFile";
+
+export type BackupOutcome = {
+	/**  what ran, as it could be typed in a terminal, without the password */
+	command: string,
+	/**  f64 because specta forbids u64; exact up to 2^53 bytes */
+	bytes: number | null,
+	durationMs: number,
+};
 
 export type BrowseRequest = {
 	schema: string,
@@ -538,6 +557,12 @@ export type NodeAddress = {
 };
 
 /**
+ *  The value typed for a `:name` placeholder of the SQL editor. Text becomes a string
+ *  literal of the dialect; a number goes in bare after a check, so `LIMIT :n` works.
+ */
+export type ParamValue = { kind: "null" } | { kind: "text"; value: string } | { kind: "number"; value: string };
+
+/**
  *  One step of a query plan, in the engine's own words and units. Costs are the
  *  planner's estimate for the node including its children (SQLite has none).
  */
@@ -602,6 +627,8 @@ export type Relation = {
 };
 
 export type RelationKind = "table" | "view" | "materializedView" | "foreignTable";
+
+export type RestoreResponse = { status: "restored"; command: string; durationMs: number } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 export type ResultColumn = {
 	name: string,

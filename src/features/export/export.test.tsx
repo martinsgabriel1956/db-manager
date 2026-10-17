@@ -90,6 +90,8 @@ function Workspace() {
       defaultSchema="public"
       sql={sql}
       onSqlChange={setSql}
+      params={{}}
+      onParamsChange={() => undefined}
     />
   );
 }

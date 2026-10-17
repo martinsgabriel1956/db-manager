@@ -5,7 +5,7 @@
 use crate::adapters::dialect::Dialect;
 use crate::domain::{
     AppError, BrowseRequest, Cell, ColumnDefinition, ColumnValue, Constraint, Filter, FilterOp,
-    KeyValue, ReferentialAction, RowChange, SchemaChange, SortDirection,
+    KeyValue, ParamValue, ReferentialAction, RowChange, SchemaChange, SortDirection,
 };
 
 fn table_ref(dialect: Dialect, schema: &str, table: &str) -> String {
@@ -599,10 +599,166 @@ fn row_literals(dialect: Dialect, row: &[Option<String>]) -> Result<Vec<String>,
         .collect()
 }
 
+/// The editor's SQL with each `:name` placeholder replaced by its value. `parts` is the
+/// text around the placeholders (one more than `values`), cut by the front from the same
+/// lezer tree the editor highlights, so strings, comments and `::` casts are never cut.
+/// Values become literals of the dialect, never raw text.
+pub fn fill_params(
+    dialect: Dialect,
+    parts: &[String],
+    values: &[ParamValue],
+) -> Result<String, AppError> {
+    let Some((first, rest)) = parts.split_first() else {
+        return Err(AppError::validation("nenhum SQL para preencher"));
+    };
+    if rest.len() != values.len() {
+        return Err(AppError::validation(format!(
+            "{} valores para {} parâmetros",
+            values.len(),
+            rest.len()
+        )));
+    }
+    let mut sql = first.clone();
+    for (value, part) in values.iter().zip(rest) {
+        sql.push_str(&param_literal(dialect, value)?);
+        sql.push_str(part);
+    }
+    Ok(sql)
+}
+
+fn param_literal(dialect: Dialect, value: &ParamValue) -> Result<String, AppError> {
+    match value {
+        ParamValue::Null => Ok("NULL".to_string()),
+        ParamValue::Text(text) => dialect.quote_literal(text),
+        ParamValue::Number(number) => {
+            let number = number.trim();
+            if !is_number(number) {
+                return Err(AppError::validation(format!(
+                    "\"{number}\" não é um número; para outro valor, use texto"
+                )));
+            }
+            // in parentheses when negative: right after a "-" it would open a "--" comment
+            Ok(if number.starts_with('-') {
+                format!("({number})")
+            } else {
+                number.to_string()
+            })
+        }
+    }
+}
+
+/// `-?digits(.digits)?(e[+-]?digits)?`: a numeric literal every dialect reads the same.
+fn is_number(text: &str) -> bool {
+    // the text after a run of digits, and whether there was any
+    fn digits(text: &str) -> Option<&str> {
+        let rest = text.trim_start_matches(|c: char| c.is_ascii_digit());
+        (rest.len() < text.len()).then_some(rest)
+    }
+    let Some(rest) = digits(text.strip_prefix('-').unwrap_or(text)) else {
+        return false;
+    };
+    let rest = match rest.strip_prefix('.') {
+        Some(fraction) => match digits(fraction) {
+            Some(rest) => rest,
+            None => return false,
+        },
+        None => rest,
+    };
+    let rest = match rest.strip_prefix(['e', 'E']) {
+        Some(exponent) => match digits(exponent.strip_prefix(['+', '-']).unwrap_or(exponent)) {
+            Some(rest) => rest,
+            None => return false,
+        },
+        None => rest,
+    };
+    rest.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::{Filter, Sort};
+
+    #[test]
+    fn fills_params_as_literals_of_the_dialect() {
+        let parts: Vec<String> = [
+            "SELECT * FROM t WHERE a = ",
+            " AND b = ",
+            " AND c IS ",
+            " LIMIT ",
+            "",
+        ]
+        .map(String::from)
+        .into();
+        let values = [
+            ParamValue::Text("it's".into()),
+            ParamValue::Text(r"a\b".into()),
+            ParamValue::Null,
+            ParamValue::Number(" 10 ".into()),
+        ];
+        assert_eq!(
+            fill_params(Dialect::Postgres, &parts, &values).unwrap(),
+            r"SELECT * FROM t WHERE a = 'it''s' AND b = E'a\\b' AND c IS NULL LIMIT 10"
+        );
+        let mysql = Dialect::Mysql {
+            backslash_escapes: false,
+        };
+        assert_eq!(
+            fill_params(mysql, &parts, &values).unwrap(),
+            r"SELECT * FROM t WHERE a = 'it''s' AND b = 'a\b' AND c IS NULL LIMIT 10"
+        );
+        // an injection attempt stays inside the literal
+        let parts: Vec<String> = ["SELECT ", ""].map(String::from).into();
+        assert_eq!(
+            fill_params(
+                Dialect::Sqlite,
+                &parts,
+                &[ParamValue::Text("'; DROP TABLE t; --".into())]
+            )
+            .unwrap(),
+            "SELECT '''; DROP TABLE t; --'"
+        );
+        assert_eq!(
+            fill_params(
+                Dialect::Sqlite,
+                &parts,
+                &[ParamValue::Number("-1.5e-3".into())]
+            )
+            .unwrap(),
+            "SELECT (-1.5e-3)"
+        );
+    }
+
+    #[test]
+    fn rejects_params_that_do_not_fit() {
+        let parts: Vec<String> = ["SELECT ", ""].map(String::from).into();
+        for number in ["", "1;", "1 OR 1=1", "--1", "1.", ".5", "1e", "0x10", "1e+"] {
+            assert!(
+                matches!(
+                    fill_params(
+                        Dialect::Postgres,
+                        &parts,
+                        &[ParamValue::Number(number.into())]
+                    ),
+                    Err(AppError::Validation(_))
+                ),
+                "{number}"
+            );
+        }
+        for number in ["0", "42", "-7", "3.14", "1e10", "2E-3"] {
+            assert!(is_number(number), "{number}");
+        }
+        assert!(fill_params(Dialect::Postgres, &parts, &[]).is_err());
+        assert!(fill_params(Dialect::Postgres, &[], &[]).is_err());
+        assert!(
+            fill_params(
+                Dialect::Postgres,
+                &parts,
+                &[ParamValue::Text("a\0b".into())]
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn inserts_many_rows_and_finds_a_value_by_position() {

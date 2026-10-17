@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { emit } from "@tauri-apps/api/event";
 import { expect, test } from "vitest";
@@ -42,6 +43,11 @@ async function editCell(user: ReturnType<typeof userEvent.setup>, from: string, 
   const input = screen.getByRole("textbox", { name: /^Editar / });
   await user.clear(input);
   await user.type(input, `${to}{Enter}`);
+}
+
+/** The CodeMirror view of the JSON editor inside `panel`. */
+function jsonView(panel: HTMLElement): EditorView {
+  return EditorView.findFromDOM(panel.querySelector<HTMLElement>(".cm-content")!)!;
 }
 
 function applied(calls: ReturnType<typeof fakeBackend>) {
@@ -121,29 +127,45 @@ test("an edited cell keeps the stored value in sight and Ctrl+Z puts it back", a
   expect(screen.queryByText(/alteração pendente/)).not.toBeInTheDocument();
 });
 
-test("the value panel edits long values and stages only what changed", async () => {
-  fakeBackend([devPostgres]);
+test("the value panel edits JSON as stored, formats only on request and blocks invalid JSON", async () => {
+  const calls = fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);
 
+  // a JSON cell opens the panel by itself, even NULL
   await user.click(cell("NULL"));
-  await user.keyboard(" ");
-  const editor = screen.getByRole("textbox", { name: "Valor de profile" });
-  expect(editor).toHaveAttribute("placeholder", "Digite para substituir NULL");
-  expect(screen.getByText(/^Gravado como/)).toHaveTextContent("Gravado como NULL");
-  // leaving an untouched NULL stages nothing
-  await user.click(editor);
-  await user.tab();
-  expect(screen.queryByText(/^\d+ alteraç(ão|ões) pendentes?$/)).not.toBeInTheDocument();
-  expect(cell("NULL")).not.toHaveAttribute("data-edited");
+  const panel = screen.getByRole("complementary", { name: "Valor da célula" });
+  expect(within(panel).getByText(/^Gravado como/)).toHaveTextContent("Gravado como NULL");
+  const apply = within(panel).getByRole("button", { name: "Aplicar" });
+  expect(apply).toBeDisabled();
 
-  await user.click(screen.getByRole("textbox", { name: "Valor de profile" }));
-  await user.keyboard('{{"a": 1}');
-  await user.keyboard("{Control>}{Enter}{/Control}");
-  expect(cell('{"a": 1}')).toHaveAttribute("data-edited", "true");
-  // jsonb reads indented in the panel; the staged text is what was typed, and the field
-  // keeps focus to go on editing
-  expect(screen.getByRole("textbox", { name: "Depois de profile" })).toHaveFocus();
-  expect(screen.getByRole("textbox", { name: "Depois de profile" })).toHaveValue('{\n  "a": 1\n}');
+  const view = jsonView(panel);
+  act(() => view.dispatch({ changes: { from: 0, insert: '{"a": }' } }));
+  expect(within(panel).getByText(/JSON inválido/)).toHaveTextContent(
+    "JSON inválido na linha 1, coluna 7: valor inesperado: }"
+  );
+  expect(apply).toBeDisabled();
+
+  const typed = '{"n": 9007199254740993, "d": 1.0}';
+  act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: typed } }));
+  expect(within(panel).queryByText(/JSON inválido/)).not.toBeInTheDocument();
+  await user.click(apply);
+  // staged exactly as typed: no reformat, no number rounding
+  expect(cell(typed)).toHaveAttribute("data-edited", "true");
+
+  // "Formatar" re-indents only on request, digits intact
+  await user.click(within(panel).getByRole("button", { name: "Formatar" }));
+  expect(jsonView(panel).state.doc.toString()).toBe('{\n  "n": 9007199254740993,\n  "d": 1.0\n}');
+  await user.click(within(panel).getByRole("button", { name: "Aplicar" }));
+  await user.click(screen.getByRole("button", { name: /^Salvar \(/ }));
+
+  await waitFor(() => expect(applied(calls)).toHaveLength(1));
+  expect(applied(calls)[0].changes.changes).toEqual([
+    {
+      kind: "update",
+      key: [{ column: "id", value: { t: "int", v: "2" } }],
+      values: [{ column: "profile", value: '{\n  "n": 9007199254740993,\n  "d": 1.0\n}' }]
+    }
+  ]);
 });
 
 test("rows can be added, deleted, restored and set to NULL", async () => {
@@ -152,7 +174,6 @@ test("rows can be added, deleted, restored and set to NULL", async () => {
 
   // NULL through the detail panel, opened from the results bar
   await user.click(cell('{"id": 9007199254740993}'));
-  await user.click(screen.getByRole("button", { name: "Valor" }));
   await user.click(screen.getByRole("button", { name: "Definir como NULL" }));
 
   // delete the second row, restore it, delete it again

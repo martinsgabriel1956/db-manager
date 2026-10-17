@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { App } from "@/App";
@@ -167,20 +168,28 @@ test("filters add up as ANDed chips, each one removable, and reset the page", as
   await waitFor(() => expect(lastBrowse(calls).filters).toEqual([]));
 });
 
-test("Space on a cell shows its full value, json pretty-printed with big numbers intact", async () => {
+test("a JSON cell opens its value formatted, big numbers intact; closed, Space brings it back", async () => {
   fakeBackend([prodPostgres]);
   const user = await openUsers();
 
-  // selecting alone keeps the grid's width: the panel opens on demand
   await user.click(screen.getByText('{"id": 9007199254740993}'));
-  expect(screen.queryByRole("complementary", { name: "Valor da célula" })).not.toBeInTheDocument();
-  await user.keyboard(" ");
 
   const panel = screen.getByRole("complementary", { name: "Valor da célula" });
   expect(within(panel).getByText("profile")).toBeInTheDocument();
-  expect(panel.querySelector("pre")?.textContent).toBe('{\n  "id": 9007199254740993\n}');
+  // read-only here: formatted for reading, in the JSON editor
+  const content = panel.querySelector<HTMLElement>(".cm-content")!;
+  expect(content).toHaveAttribute("aria-label", "Valor de profile (somente leitura)");
+  expect(EditorView.findFromDOM(content)!.state.doc.toString()).toBe(
+    '{\n  "id": 9007199254740993\n}'
+  );
   await user.click(within(panel).getByRole("button", { name: "Fechar" }));
   expect(screen.queryByRole("complementary", { name: "Valor da célula" })).not.toBeInTheDocument();
+
+  // closed by the user, it stays closed on the next JSON cell until asked for
+  await user.click(screen.getAllByText("NULL")[0]);
+  expect(screen.queryByRole("complementary", { name: "Valor da célula" })).not.toBeInTheDocument();
+  await user.keyboard(" ");
+  expect(screen.getByRole("complementary", { name: "Valor da célula" })).toHaveTextContent("NULL");
 });
 
 test("structure tab lists columns, indexes and foreign keys", async () => {

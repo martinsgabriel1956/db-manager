@@ -396,6 +396,16 @@ impl SqliteAdapter {
         stream::apply::<SqliteEngine>(&self.pool, statements).await
     }
 
+    /// One statement outside a transaction and without the editor's timeout: the
+    /// backup's `VACUUM INTO`, which takes as long as the file is big (and cannot run
+    /// inside a transaction).
+    pub async fn execute(&self, sql: &str) -> Result<(), AppError> {
+        sqlx::raw_sql(AssertSqlSafe(sql.to_string()))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn begin(&self) -> Result<(sqlx::Transaction<'static, sqlx::Sqlite>, i64), AppError> {
         stream::begin(&self.engine, &self.pool).await
     }

@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Copy,
   Database,
+  DatabaseBackup,
   Ellipsis,
   Eye,
   Folder,
@@ -33,6 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { BackupDialog } from "@/features/backup/BackupDialog";
 import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
 import { defaultSchemaFor, ENGINE_LABEL, isSqlEngine } from "@/features/connections/options";
 import { useDisconnect, useSchemas } from "@/features/explorer/queries";
@@ -356,6 +358,7 @@ function ConnectionNode({
   const expanded = useExplorer(state => state.expanded.includes(connection.id));
   const setExpanded = useExplorer(state => state.setExpanded);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
   const rowRef = useRef<HTMLButtonElement>(null);
   const isRedis = connection.engine === "redis";
   const hasSqlEditor = isSqlEngine(connection.engine);
@@ -373,6 +376,11 @@ function ConnectionNode({
             label: "Nova query SQL",
             icon: <SquareTerminal />,
             onSelect: () => onOpenEditor(connection.id)
+          },
+          {
+            label: "Backup e restauração…",
+            icon: <DatabaseBackup />,
+            onSelect: () => setBackupOpen(true)
           }
         ]
       : []),
@@ -474,6 +482,7 @@ function ConnectionNode({
           className="absolute right-1 bottom-1"
         />
       </div>
+      {backupOpen && <BackupDialog connection={connection} onClose={() => setBackupOpen(false)} />}
 
       {expanded && (
         // dashed under the safelight on prod, a texture and not only a colour: production

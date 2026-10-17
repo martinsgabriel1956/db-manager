@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod csv;
 pub mod dialect;
 pub mod explain;
