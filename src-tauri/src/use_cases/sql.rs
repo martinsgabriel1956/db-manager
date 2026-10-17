@@ -660,6 +660,9 @@ pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppErro
     registry.request_cancel(run_id);
     match registry.running(run_id) {
         Some((connection, session)) => match &connection.live {
+            // no server session: SQLite, or a backup's client tool, which watches the
+            // cancel flag set above and is killed
+            Live::Sql(_) if session == 0 => Ok(()),
             Live::Sql(sql) => {
                 // the session is registered just before the query reaches the server: a
                 // cancel landing in that gap finds the backend idle and is lost, so it is

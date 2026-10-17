@@ -294,7 +294,7 @@ pub async fn export_keys(
     })
 }
 
-fn target_path(path: &str) -> Result<PathBuf, AppError> {
+pub(crate) fn target_path(path: &str) -> Result<PathBuf, AppError> {
     let path = PathBuf::from(path);
     if !path.is_absolute() || path.file_name().is_none() {
         return Err(AppError::validation("escolha um arquivo de destino"));
@@ -302,19 +302,19 @@ fn target_path(path: &str) -> Result<PathBuf, AppError> {
     Ok(path)
 }
 
-fn part_path(target: &Path) -> PathBuf {
+pub(crate) fn part_path(target: &Path) -> PathBuf {
     let mut name = target.file_name().unwrap_or_default().to_os_string();
     name.push(".part");
     target.with_file_name(name)
 }
 
 /// Moves the finished `.part` into place, or removes it after a failure.
-fn finish(result: Result<u32, AppError>, target: &Path) -> Result<u32, AppError> {
+pub(crate) fn finish<T>(result: Result<T, AppError>, target: &Path) -> Result<T, AppError> {
     let part = part_path(target);
     match result {
-        Ok(rows) => {
+        Ok(done) => {
             std::fs::rename(&part, target)?;
-            Ok(rows)
+            Ok(done)
         }
         Err(err) => {
             let _ = std::fs::remove_file(&part);

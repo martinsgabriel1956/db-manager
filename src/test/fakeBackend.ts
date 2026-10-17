@@ -371,6 +371,25 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     export_table: () => ({ rows: 1234, durationMs: 3 }),
     export_collection: () => ({ rows: 2, durationMs: 3 }),
     export_keys: () => ({ rows: 4, durationMs: 3 }),
+    backup_database: args => ({
+      command: `PGSSLMODE=require pg_dump --host=db --port=5432 --username=me --dbname=app --no-password --format=custom --file=${(args as { path: string }).path}.part`,
+      bytes: 1536,
+      durationMs: 40
+    }),
+    restore_database: args => {
+      const { path, confirmed } = args as { path: string; confirmed: boolean };
+      const command = `PGSSLMODE=require pg_restore --host=db --port=5432 --username=me --dbname=app --no-password --clean --if-exists --no-owner --single-transaction --exit-on-error ${path}`;
+      return confirmed
+        ? { status: "restored", command, durationMs: 90 }
+        : {
+            status: "needsConfirmation",
+            confirmation: {
+              reason: "Restaurar app.dump em app: os objetos do backup são apagados e recriados",
+              statements: [command],
+              destructive: true
+            }
+          };
+    },
     "plugin:dialog|save": () => "/tmp/export.csv",
     "plugin:dialog|open": () => "/tmp/users.csv",
     preview_csv: () => ({

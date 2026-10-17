@@ -53,6 +53,8 @@ export const commands = {
 	importCsv: (connectionId: string, runId: string, request: CsvImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_csv", { connectionId, runId, request, confirmed }),
 	importDocuments: (connectionId: string, runId: string, request: DocumentImport, confirmed: boolean) => __TAURI_INVOKE<ImportResponse>("import_documents", { connectionId, runId, request, confirmed }),
 	exportKeys: (connectionId: string, runId: string, db: number, pattern: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_keys", { connectionId, runId, db, pattern, path }),
+	backupDatabase: (connectionId: string, runId: string, format: BackupFormat, path: string) => __TAURI_INVOKE<BackupOutcome>("backup_database", { connectionId, runId, format, path }),
+	restoreDatabase: (connectionId: string, runId: string, path: string, confirmed: boolean) => __TAURI_INVOKE<RestoreResponse>("restore_database", { connectionId, runId, path, confirmed }),
 	browseCollection: (connectionId: string, request: FindRequest) => __TAURI_INVOKE<DocumentPage>("browse_collection", { connectionId, request }),
 	collectionIndexes: (connectionId: string, database: string, collection: string) => __TAURI_INVOKE<IndexInfo[]>("collection_indexes", { connectionId, database, collection }),
 	indexStatement: (index: NewIndex) => __TAURI_INVOKE<string>("index_statement", { index }),
@@ -109,6 +111,22 @@ export type AppError = { kind: "validation"; message: string } | { kind: "notFou
 { kind: "conflict"; message: string } | { kind: "readOnly"; message: string };
 
 export type ApplyResponse = { status: "applied"; rowsChanged: number } | { status: "needsConfirmation"; confirmation: Confirmation };
+
+export type BackupFormat = 
+/**  Postgres `pg_dump --format=custom`: compressed, restored by `pg_restore` */
+"custom" | 
+/**  SQL text: `pg_dump --format=plain` or `mysqldump`, restored by `psql` / `mysql` */
+"sql" | 
+/**  SQLite: a consistent copy of the database file (`VACUUM INTO`) */
+"sqliteFile";
+
+export type BackupOutcome = {
+	/**  what ran, as it could be typed in a terminal, without the password */
+	command: string,
+	/**  f64 because specta forbids u64; exact up to 2^53 bytes */
+	bytes: number | null,
+	durationMs: number,
+};
 
 export type BrowseRequest = {
 	schema: string,
@@ -582,6 +600,8 @@ export type Relation = {
 };
 
 export type RelationKind = "table" | "view" | "materializedView" | "foreignTable";
+
+export type RestoreResponse = { status: "restored"; command: string; durationMs: number } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 export type ResultColumn = {
 	name: string,

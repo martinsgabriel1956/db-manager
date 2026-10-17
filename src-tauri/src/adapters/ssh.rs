@@ -47,19 +47,7 @@ impl SshTunnel {
             .transpose()
             .map_err(|err| tunnel_error(&err.to_string()))?;
         let mut command = command(ssh, local_port, host, port, exe.as_deref().zip(password));
-        // kill_on_drop does not run when the app exits through process::exit or crashes:
-        // the kernel ends ssh when its parent goes. The signal fires when the spawning
-        // thread exits; these are the async runtime's workers, alive as long as the app.
-        #[cfg(target_os = "linux")]
-        // SAFETY: prctl is async-signal-safe and touches no memory of the parent.
-        unsafe {
-            command.pre_exec(|| {
-                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
+        die_with_parent(&mut command);
         let mut child = command.spawn().map_err(|err| match err.kind() {
             std::io::ErrorKind::NotFound => {
                 tunnel_error("o comando ssh não foi encontrado; instale o cliente OpenSSH")
@@ -98,6 +86,22 @@ impl SshTunnel {
             }
             tokio::time::sleep(POLL).await;
         }
+    }
+}
+
+/// kill_on_drop does not run when the app exits through process::exit or crashes: the
+/// kernel ends the child when its parent goes. The signal fires when the spawning thread
+/// exits; these are the async runtime's workers, alive as long as the app.
+pub(crate) fn die_with_parent(command: &mut Command) {
+    #[cfg(target_os = "linux")]
+    // SAFETY: prctl is async-signal-safe and touches no memory of the parent.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
     }
 }
 

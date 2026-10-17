@@ -9,6 +9,7 @@ O diagrama ER é desenhado com [React Flow](https://reactflow.dev) (licença MIT
 - Rust stable (`~/.cargo/bin` no PATH), Node 24, pnpm (`corepack enable`)
 - Linux: `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev` e um Secret Service rodando (GNOME Keyring / KWallet) para guardar senhas
 - Docker (testes de integração dos adapters, a partir do M1)
+- Opcional: `postgresql-client` e `mysql-client` (backup e restauração usam o `pg_dump`/`pg_restore`/`psql` e o `mysqldump`/`mysql` do sistema; sem eles, os testes desses comandos avisam "PULADO", exceto no CI)
 
 ## Comandos
 
