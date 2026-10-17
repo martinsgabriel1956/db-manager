@@ -30,6 +30,7 @@ import { CommandPalette } from "@/features/palette/CommandPalette";
 import { LegendDialog } from "@/features/palette/LegendDialog";
 import type { PaletteTarget } from "@/features/palette/search";
 import { RedisView } from "@/features/redis/RedisView";
+import { SchemaDiffView } from "@/features/schemaDiff/SchemaDiffView";
 import { SessionsView } from "@/features/sessions/SessionsView";
 import { TableView } from "@/features/table/TableView";
 import { CloseTabDialog } from "@/features/tabs/CloseTabDialog";
@@ -66,6 +67,7 @@ export function App() {
     openRedis,
     openDiagram,
     openSessions,
+    openSchemaDiff,
     openHistory,
     keepConnections,
     requestClose,
@@ -476,6 +478,10 @@ export function App() {
                     showTabs();
                     openSessions(connectionId);
                   }}
+                  onOpenSchemaDiff={source => {
+                    showTabs();
+                    openSchemaDiff(source);
+                  }}
                 />
               )}
             </div>
@@ -817,6 +823,15 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   }
   if (tab.kind === "sessions") {
     return <SessionsView connection={connection} />;
+  }
+  if (tab.kind === "schemaDiff") {
+    return (
+      <SchemaDiffView
+        connections={connections}
+        connectionId={tab.connectionId}
+        schema={tab.schema}
+      />
+    );
   }
   if (tab.kind === "table" && connection.engine === "mongo") {
     return (

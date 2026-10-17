@@ -45,6 +45,11 @@ export const commands = {
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
 	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),
+	/**
+	 *  Differences from the source schema to the target one, with the suggested DDL
+	 *  (Postgres). Only reads: the DDL is never run from here.
+	 */
+	compareSchemas: (sourceConnectionId: string, sourceSchema: string, targetConnectionId: string, targetSchema: string) => __TAURI_INVOKE<SchemaDiff>("compare_schemas", { sourceConnectionId, sourceSchema, targetConnectionId, targetSchema }),
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
@@ -287,6 +292,17 @@ export type DiagramTable = {
 	columns: ColumnInfo[],
 	foreignKeys: ForeignKeyInfo[],
 };
+
+/**  One difference; `None` on the side that does not have it. */
+export type DiffItem = {
+	kind: DiffKind,
+	name: string,
+	source: string | null,
+	target: string | null,
+};
+
+/**  What a schema comparison found different in a table. */
+export type DiffKind = "column" | "primaryKey" | "index" | "constraint" | "foreignKey";
 
 export type DocumentFormat = 
 /**  one Extended JSON document per line */
@@ -621,6 +637,21 @@ export type SchemaChange = { kind: "createTable"; columns: ColumnDefinition[]; p
 /**  Postgres and MySQL; SQLite only declares constraints in CREATE TABLE */
 { kind: "addConstraint"; name: string; constraint: Constraint } | { kind: "dropConstraint"; name: string };
 
+/**  The source schema compared with the target one, table by table. */
+export type SchemaDiff = {
+	onlyInSource: string[],
+	onlyInTarget: string[],
+	/**  tables on both sides that differ */
+	changed: TableDiff[],
+	/**  tables on both sides with nothing different */
+	equal: number,
+	/**
+	 *  what would bring the target to the source, shown and never run by the app;
+	 *  None where there is no generator yet (MySQL, SQLite)
+	 */
+	ddl: string | null,
+};
+
 export type SchemaInfo = {
 	name: string,
 	relations: Relation[],
@@ -731,6 +762,11 @@ export type TableDdl = {
 	sql: string,
 	/**  true when rebuilt from the catalog (Postgres keeps no CREATE TABLE text) */
 	reconstructed: boolean,
+};
+
+export type TableDiff = {
+	table: string,
+	items: DiffItem[],
 };
 
 export type TableStructure = {

@@ -4,6 +4,7 @@ import {
   Braces,
   ChevronDown,
   Database,
+  GitCompare,
   History,
   Network,
   Plug,
@@ -66,7 +67,9 @@ function tabParts(tab: Tab, connections: ConnectionConfig[]): TabParts {
           ? `ER ${tab.schema}`
           : tab.kind === "sessions"
             ? "Sessões"
-            : tab.title;
+            : tab.kind === "schemaDiff"
+              ? `Comparar ${tab.schema}`
+              : tab.title;
   return { connection, title };
 }
 
@@ -81,7 +84,8 @@ const ICON = {
   redis: Database,
   diagram: Network,
   history: History,
-  sessions: Activity
+  sessions: Activity,
+  schemaDiff: GitCompare
 };
 
 /** A Mongo collection opens as a table tab, but it holds documents: its own glyph, as in the tree. */

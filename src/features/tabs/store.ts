@@ -25,7 +25,10 @@ export type DiagramTarget = { connectionId: string; schema: string };
 export type DiagramTab = { id: string; kind: "diagram" } & DiagramTarget;
 export type HistoryTab = { id: "history"; kind: "history" };
 export type SessionsTab = { id: string; kind: "sessions"; connectionId: string };
-export type Tab = TableTab | EditorTab | RedisTab | DiagramTab | HistoryTab | SessionsTab;
+/** opened from a schema: the comparison's source, the target is picked in the view */
+export type SchemaDiffTab = { id: string; kind: "schemaDiff" } & DiagramTarget;
+export type Tab =
+  TableTab | EditorTab | RedisTab | DiagramTab | HistoryTab | SessionsTab | SchemaDiffTab;
 
 type TabsState = {
   tabs: Tab[];
@@ -47,6 +50,8 @@ type TabsState = {
   openDiagram: (target: DiagramTarget) => void;
   /** focuses the connection's sessions if already open */
   openSessions: (connectionId: string) => void;
+  /** focuses the schema's comparison if already open */
+  openSchemaDiff: (source: DiagramTarget) => void;
   openHistory: () => void;
   activate: (id: string) => void;
   close: (id: string) => void;
@@ -212,6 +217,20 @@ export const useTabs = create<TabsState>()(
             return { activeId: existing.id };
           }
           const tab: SessionsTab = { id: crypto.randomUUID(), kind: "sessions", connectionId };
+          return { tabs: [...state.tabs, tab], activeId: tab.id };
+        }),
+      openSchemaDiff: source =>
+        set(state => {
+          const existing = state.tabs.find(
+            tab =>
+              tab.kind === "schemaDiff" &&
+              tab.connectionId === source.connectionId &&
+              tab.schema === source.schema
+          );
+          if (existing) {
+            return { activeId: existing.id };
+          }
+          const tab: SchemaDiffTab = { id: crypto.randomUUID(), kind: "schemaDiff", ...source };
           return { tabs: [...state.tabs, tab], activeId: tab.id };
         }),
       openHistory: () =>

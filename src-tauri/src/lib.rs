@@ -57,6 +57,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::sql::search_history,
             commands::sql::star_history,
             commands::sql::schema_diagram,
+            commands::sql::compare_schemas,
             commands::export::export_query,
             commands::export::export_table,
             commands::export::export_collection,

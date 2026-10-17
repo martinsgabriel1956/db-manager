@@ -5,11 +5,11 @@ use tauri::{AppHandle, State};
 use crate::AppState;
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, DiagramTable, ExplainResponse,
-    HistoryEntry, RowBatch, RunResponse, SchemaChange, SchemaInfo, TableChanges, TableDdl,
-    TableStructure,
+    HistoryEntry, RowBatch, RunResponse, SchemaChange, SchemaDiff, SchemaInfo, TableChanges,
+    TableDdl, TableStructure,
 };
 use crate::tray;
-use crate::use_cases::{connections, sql};
+use crate::use_cases::{connections, schema_diff, sql};
 
 #[tauri::command]
 #[specta::specta]
@@ -276,6 +276,27 @@ pub async fn close_cursor(state: State<'_, AppState>, cursor_id: String) -> Resu
 #[specta::specta]
 pub async fn cancel_run(state: State<'_, AppState>, run_id: String) -> Result<(), AppError> {
     sql::cancel_run(&state.registry, &run_id).await
+}
+
+/// Differences from the source schema to the target one, with the suggested DDL
+/// (Postgres). Only reads: the DDL is never run from here.
+#[tauri::command]
+#[specta::specta]
+pub async fn compare_schemas(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    source_schema: String,
+    target_connection_id: String,
+    target_schema: String,
+) -> Result<SchemaDiff, AppError> {
+    schema_diff::compare(
+        &state.registry,
+        &source_connection_id,
+        &source_schema,
+        &target_connection_id,
+        &target_schema,
+    )
+    .await
 }
 
 #[tauri::command]
