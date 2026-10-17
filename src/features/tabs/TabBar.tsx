@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
+  Activity,
   Braces,
   ChevronDown,
   Database,
@@ -63,7 +64,9 @@ function tabParts(tab: Tab, connections: ConnectionConfig[]): TabParts {
         ? `db${tab.db}`
         : tab.kind === "diagram"
           ? `ER ${tab.schema}`
-          : tab.title;
+          : tab.kind === "sessions"
+            ? "Sessões"
+            : tab.title;
   return { connection, title };
 }
 
@@ -77,7 +80,8 @@ const ICON = {
   editor: SquareTerminal,
   redis: Database,
   diagram: Network,
-  history: History
+  history: History,
+  sessions: Activity
 };
 
 /** A Mongo collection opens as a table tab, but it holds documents: its own glyph, as in the tree. */

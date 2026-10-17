@@ -30,6 +30,7 @@ import { CommandPalette } from "@/features/palette/CommandPalette";
 import { LegendDialog } from "@/features/palette/LegendDialog";
 import type { PaletteTarget } from "@/features/palette/search";
 import { RedisView } from "@/features/redis/RedisView";
+import { SessionsView } from "@/features/sessions/SessionsView";
 import { TableView } from "@/features/table/TableView";
 import { CloseTabDialog } from "@/features/tabs/CloseTabDialog";
 import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
@@ -64,6 +65,7 @@ export function App() {
     openEditor,
     openRedis,
     openDiagram,
+    openSessions,
     openHistory,
     keepConnections,
     requestClose,
@@ -470,6 +472,10 @@ export function App() {
                     showTabs();
                     openDiagram(target);
                   }}
+                  onOpenSessions={connectionId => {
+                    showTabs();
+                    openSessions(connectionId);
+                  }}
                 />
               )}
             </div>
@@ -808,6 +814,9 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   }
   if (tab.kind === "redis") {
     return <RedisView connection={connection} db={tab.db} />;
+  }
+  if (tab.kind === "sessions") {
+    return <SessionsView connection={connection} />;
   }
   if (tab.kind === "table" && connection.engine === "mongo") {
     return (

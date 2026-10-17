@@ -7,6 +7,7 @@ import {
   type RefObject
 } from "react";
 import {
+  Activity,
   ChevronDown,
   Braces,
   ChevronRight,
@@ -54,6 +55,7 @@ type TreeActions = {
   onOpenEditor: (connectionId: string) => void;
   onOpenRedis: (target: RedisTarget) => void;
   onOpenDiagram: (target: DiagramTarget) => void;
+  onOpenSessions: (connectionId: string) => void;
 };
 
 type ConnectionTreeProps = TreeActions & { connections: ConnectionConfig[] };
@@ -342,7 +344,8 @@ function ConnectionNode({
   onOpenTable,
   onOpenEditor,
   onOpenRedis,
-  onOpenDiagram
+  onOpenDiagram,
+  onOpenSessions
 }: ConnectionNodeProps) {
   const expanded = useExplorer(state => state.expanded.includes(connection.id));
   const setExpanded = useExplorer(state => state.setExpanded);
@@ -364,6 +367,16 @@ function ConnectionNode({
             label: "Nova query SQL",
             icon: <SquareTerminal />,
             onSelect: () => onOpenEditor(connection.id)
+          }
+        ]
+      : []),
+    // a SQLite file has no server, so no sessions
+    ...(connection.engine !== "sqlite"
+      ? [
+          {
+            label: "Sessões ativas",
+            icon: <Activity />,
+            onSelect: () => onOpenSessions(connection.id)
           }
         ]
       : []),
