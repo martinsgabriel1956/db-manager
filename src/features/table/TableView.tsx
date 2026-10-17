@@ -13,7 +13,12 @@ import { ExportButton } from "@/features/export/ExportButton";
 import { ImportCsvButton } from "@/features/import/ImportCsvButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useBrowse, useStructure } from "@/features/explorer/queries";
-import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
+import {
+  CellDetail,
+  DetailSplit,
+  DetailToggle,
+  useCellDetail
+} from "@/features/results/CellDetail";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { BrowseToolbar } from "@/features/table/BrowseToolbar";
 import { RowCount } from "@/features/table/RowCount";
@@ -135,8 +140,9 @@ function TableData({
 }: TableDataProps) {
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
-  // the full value opens on demand (Space or Valor): the grid keeps its width meanwhile
-  const [detailOpen, setDetailOpen] = useState(false);
+  // opens by itself on JSON and long text, otherwise on demand (Space or Valor)
+  const detail = useCellDetail();
+  const detailOpen = detail.open;
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const structure = useStructure(connectionId, schema, table);
 
@@ -256,8 +262,46 @@ function TableData({
           {errorMessage(browse.error)}
         </p>
       )}
-      <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1">
+      <DetailSplit
+        detail={
+          detailOpen &&
+          batch && (
+            <CellDetail
+              column={selected ? (batch.columns[selected.column] ?? null) : null}
+              cell={selectedCell ?? null}
+              onClose={() => {
+                detail.close();
+                focusGrid();
+              }}
+              onSetNull={
+                selected && selectedEditable
+                  ? () => edit.setValue(selected.row, selected.column, null)
+                  : undefined
+              }
+              original={
+                selected
+                  ? (edit.editing.originalFor?.(selected.row, selected.column) ?? null)
+                  : null
+              }
+              onRevert={
+                selected ? () => edit.editing.revert?.(selected.row, selected.column) : undefined
+              }
+              editValue={
+                selected && selectedEditable
+                  ? edit.editing.textFor(selected.row, selected.column)
+                  : null
+              }
+              // a column with a fixed set of values is picked inline, from its list
+              onEdit={
+                selected && selectedEditable && !edit.editing.optionsFor?.(selected.column).length
+                  ? value => edit.setValue(selected.row, selected.column, value)
+                  : undefined
+              }
+            />
+          )
+        }
+      >
+        <div className="h-full min-w-0">
           {batch && (
             <ResultGrid
               columns={batch.columns}
@@ -272,11 +316,16 @@ function TableData({
               }
               sortLockedBy={dirty ? lockedId : undefined}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={next => {
+                setSelected(next);
+                if (next) {
+                  detail.reveal(batch.columns[next.column], edit.rows[next.row]?.[next.column]);
+                }
+              }}
               editing={edit.editing}
               label={`Linhas de ${table}`}
               detailOpen={detailOpen}
-              onToggleDetail={() => setDetailOpen(prev => !prev)}
+              onToggleDetail={detail.toggle}
               readOnlyHint={
                 readOnly
                   ? "Conexão somente leitura: a célula não pode ser editada"
@@ -290,39 +339,7 @@ function TableData({
             <p className="p-3 text-sm text-muted-foreground">Carregando linhas…</p>
           )}
         </div>
-        {detailOpen && batch && (
-          <CellDetail
-            column={selected ? (batch.columns[selected.column] ?? null) : null}
-            cell={selectedCell ?? null}
-            onClose={() => {
-              setDetailOpen(false);
-              focusGrid();
-            }}
-            onSetNull={
-              selected && selectedEditable
-                ? () => edit.setValue(selected.row, selected.column, null)
-                : undefined
-            }
-            original={
-              selected ? (edit.editing.originalFor?.(selected.row, selected.column) ?? null) : null
-            }
-            onRevert={
-              selected ? () => edit.editing.revert?.(selected.row, selected.column) : undefined
-            }
-            editValue={
-              selected && selectedEditable
-                ? edit.editing.textFor(selected.row, selected.column)
-                : null
-            }
-            // a column with a fixed set of values is picked inline, from its list
-            onEdit={
-              selected && selectedEditable && !edit.editing.optionsFor?.(selected.column).length
-                ? value => edit.setValue(selected.row, selected.column, value)
-                : undefined
-            }
-          />
-        )}
-      </div>
+      </DetailSplit>
       {/* one status bar under the data: where you are in the pages, then what is staged.
           It sizes by its own width (the sidebar takes 240–288px): the hint goes first, then the
           labels; Descartar and Salvar never shrink */}
@@ -389,9 +406,7 @@ function TableData({
           {!dirty && browse.isFetching && (
             <span className="text-xs text-muted-foreground">atualizando…</span>
           )}
-          {batch && (
-            <DetailToggle open={detailOpen} onToggle={() => setDetailOpen(prev => !prev)} />
-          )}
+          {batch && <DetailToggle open={detailOpen} onToggle={detail.toggle} />}
           {batch && (
             <CopyRowsMenu
               columns={batch.columns}

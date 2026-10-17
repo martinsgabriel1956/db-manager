@@ -29,7 +29,12 @@ import {
 import { ExportButton } from "@/features/export/ExportButton";
 import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
-import { CellDetail, DetailToggle } from "@/features/results/CellDetail";
+import {
+  CellDetail,
+  DetailSplit,
+  DetailToggle,
+  useCellDetail
+} from "@/features/results/CellDetail";
 import { PlanView } from "@/features/results/PlanView";
 import { errorMessage } from "@/lib/errors";
 import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
@@ -312,8 +317,9 @@ function ResultsPanel({
   superseded = false
 }: ResultsPanelProps) {
   const [selected, setSelected] = useState<SelectedCell | null>(null);
-  // the full value opens on demand (Space or Valor): the grid keeps its width meanwhile
-  const [detailOpen, setDetailOpen] = useState(false);
+  // opens by itself on JSON and long text, otherwise on demand (Space or Valor)
+  const detail = useCellDetail();
+  const detailOpen = detail.open;
   const gridAreaRef = useRef<HTMLDivElement>(null);
   const result = summary(state);
   const text = superseded && result ? `Resultado anterior · ${result}` : result;
@@ -421,7 +427,7 @@ function ResultsPanel({
           <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <DetailToggle open={detailOpen} onToggle={() => setDetailOpen(prev => !prev)} />
+          <DetailToggle open={detailOpen} onToggle={detail.toggle} />
           <CopyRowsMenu
             columns={state.columns}
             rows={state.rows}
@@ -449,7 +455,20 @@ function ResultsPanel({
         </p>
       )}
       <div ref={gridAreaRef} className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1">
+        <DetailSplit
+          detail={
+            detailOpen && (
+              <CellDetail
+                column={selected ? (state.columns[selected.column] ?? null) : null}
+                cell={selectedCell ?? null}
+                onClose={() => {
+                  detail.close();
+                  gridAreaRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
+                }}
+              />
+            )
+          }
+        >
           <ResultGrid
             columns={state.columns}
             rows={state.rows}
@@ -457,23 +476,18 @@ function ResultsPanel({
             isLoadingMore={state.loadingMore}
             onLoadMore={onLoadMore}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={next => {
+              setSelected(next);
+              if (next) {
+                detail.reveal(state.columns[next.column], state.rows[next.row]?.[next.column]);
+              }
+            }}
             label="Resultado da query"
             detailOpen={detailOpen}
-            onToggleDetail={() => setDetailOpen(prev => !prev)}
+            onToggleDetail={detail.toggle}
             readOnlyHint="Resultado de query: somente leitura; para editar, abra a tabela"
           />
-        </div>
-        {detailOpen && (
-          <CellDetail
-            column={selected ? (state.columns[selected.column] ?? null) : null}
-            cell={selectedCell ?? null}
-            onClose={() => {
-              setDetailOpen(false);
-              gridAreaRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
-            }}
-          />
-        )}
+        </DetailSplit>
       </div>
     </div>
   );

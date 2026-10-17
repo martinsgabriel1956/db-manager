@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { PanelRight, X } from "lucide-react";
 import type { Cell, ResultColumn } from "@/bindings";
 import { Button } from "@/components/ui/button";
-import { detailText, prettyJson } from "@/features/results/format";
+import { JsonEditor } from "@/features/mongo/JsonEditor";
+import { detailText, GRID_TEXT_LIMIT, prettyJson } from "@/features/results/format";
+import { jsonProblem } from "@/features/results/jsonCheck";
 import { cn } from "@/lib/utils";
 
 type CellDetailProps = {
@@ -20,6 +23,70 @@ type CellDetailProps = {
   onEdit?: (value: string | null) => void;
 };
 
+/** json and jsonb (Postgres), JSON (MySQL): edited as JSON, checked before it stages. */
+export function isJsonColumn(column: ResultColumn): boolean {
+  const type = column.typeName.toLowerCase();
+  return type === "json" || type === "jsonb";
+}
+
+/** A value the grid's single line cannot show: JSON, or text cut short or over several lines. */
+export function wantsPanel(column: ResultColumn, cell: Cell): boolean {
+  if (isJsonColumn(column)) {
+    return true;
+  }
+  return cell.t === "text" && (cell.v.length > GRID_TEXT_LIMIT || cell.v.includes("\n"));
+}
+
+/**
+ * The value panel's state. It opens by itself on a value the grid cannot show whole; once
+ * closed it stays closed for the rest of the visit, until Space or Valor opens it again.
+ */
+export function useCellDetail() {
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  return {
+    open,
+    toggle: () => {
+      setOpen(!open);
+      setDismissed(open);
+    },
+    close: () => {
+      setOpen(false);
+      setDismissed(true);
+    },
+    /** call on each selection: opens the panel for JSON and long text */
+    reveal: (column: ResultColumn | undefined, cell: Cell | undefined) => {
+      if (!dismissed && column && cell && wantsPanel(column, cell)) {
+        setOpen(true);
+      }
+    }
+  };
+}
+
+type DetailSplitProps = { children: ReactNode; detail: ReactNode };
+
+/** The grid, and beside it the value panel, resizable by mouse or keyboard (arrows on the bar). */
+export function DetailSplit({ children, detail }: DetailSplitProps) {
+  return (
+    <Group orientation="horizontal" className="min-h-0 flex-1">
+      <Panel id="grid" minSize={200} className="min-w-0">
+        {children}
+      </Panel>
+      {detail && (
+        <>
+          <Separator
+            aria-label="Largura do painel do valor"
+            className="relative w-px bg-border outline-none after:absolute after:inset-y-0 after:-inset-x-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40"
+          />
+          <Panel id="detail" defaultSize="32" minSize={240} maxSize="75">
+            {detail}
+          </Panel>
+        </>
+      )}
+    </Group>
+  );
+}
+
 export function CellDetail({
   column,
   cell,
@@ -34,7 +101,7 @@ export function CellDetail({
     <aside
       aria-label="Valor da célula"
       onKeyDown={event => event.key === "Escape" && onClose()}
-      className="flex w-80 shrink-0 flex-col border-l"
+      className="flex h-full w-full flex-col"
     >
       <div className="flex items-center justify-between gap-2 border-b bg-muted px-3 py-2">
         <div className="min-w-0">
@@ -83,6 +150,8 @@ function CellValue({
   editValue,
   onEdit
 }: CellValueProps) {
+  const json = isJsonColumn(column);
+  const label = `${original ? "Depois" : "Valor"} de ${column.name}`;
   return (
     <>
       {original && (
@@ -111,16 +180,35 @@ function CellValue({
           )}
         </div>
       )}
-      {onEdit ? (
-        <ValueEditor
+      {json && onEdit && (
+        <JsonValueEditor
           key={column.name}
-          label={`${original ? "Depois" : "Valor"} de ${column.name}`}
+          label={label}
           initial={editValue ?? null}
-          // jsonb stores its own normal form: indented here, it reads like the panel always did
-          indentJson={column.typeName === "jsonb"}
           onCommit={onEdit}
         />
-      ) : (
+      )}
+      {json && !onEdit && cell.t === "json" && (
+        // formatted for reading only: nothing is written from here
+        <div className="flex min-h-0 flex-1 flex-col p-2">
+          <JsonEditor
+            key={`${column.name}:read`}
+            value={prettyJson(cell.v)}
+            onChange={() => undefined}
+            label={`Valor de ${column.name} (somente leitura)`}
+            readOnly
+          />
+        </div>
+      )}
+      {!json && onEdit && (
+        <ValueEditor
+          key={column.name}
+          label={label}
+          initial={editValue ?? null}
+          onCommit={onEdit}
+        />
+      )}
+      {!onEdit && (!json || cell.t !== "json") && (
         // focusable so a long value scrolls from the keyboard
         <pre
           tabIndex={0}
@@ -159,28 +247,30 @@ type ValueEditorProps = {
   label: string;
   /** null is NULL, shown as a placeholder */
   initial: string | null;
-  indentJson: boolean;
   onCommit: (value: string | null) => void;
 };
 
-/**
- * The value written where it can be read whole: long text and JSON are edited here, not in
- * a 28px line. It stages like the inline editor, on leaving the field or Ctrl+Enter, and only
- * when the text changed, so opening a NULL never writes ''.
- */
-function ValueEditor({ label, initial, indentJson, onCommit }: ValueEditorProps) {
-  const start = initial !== null && indentJson ? prettyJson(initial) : initial;
-  const [draft, setDraft] = useState(start);
-  // a revert or another cell starts the draft over; after a commit it already matches, and the
-  // field keeps focus (remounting it would drop the caret mid-edit)
-  const [base, setBase] = useState(start);
-  if (base !== start) {
-    setBase(start);
-    setDraft(start);
+/** A revert or another cell starts the draft over; after a commit it already matches. */
+function useDraft(initial: string | null) {
+  const [draft, setDraft] = useState(initial);
+  const [base, setBase] = useState(initial);
+  if (base !== initial) {
+    setBase(initial);
+    setDraft(initial);
   }
+  return [draft, setDraft] as const;
+}
+
+/**
+ * The value written where it can be read whole: long text is edited here, not in a 28px line,
+ * wrapped at the panel's width. It stages like the inline editor, on leaving the field or
+ * Ctrl+Enter, and only when the text changed, so opening a NULL never writes ''.
+ */
+function ValueEditor({ label, initial, onCommit }: ValueEditorProps) {
+  const [draft, setDraft] = useDraft(initial);
 
   function commit() {
-    if (draft !== start) {
+    if (draft !== initial) {
       onCommit(draft);
     }
   }
@@ -207,18 +297,70 @@ function ValueEditor({ label, initial, indentJson, onCommit }: ValueEditorProps)
           if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
             event.preventDefault();
             commit();
-          } else if (event.key === "Escape" && draft !== start) {
+          } else if (event.key === "Escape" && draft !== initial) {
             // Esc first drops the draft; a second one closes the panel
             event.stopPropagation();
-            setDraft(start);
+            setDraft(initial);
           }
         }}
         // boxed like every other field: without the edge it reads as a display
         className="min-h-24 flex-1 resize-none border border-input bg-background p-2.5 font-mono text-xs break-all outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:border-ring focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
       />
       <p id="value-editor-keys" className="text-xs text-muted-foreground">
-        Ctrl+Enter ou sair do campo deixa como alteração pendente · Esc desfaz o rascunho
+        Ctrl+Enter ou sair do campo guarda como pendente · Esc desfaz o rascunho
       </p>
+    </div>
+  );
+}
+
+/**
+ * JSON in CodeMirror, starting from the text exactly as stored: nothing is re-indented or
+ * parsed unless the user asks for "Formatar", so numbers beyond 2^53 and the stored layout
+ * survive. An invalid draft says the line and blocks Aplicar.
+ */
+function JsonValueEditor({ label, initial, onCommit }: ValueEditorProps) {
+  const [draft, setDraft] = useDraft(initial);
+  const changed = draft !== initial;
+  const problem = draft === null ? null : jsonProblem(draft);
+  const canApply = changed && draft !== null && problem === null;
+
+  function apply() {
+    if (canApply) {
+      onCommit(draft);
+    }
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
+      {draft === null && (
+        <p className="text-xs text-muted-foreground">
+          Gravado como <span className="font-mono italic">NULL</span>: digite o JSON para substituir
+        </p>
+      )}
+      <div className="min-h-24 flex-1">
+        <JsonEditor value={draft ?? ""} onChange={setDraft} onRun={apply} label={label} />
+      </div>
+      {problem && (
+        // polite: it changes with every keystroke while the JSON is half typed
+        <p role="status" className="text-xs text-destructive">
+          JSON inválido na linha {problem.line}, coluna {problem.column}: {problem.message}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="xs"
+          variant="outline"
+          disabled={draft === null || problem !== null}
+          title="Reindenta o texto, sem converter os números"
+          onClick={() => draft !== null && setDraft(prettyJson(draft))}
+        >
+          Formatar
+        </Button>
+        <Button size="xs" disabled={!canApply} aria-keyshortcuts="Control+Enter" onClick={apply}>
+          Aplicar
+        </Button>
+        <p className="text-xs text-muted-foreground">Ctrl+Enter também aplica</p>
+      </div>
     </div>
   );
 }
