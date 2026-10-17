@@ -45,6 +45,11 @@ export const commands = {
 	searchHistory: (text: string, connectionId: string | null, starredOnly: boolean) => __TAURI_INVOKE<HistoryEntry[]>("search_history", { text, connectionId, starredOnly }),
 	starHistory: (id: number, starred: boolean) => __TAURI_INVOKE<null>("star_history", { id, starred }),
 	schemaDiagram: (connectionId: string, schema: string) => __TAURI_INVOKE<DiagramTable[]>("schema_diagram", { connectionId, schema }),
+	/**
+	 *  Differences from the source schema to the target one, with the suggested DDL
+	 *  (Postgres). Only reads: the DDL is never run from here.
+	 */
+	compareSchemas: (sourceConnectionId: string, sourceSchema: string, targetConnectionId: string, targetSchema: string) => __TAURI_INVOKE<SchemaDiff>("compare_schemas", { sourceConnectionId, sourceSchema, targetConnectionId, targetSchema }),
 	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
@@ -87,6 +92,8 @@ export const commands = {
 	 */
 	redisMonitor: (connectionId: string, sessionId: string, confirmed: boolean, onEvent: Channel<MonitorEvent>) => __TAURI_INVOKE<LiveStart>("redis_monitor", { connectionId, sessionId, confirmed, onEvent }),
 	serverModules: (connectionId: string) => __TAURI_INVOKE<RedisModule[]>("server_modules", { connectionId }),
+	listSessions: (connectionId: string) => __TAURI_INVOKE<SessionList>("list_sessions", { connectionId }),
+	killSession: (connectionId: string, sessionId: string, action: KillAction, confirmed: boolean) => __TAURI_INVOKE<KillResponse>("kill_session", { connectionId, sessionId, action, confirmed }),
 };
 
 /* Types */
@@ -286,6 +293,17 @@ export type DiagramTable = {
 	foreignKeys: ForeignKeyInfo[],
 };
 
+/**  One difference; `None` on the side that does not have it. */
+export type DiffItem = {
+	kind: DiffKind,
+	name: string,
+	source: string | null,
+	target: string | null,
+};
+
+/**  What a schema comparison found different in a table. */
+export type DiffKind = "column" | "primaryKey" | "index" | "constraint" | "foreignKey";
+
 export type DocumentFormat = 
 /**  one Extended JSON document per line */
 "ndjson" | 
@@ -480,6 +498,15 @@ export type KeychainOutcome = {
 	keychainWarning: string | null,
 };
 
+/**  What the sessions screen can do to a session; each engine supports some of them. */
+export type KillAction = 
+/**  PG `pg_cancel_backend`, MySQL `KILL QUERY`, Mongo `killOp`: the session stays */
+"cancelQuery" | 
+/**  PG `pg_terminate_backend`, MySQL `KILL`, Redis `CLIENT KILL ID`: the connection drops */
+"endSession";
+
+export type KillResponse = { status: "done" } | { status: "needsConfirmation"; confirmation: Confirmation };
+
 export type LiveStart = { status: "started" } | { status: "needsConfirmation"; confirmation: Confirmation };
 
 /**
@@ -610,6 +637,21 @@ export type SchemaChange = { kind: "createTable"; columns: ColumnDefinition[]; p
 /**  Postgres and MySQL; SQLite only declares constraints in CREATE TABLE */
 { kind: "addConstraint"; name: string; constraint: Constraint } | { kind: "dropConstraint"; name: string };
 
+/**  The source schema compared with the target one, table by table. */
+export type SchemaDiff = {
+	onlyInSource: string[],
+	onlyInTarget: string[],
+	/**  tables on both sides that differ */
+	changed: TableDiff[],
+	/**  tables on both sides with nothing different */
+	equal: number,
+	/**
+	 *  what would bring the target to the source, shown and never run by the app;
+	 *  None where there is no generator yet (MySQL, SQLite)
+	 */
+	ddl: string | null,
+};
+
 export type SchemaInfo = {
 	name: string,
 	relations: Relation[],
@@ -639,6 +681,43 @@ export type SecretChange = { action: "keep" } | { action: "set"; value: string }
  *  it: the front never reads a stored secret, not even to copy it.
  */
 { action: "copyFrom"; value: string };
+
+/**  One server session (Mongo: one operation in progress), as the server reports it. */
+export type SessionInfo = {
+	/**  pid (PG), thread id (MySQL), opid (Mongo), client id (Redis) */
+	id: string,
+	user: string | null,
+	database: string | null,
+	state: string | null,
+	/**  in the current state (PG, MySQL), running (Mongo) or idle (Redis) */
+	seconds: number | null,
+	/**  address and application name */
+	client: string | null,
+	/**  the statement or last command */
+	query: string | null,
+	/**  the session that ran this listing: the app's own */
+	own: boolean,
+};
+
+export type SessionList = {
+	/**  the query or command that produced the list, shown on the screen */
+	statement: string,
+	sessions: SessionInfo[],
+	/**  what this engine can do to a session */
+	actions: KillAction[],
+	/**  Redis only: `SLOWLOG GET` */
+	slowLog: SlowCommand[],
+};
+
+/**  One entry of Redis' SLOWLOG. */
+export type SlowCommand = {
+	id: string,
+	/**  unix seconds */
+	startedAt: number,
+	durationUs: number,
+	command: string,
+	client: string | null,
+};
 
 export type Sort = {
 	column: string,
@@ -683,6 +762,11 @@ export type TableDdl = {
 	sql: string,
 	/**  true when rebuilt from the catalog (Postgres keeps no CREATE TABLE text) */
 	reconstructed: boolean,
+};
+
+export type TableDiff = {
+	table: string,
+	items: DiffItem[],
 };
 
 export type TableStructure = {

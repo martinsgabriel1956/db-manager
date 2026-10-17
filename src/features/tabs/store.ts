@@ -1,10 +1,17 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { Filter } from "@/bindings";
 import { tauriStorage } from "@/features/tabs/storage";
 
 export type TableTarget = { connectionId: string; schema: string; table: string };
 
-export type TableTab = { id: string; kind: "table" } & TableTarget;
+/**
+ * The filters a foreign key opened the table with; a new `id` starts the view over with
+ * them (not persisted: the filters you changed since are not saved either).
+ */
+export type TableFollow = { id: string; filters: Filter[] };
+
+export type TableTab = { id: string; kind: "table"; follow?: TableFollow } & TableTarget;
 export type EditorTab = {
   id: string;
   kind: "editor";
@@ -17,13 +24,22 @@ export type RedisTab = { id: string; kind: "redis" } & RedisTarget;
 export type DiagramTarget = { connectionId: string; schema: string };
 export type DiagramTab = { id: string; kind: "diagram" } & DiagramTarget;
 export type HistoryTab = { id: "history"; kind: "history" };
-export type Tab = TableTab | EditorTab | RedisTab | DiagramTab | HistoryTab;
+export type SessionsTab = { id: string; kind: "sessions"; connectionId: string };
+/** opened from a schema: the comparison's source, the target is picked in the view */
+export type SchemaDiffTab = { id: string; kind: "schemaDiff" } & DiagramTarget;
+export type Tab =
+  TableTab | EditorTab | RedisTab | DiagramTab | HistoryTab | SessionsTab | SchemaDiffTab;
 
 type TabsState = {
   tabs: Tab[];
   activeId: string | null;
   /** focuses the table's tab if already open */
   openTable: (target: TableTarget) => void;
+  /**
+   * Opens (or focuses) the table filtered by `filters`. False when that table holds staged
+   * edits: its rows are keyed by position, so the filter cannot change under them.
+   */
+  followTable: (target: TableTarget, filters: Filter[]) => boolean;
   /** always a new tab: several editors per connection are allowed */
   openEditor: (connectionId: string, sql?: string) => void;
   /** the editor openEditor just created: it takes focus when it mounts (not persisted) */
@@ -32,6 +48,10 @@ type TabsState = {
   openRedis: (target: RedisTarget) => void;
   /** focuses the schema's diagram if already open */
   openDiagram: (target: DiagramTarget) => void;
+  /** focuses the connection's sessions if already open */
+  openSessions: (connectionId: string) => void;
+  /** focuses the schema's comparison if already open */
+  openSchemaDiff: (source: DiagramTarget) => void;
   openHistory: () => void;
   activate: (id: string) => void;
   close: (id: string) => void;
@@ -95,7 +115,20 @@ function sameTarget(a: Tab, b: Tab): boolean {
   if (a.kind === "editor" || b.kind === "editor") {
     return a.id === b.id;
   }
-  return JSON.stringify({ ...a, id: "" }) === JSON.stringify({ ...b, id: "" });
+  // the filters a table was followed with do not make it another table
+  return (
+    JSON.stringify({ ...a, id: "", follow: undefined }) ===
+    JSON.stringify({ ...b, id: "", follow: undefined })
+  );
+}
+
+function sameTable(tab: Tab, target: TableTarget): tab is TableTab {
+  return (
+    tab.kind === "table" &&
+    tab.connectionId === target.connectionId &&
+    tab.schema === target.schema &&
+    tab.table === target.table
+  );
 }
 
 /** After closing the active tab, focus the nearest open tab to its left (or else to its right). */
@@ -111,19 +144,31 @@ export const useTabs = create<TabsState>()(
       ...INITIAL_TABS,
       openTable: target =>
         set(state => {
-          const existing = state.tabs.find(
-            tab =>
-              tab.kind === "table" &&
-              tab.connectionId === target.connectionId &&
-              tab.schema === target.schema &&
-              tab.table === target.table
-          );
+          const existing = state.tabs.find(tab => sameTable(tab, target));
           if (existing) {
             return { activeId: existing.id };
           }
           const tab: TableTab = { id: crypto.randomUUID(), kind: "table", ...target };
           return { tabs: [...state.tabs, tab], activeId: tab.id };
         }),
+      followTable: (target, filters) => {
+        const { tabs, pending } = get();
+        if ((pending[tableKey(target)] ?? 0) > 0) {
+          return false;
+        }
+        const follow: TableFollow = { id: crypto.randomUUID(), filters };
+        const existing = tabs.find(tab => sameTable(tab, target));
+        if (existing) {
+          set({
+            tabs: tabs.map(tab => (tab.id === existing.id ? { ...existing, follow } : tab)),
+            activeId: existing.id
+          });
+          return true;
+        }
+        const tab: TableTab = { id: crypto.randomUUID(), kind: "table", ...target, follow };
+        set({ tabs: [...tabs, tab], activeId: tab.id });
+        return true;
+      },
       openEditor: (connectionId, sql = "") =>
         set(state => {
           const tab: EditorTab = {
@@ -161,6 +206,31 @@ export const useTabs = create<TabsState>()(
             return { activeId: existing.id };
           }
           const tab: DiagramTab = { id: crypto.randomUUID(), kind: "diagram", ...target };
+          return { tabs: [...state.tabs, tab], activeId: tab.id };
+        }),
+      openSessions: connectionId =>
+        set(state => {
+          const existing = state.tabs.find(
+            tab => tab.kind === "sessions" && tab.connectionId === connectionId
+          );
+          if (existing) {
+            return { activeId: existing.id };
+          }
+          const tab: SessionsTab = { id: crypto.randomUUID(), kind: "sessions", connectionId };
+          return { tabs: [...state.tabs, tab], activeId: tab.id };
+        }),
+      openSchemaDiff: source =>
+        set(state => {
+          const existing = state.tabs.find(
+            tab =>
+              tab.kind === "schemaDiff" &&
+              tab.connectionId === source.connectionId &&
+              tab.schema === source.schema
+          );
+          if (existing) {
+            return { activeId: existing.id };
+          }
+          const tab: SchemaDiffTab = { id: crypto.randomUUID(), kind: "schemaDiff", ...source };
           return { tabs: [...state.tabs, tab], activeId: tab.id };
         }),
       openHistory: () =>
@@ -270,7 +340,10 @@ export const useTabs = create<TabsState>()(
     {
       name: "tabs",
       storage: createJSONStorage(() => tauriStorage),
-      partialize: state => ({ tabs: state.tabs, activeId: state.activeId })
+      partialize: state => ({
+        tabs: state.tabs.map(tab => (tab.kind === "table" ? { ...tab, follow: undefined } : tab)),
+        activeId: state.activeId
+      })
     }
   )
 );

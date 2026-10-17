@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpRight } from "lucide-react";
 import type { Cell, ResultColumn, Sort } from "@/bindings";
 import { formatCell, gridText, isNumeric } from "@/features/results/format";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,13 @@ export type GridEditing = {
   originalFor?: (row: number, column: number) => Cell | null;
   /** Ctrl+Z on an edited cell: back to the stored value */
   revert?: (row: number, column: number) => void;
+};
+
+/** A cell that leads somewhere else (a foreign key): an icon in the cell and Alt+Enter. */
+export type CellLink = {
+  /** what following does, read aloud and on hover; null when the cell leads nowhere */
+  label: (row: number, column: number) => string | null;
+  follow: (row: number, column: number) => void;
 };
 
 /** `value` is null while the cell holds NULL; `initial` is what editing started from. */
@@ -50,6 +57,7 @@ type ResultGridProps = {
   /** Space toggles the full-value panel; Escape closes it before clearing the selection */
   detailOpen?: boolean;
   onToggleDetail?: () => void;
+  link?: CellLink;
 };
 
 const ROW_HEIGHT = 28;
@@ -160,7 +168,8 @@ export function ResultGrid({
   readOnlyHint = "Esta célula não pode ser editada",
   label = "Resultado",
   detailOpen = false,
-  onToggleDetail
+  onToggleDetail,
+  link
 }: ResultGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // fitted once per column set: paging or loading more rows keeps the widths you dragged
@@ -203,8 +212,18 @@ export function ResultGrid({
     editing ? "Enter ou F2 edita a célula, Ctrl+Shift+N define NULL" : null,
     editing?.revert ? "Ctrl+Z desfaz a alteração da célula" : null,
     onToggleDetail ? "Espaço mostra o valor inteiro" : null,
+    link ? "Alt+Enter abre a linha apontada pela chave estrangeira" : null,
     "Alt+← → ajusta a largura da coluna"
   ].filter(Boolean);
+
+  function followLink(row: number, column: number) {
+    if (link?.label(row, column)) {
+      link.follow(row, column);
+    } else {
+      const reason = "Nada a seguir: a célula não é chave estrangeira, está NULL ou não foi salva";
+      setRefusal(prev => (prev === reason ? `${reason} ` : reason));
+    }
+  }
 
   function toggleDetail() {
     onToggleDetail?.();
@@ -272,7 +291,13 @@ export function ResultGrid({
     if (event.target !== event.currentTarget || rows.length === 0 || columns.length === 0) {
       return;
     }
-    if (selected && (event.key === "Enter" || event.key === "F2")) {
+    if (selected && link && event.altKey && !event.shiftKey && event.key === "Enter") {
+      event.preventDefault();
+      followLink(selected.row, selected.column);
+      return;
+    }
+    // Alt+Enter belongs to links (and Alt+Shift+Enter to the view around the grid), never to editing
+    if (selected && !event.altKey && (event.key === "Enter" || event.key === "F2")) {
       event.preventDefault();
       startEditing(selected.row, selected.column);
       return;
@@ -397,6 +422,7 @@ export function ResultGrid({
         aria-keyshortcuts={[
           editing ? "Enter F2" : null,
           onToggleDetail ? "Space" : null,
+          link ? "Alt+Enter" : null,
           "Alt+ArrowLeft Alt+ArrowRight"
         ]
           .filter(Boolean)
@@ -554,6 +580,7 @@ export function ResultGrid({
                       ? (editing?.originalFor?.(item.index, columnIndex) ?? null)
                       : null;
                     const isDeveloping = editing?.isDeveloping?.(item.index, columnIndex) ?? false;
+                    const linkLabel = link?.label(item.index, columnIndex) ?? null;
                     return (
                       <div
                         key={`${columnIndex}:${columns[columnIndex]?.name}`}
@@ -568,6 +595,7 @@ export function ResultGrid({
                         style={{ width: size, left: start }}
                         className={cn(
                           "absolute top-0 h-full cursor-default truncate border-r px-2 leading-7",
+                          linkLabel && "pr-7",
                           isNumeric(cell) && "text-right",
                           cell.t === "null" && "text-muted-foreground italic",
                           cell.t === "unknown" && "text-muted-foreground",
@@ -601,6 +629,23 @@ export function ResultGrid({
                         ) : (
                           <>
                             {gridText(cell)}
+                            {linkLabel && (
+                              // the grid keeps focus (active descendant): the mouse's copy of Alt+Enter
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                aria-label={linkLabel}
+                                title={`${linkLabel} (Alt+Enter)`}
+                                className="absolute inset-y-0 right-0 flex w-6 items-center justify-center bg-background/80 text-muted-foreground hover:text-select"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onSelect({ row: item.index, column: columnIndex });
+                                  link?.follow(item.index, columnIndex);
+                                }}
+                              >
+                                <ArrowUpRight aria-hidden className="size-3.5" />
+                              </button>
+                            )}
                             {/* the row's state is read once, on its first cell in view */}
                             {columnIndex === firstColumn && status === "new" && (
                               <span className="sr-only"> (linha nova, não salva)</span>

@@ -62,7 +62,9 @@ const SHORTCUT_GROUPS = [
       ["Ctrl+Z", "Desfazer a alteração da célula"],
       ["Ctrl+S", "Salvar as alterações da tabela"],
       ["Espaço", "Mostrar o valor inteiro da célula"],
-      ["Alt+← →", "Estreitar ou alargar a coluna"]
+      ["Alt+← →", "Estreitar ou alargar a coluna"],
+      ["Alt+Enter", "Abrir a linha apontada pela chave estrangeira da célula"],
+      ["Alt+Shift+Enter", "Tabelas com linhas que apontam para a linha selecionada"]
     ]
   ],
   [

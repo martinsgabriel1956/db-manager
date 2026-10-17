@@ -149,7 +149,22 @@ pub async fn schema_diagram(
     schema: &str,
 ) -> Result<Vec<DiagramTable>, AppError> {
     let connection = registry.connection(connection_id)?;
-    let sql = connection.sql()?;
+    Ok(schema_tables(connection.sql()?, schema)
+        .await?
+        .into_iter()
+        .map(|(name, structure)| DiagramTable {
+            name,
+            columns: structure.columns,
+            foreign_keys: structure.foreign_keys,
+        })
+        .collect())
+}
+
+/// Every table of the schema (views left out) with its structure, in the catalog's order.
+pub(crate) async fn schema_tables(
+    sql: &SqlConnection,
+    schema: &str,
+) -> Result<Vec<(String, TableStructure)>, AppError> {
     let tables: Vec<String> = sql
         .list_schemas()
         .await?
@@ -166,11 +181,7 @@ pub async fn schema_diagram(
     stream::iter(tables)
         .map(|name| async move {
             let structure = sql.table_structure(schema, &name).await?;
-            Ok::<_, AppError>(DiagramTable {
-                name,
-                columns: structure.columns,
-                foreign_keys: structure.foreign_keys,
-            })
+            Ok::<_, AppError>((name, structure))
         })
         .buffered(8)
         .try_collect()

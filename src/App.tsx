@@ -30,6 +30,8 @@ import { CommandPalette } from "@/features/palette/CommandPalette";
 import { LegendDialog } from "@/features/palette/LegendDialog";
 import type { PaletteTarget } from "@/features/palette/search";
 import { RedisView } from "@/features/redis/RedisView";
+import { SchemaDiffView } from "@/features/schemaDiff/SchemaDiffView";
+import { SessionsView } from "@/features/sessions/SessionsView";
 import { TableView } from "@/features/table/TableView";
 import { CloseTabDialog } from "@/features/tabs/CloseTabDialog";
 import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
@@ -64,6 +66,8 @@ export function App() {
     openEditor,
     openRedis,
     openDiagram,
+    openSessions,
+    openSchemaDiff,
     openHistory,
     keepConnections,
     requestClose,
@@ -470,6 +474,14 @@ export function App() {
                     showTabs();
                     openDiagram(target);
                   }}
+                  onOpenSessions={connectionId => {
+                    showTabs();
+                    openSessions(connectionId);
+                  }}
+                  onOpenSchemaDiff={source => {
+                    showTabs();
+                    openSchemaDiff(source);
+                  }}
                 />
               )}
             </div>
@@ -809,6 +821,18 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   if (tab.kind === "redis") {
     return <RedisView connection={connection} db={tab.db} />;
   }
+  if (tab.kind === "sessions") {
+    return <SessionsView connection={connection} />;
+  }
+  if (tab.kind === "schemaDiff") {
+    return (
+      <SchemaDiffView
+        connections={connections}
+        connectionId={tab.connectionId}
+        schema={tab.schema}
+      />
+    );
+  }
   if (tab.kind === "table" && connection.engine === "mongo") {
     return (
       <CollectionView
@@ -822,6 +846,10 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   if (tab.kind === "table") {
     return (
       <TableView
+        // a foreign key followed here starts the view over with its filter (never with
+        // staged edits: followTable refuses those)
+        key={tab.follow?.id}
+        initialFilters={tab.follow?.filters}
         connectionId={tab.connectionId}
         schema={tab.schema}
         table={tab.table}

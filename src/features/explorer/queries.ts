@@ -22,13 +22,18 @@ export function useSchemas(connectionId: string, enabled: boolean) {
   });
 }
 
-export function useStructure(connectionId: string, schema: string, table: string) {
-  return useQuery({
+/** Shared by the view and by whoever needs a table's structure once (fetchQuery). */
+export function structureQuery(connectionId: string, schema: string, table: string) {
+  return {
     queryKey: ["structure", connectionId, schema, table],
     queryFn: () =>
       connected(connectionId, () => commands.tableStructure(connectionId, schema, table)),
     staleTime: Infinity
-  });
+  };
+}
+
+export function useStructure(connectionId: string, schema: string, table: string) {
+  return useQuery(structureQuery(connectionId, schema, table));
 }
 
 export function useDdl(connectionId: string, schema: string, table: string) {

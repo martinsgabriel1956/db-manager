@@ -19,7 +19,7 @@ use mongodb::{Client, bson};
 
 use crate::domain::{
     AppError, ChangeEvent, ConnectionConfig, DocumentPage, FindRequest, IndexInfo, Relation,
-    RelationKind, SchemaInfo, Target, TlsMode,
+    RelationKind, SchemaInfo, SessionInfo, Target, TlsMode,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -31,6 +31,8 @@ const MAX_TIME_EXPIRED: i32 = 50;
 const INTERRUPTED: i32 = 11601;
 /// "The $changeStream stage is only supported on replica sets"
 const CHANGE_STREAM_STANDALONE: i32 = 40573;
+/// tags the sessions listing, so it can find itself among the operations
+const SESSIONS_COMMENT: &str = "ordo-sessoes";
 
 /// A failed `insert_many`: the index of the refused document, when the server named one.
 #[derive(Debug)]
@@ -448,6 +450,35 @@ impl MongoAdapter {
         Ok(())
     }
 
+    /// Operations in progress (`$currentOp`, every user's). Tagged with a comment so the
+    /// listing finds itself: that operation is the app's own.
+    pub async fn sessions(&self) -> Result<Vec<SessionInfo>, AppError> {
+        let options = AggregateOptions::builder()
+            .comment(Some(Bson::String(SESSIONS_COMMENT.to_string())))
+            .max_time(self.max_time())
+            .build();
+        let mut cursor = self
+            .client
+            .database("admin")
+            .aggregate(vec![
+                doc! { "$currentOp": { "allUsers": true, "idleConnections": false } },
+            ])
+            .with_options(options)
+            .await
+            .map_err(|err| self.error(err))?;
+        let mut sessions = Vec::new();
+        while let Some(operation) = cursor.try_next().await.map_err(|err| self.error(err))? {
+            sessions.push(session_of(&operation));
+        }
+        Ok(sessions)
+    }
+
+    /// `killOp` by the operation id `$currentOp` reported (a number, or "shard:number").
+    pub async fn kill_op(&self, opid: Bson) -> Result<(), AppError> {
+        self.run_command("admin", doc! { "killOp": 1, "op": opid })
+            .await
+    }
+
     /// Opens a change stream on the collection; `pipeline` filters or reshapes the events.
     pub async fn watch(
         &self,
@@ -523,6 +554,64 @@ fn change_event(event: Document) -> ChangeEvent {
     }
 }
 
+/// Commands longer than this are cut on the sessions screen.
+const OPERATION_TEXT_LIMIT: usize = 2000;
+
+/// One `$currentOp` document as a session row.
+fn session_of(operation: &Document) -> SessionInfo {
+    let text = |key: &str| {
+        operation
+            .get_str(key)
+            .ok()
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let number = |key: &str| match operation.get(key) {
+        Some(Bson::Int32(value)) => Some(i64::from(*value)),
+        Some(Bson::Int64(value)) => Some(*value),
+        _ => None,
+    };
+    let command = operation.get_document("command").ok();
+    let own = command
+        .and_then(|command| command.get_str("comment").ok())
+        .is_some_and(|comment| comment == SESSIONS_COMMENT);
+    let query = command.map(|command| {
+        let text = ejson::to_text(command.clone());
+        match text.char_indices().nth(OPERATION_TEXT_LIMIT) {
+            Some((cut, _)) => format!("{}…", &text[..cut]),
+            None => text,
+        }
+    });
+    let user = operation
+        .get_array("effectiveUsers")
+        .ok()
+        .and_then(|users| users.first()?.as_document()?.get_str("user").ok())
+        .map(str::to_string);
+    let client = match (text("client"), text("appName")) {
+        (Some(client), Some(app)) => Some(format!("{client} · {app}")),
+        (client, app) => client.or(app),
+    };
+    let state = match (text("op"), operation.get_bool("active")) {
+        (Some(op), Ok(false)) => Some(format!("{op} (inativa)")),
+        (op, _) => op,
+    };
+    SessionInfo {
+        id: match operation.get("opid") {
+            Some(Bson::String(opid)) => opid.clone(),
+            _ => number("opid")
+                .map(|opid| opid.to_string())
+                .unwrap_or_default(),
+        },
+        user,
+        database: text("ns").map(|ns| ns.split('.').next().unwrap_or_default().to_string()),
+        state,
+        seconds: number("secs_running").map(|secs| u32::try_from(secs).unwrap_or(u32::MAX)),
+        client,
+        query,
+        own,
+    }
+}
+
 fn map_error(err: &MongoError, timeout_secs: u32) -> AppError {
     match err.kind.as_ref() {
         ErrorKind::Command(command) if command.code == MAX_TIME_EXPIRED => {
@@ -588,6 +677,40 @@ mod tests {
         })
         .unwrap();
         MongoError::from(ErrorKind::Command(command))
+    }
+
+    #[test]
+    fn current_operations_become_session_rows() {
+        let listing = session_of(&doc! {
+            "opid": 42,
+            "op": "command",
+            "active": true,
+            "ns": "admin.$cmd.aggregate",
+            "secs_running": 3_i64,
+            "client": "127.0.0.1:5000",
+            "appName": "ordo",
+            "effectiveUsers": [{ "user": "root", "db": "admin" }],
+            "command": { "aggregate": 1, "comment": SESSIONS_COMMENT },
+        });
+        assert_eq!(listing.id, "42");
+        assert!(listing.own);
+        assert_eq!(listing.database.as_deref(), Some("admin"));
+        assert_eq!(listing.user.as_deref(), Some("root"));
+        assert_eq!(listing.seconds, Some(3));
+        assert_eq!(listing.client.as_deref(), Some("127.0.0.1:5000 · ordo"));
+        assert_eq!(listing.state.as_deref(), Some("command"));
+
+        // sharded clusters name the operation "shard:opid"; long commands are cut
+        let other = session_of(&doc! {
+            "opid": "shard01:7",
+            "op": "query",
+            "active": false,
+            "command": { "find": "x".repeat(OPERATION_TEXT_LIMIT + 10) },
+        });
+        assert_eq!(other.id, "shard01:7");
+        assert!(!other.own);
+        assert_eq!(other.state.as_deref(), Some("query (inativa)"));
+        assert!(other.query.unwrap().ends_with('…'));
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
   type RefObject
 } from "react";
 import {
+  Activity,
   ChevronDown,
   Braces,
   ChevronRight,
@@ -15,6 +16,7 @@ import {
   Ellipsis,
   Eye,
   Folder,
+  GitCompare,
   Lock,
   Network,
   Pencil,
@@ -54,6 +56,9 @@ type TreeActions = {
   onOpenEditor: (connectionId: string) => void;
   onOpenRedis: (target: RedisTarget) => void;
   onOpenDiagram: (target: DiagramTarget) => void;
+  onOpenSessions: (connectionId: string) => void;
+  /** the schema is the comparison's source */
+  onOpenSchemaDiff: (source: DiagramTarget) => void;
 };
 
 type ConnectionTreeProps = TreeActions & { connections: ConnectionConfig[] };
@@ -72,6 +77,8 @@ type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   openByDefault: boolean;
   /** SQL only: MongoDB has no foreign keys */
   onOpenDiagram?: (target: DiagramTarget) => void;
+  /** SQL only */
+  onOpenSchemaDiff?: (source: DiagramTarget) => void;
   /** SQL on a writable connection */
   canCreateTable: boolean;
 };
@@ -342,7 +349,9 @@ function ConnectionNode({
   onOpenTable,
   onOpenEditor,
   onOpenRedis,
-  onOpenDiagram
+  onOpenDiagram,
+  onOpenSessions,
+  onOpenSchemaDiff
 }: ConnectionNodeProps) {
   const expanded = useExplorer(state => state.expanded.includes(connection.id));
   const setExpanded = useExplorer(state => state.setExpanded);
@@ -364,6 +373,16 @@ function ConnectionNode({
             label: "Nova query SQL",
             icon: <SquareTerminal />,
             onSelect: () => onOpenEditor(connection.id)
+          }
+        ]
+      : []),
+    // a SQLite file has no server, so no sessions
+    ...(connection.engine !== "sqlite"
+      ? [
+          {
+            label: "Sessões ativas",
+            icon: <Activity />,
+            onSelect: () => onOpenSessions(connection.id)
           }
         ]
       : []),
@@ -571,6 +590,7 @@ function ConnectionNode({
               activeTable={activeTable}
               onOpenTable={onOpenTable}
               onOpenDiagram={hasSqlEditor ? onOpenDiagram : undefined}
+              onOpenSchemaDiff={hasSqlEditor ? onOpenSchemaDiff : undefined}
               canCreateTable={hasSqlEditor && !connection.readOnly}
             />
           ))}
@@ -589,6 +609,7 @@ function SchemaNode({
   activeTable,
   onOpenTable,
   onOpenDiagram,
+  onOpenSchemaDiff,
   canCreateTable
 }: SchemaNodeProps) {
   const [expanded, setExpanded] = useState(openByDefault);
@@ -604,6 +625,15 @@ function SchemaNode({
             label: "Abrir diagrama ER",
             icon: <Network />,
             onSelect: () => onOpenDiagram({ connectionId, schema: schema.name })
+          }
+        ]
+      : []),
+    ...(onOpenSchemaDiff
+      ? [
+          {
+            label: "Comparar com outro schema…",
+            icon: <GitCompare />,
+            onSelect: () => onOpenSchemaDiff({ connectionId, schema: schema.name })
           }
         ]
       : []),
