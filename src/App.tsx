@@ -822,6 +822,10 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   if (tab.kind === "table") {
     return (
       <TableView
+        // a foreign key followed here starts the view over with its filter (never with
+        // staged edits: followTable refuses those)
+        key={tab.follow?.id}
+        initialFilters={tab.follow?.filters}
         connectionId={tab.connectionId}
         schema={tab.schema}
         table={tab.table}
