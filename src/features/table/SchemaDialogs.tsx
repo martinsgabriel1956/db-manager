@@ -56,7 +56,7 @@ function FormShell({
 }: ShellProps) {
   return (
     <Dialog open={open} onOpenChange={next => !next && onCancel()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent>
         <form
           className="grid gap-4"
           onSubmit={event => {

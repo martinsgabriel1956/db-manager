@@ -132,7 +132,8 @@ export function PipelineStages({ stages, onChange, onPreview, previewId }: Pipel
                   <Trash2 />
                 </Button>
               </div>
-              <div className={cn("max-h-48 overflow-auto", !stage.enabled && "opacity-60")}>
+              {/* "Desligado" and the struck operator say it; fading the editor would drop it below 4.5:1 */}
+              <div className="max-h-48 overflow-auto">
                 <JsonEditor
                   label={`Estágio ${position}`}
                   value={stage.text}

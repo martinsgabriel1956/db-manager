@@ -457,7 +457,7 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                 <ContextMenuSeparator />
                 <ContextMenuItem disabled={closed.length === 0} onSelect={reopenClosed}>
                   <RotateCcw /> Reabrir aba fechada
-                  <kbd className="ml-auto pl-4 legend opacity-70">Ctrl Shift T</kbd>
+                  <kbd className="ml-auto pl-4 legend">Ctrl Shift T</kbd>
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

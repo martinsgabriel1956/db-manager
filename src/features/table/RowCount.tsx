@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { connected } from "@/features/explorer/queries";
 import { errorMessage } from "@/lib/errors";
 
-type RowCountProps = { connectionId: string; request: BrowseRequest };
+type RowCountProps = {
+  connectionId: string;
+  request: BrowseRequest;
+  /** when the estimate shows: in a crowded bar it gives its room before the write buttons */
+  estimateClassName: string;
+};
 
 type CountState =
   | { status: "idle" }
@@ -23,7 +28,7 @@ export function rowsLabel(count: string): string {
  * it can scan the whole table, so it is cancellable and bound by the connection's timeout.
  * Remount it (key) when the filters change or rows are saved: the count speaks of those.
  */
-export function RowCount({ connectionId, request }: RowCountProps) {
+export function RowCount({ connectionId, request, estimateClassName }: RowCountProps) {
   const { schema, table } = request;
   const filtered = request.filters.length > 0;
   const estimate = useQuery({
@@ -73,7 +78,7 @@ export function RowCount({ connectionId, request }: RowCountProps) {
         </span>
       )}
       {state.status === "idle" && !filtered && estimate.data && (
-        <span title="Estimativa do banco, sem contar as linhas">
+        <span className={estimateClassName} title="Estimativa do banco, sem contar as linhas">
           <span aria-hidden>≈ </span>
           <span className="sr-only">cerca de </span>
           {rowsLabel(estimate.data)}

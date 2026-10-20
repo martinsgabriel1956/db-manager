@@ -19,6 +19,8 @@ type CopyRowsMenuProps = {
   selectedRow: number | null;
   /** tables only: a result of an arbitrary query has no table to insert into */
   insert?: (rows: Cell[][]) => Promise<string>;
+  /** when the word shows; the icon and the name (read aloud and on hover) always do */
+  labelClassName?: string;
 };
 
 type CopyState =
@@ -34,7 +36,13 @@ function rowCount(count: number, participle: string) {
 }
 
 /** Copies the selected row, or every loaded row, as JSON or INSERT. */
-export function CopyRowsMenu({ columns, rows, selectedRow, insert }: CopyRowsMenuProps) {
+export function CopyRowsMenu({
+  columns,
+  rows,
+  selectedRow,
+  insert,
+  labelClassName = "inline"
+}: CopyRowsMenuProps) {
   const [copied, setState] = useState<CopyState>({ status: "idle" });
   const state: CopyState =
     copied.status !== "idle" && copied.of !== rows ? { status: "idle" } : copied;
@@ -72,8 +80,14 @@ export function CopyRowsMenu({ columns, rows, selectedRow, insert }: CopyRowsMen
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="xs" variant="outline" disabled={rows.length === 0}>
-            <Copy /> Copiar <ChevronDown />
+          <Button
+            size="xs"
+            variant="outline"
+            aria-label="Copiar"
+            title="Copiar"
+            disabled={rows.length === 0}
+          >
+            <Copy /> <span className={labelClassName}>Copiar</span> <ChevronDown />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

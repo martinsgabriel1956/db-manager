@@ -33,8 +33,11 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
  */
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return (
+    // tabIndex -1: every panel here starts with controls, so the panel itself would be an
+    // empty tab stop (Radix makes it 0); it stays focusable from script
     <TabsPrimitive.Content
       data-slot="tabs-content"
+      tabIndex={-1}
       className={cn("outline-none data-[state=inactive]:hidden", className)}
       {...props}
     />

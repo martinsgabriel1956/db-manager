@@ -13,6 +13,7 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { connected } from "@/features/explorer/queries";
 import { errorMessage } from "@/lib/errors";
@@ -92,8 +93,10 @@ export function SessionsView({ connection }: SessionsViewProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="shrink-0 py-2 display text-[1.75rem] leading-[1.15]">Sessões</h2>
+      {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
+          second line, whole; py-1 here and on the title keeps one line at 48px */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
+        <h2 className="shrink-0 py-1 display-caps text-[1.75rem] leading-[1.15]">Sessões</h2>
         {connection.readOnly && <Badge variant="held">Somente leitura</Badge>}
         <ConnectionContext connectionId={connection.id} className="ml-auto" />
       </div>
@@ -110,9 +113,9 @@ export function SessionsView({ connection }: SessionsViewProps) {
           <RefreshCw /> Atualizar
         </Button>
         <label className="flex items-center gap-1.5">
-          Atualização automática
-          <select
-            className="h-7 border bg-background px-1.5"
+          <span className="legend text-muted-foreground">Atualização automática</span>
+          <NativeSelect
+            className="h-7 text-xs"
             value={refreshMs}
             onChange={event => setRefreshMs(Number(event.target.value))}
           >
@@ -121,7 +124,7 @@ export function SessionsView({ connection }: SessionsViewProps) {
                 {option.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         {sessions.isFetching && <span className="text-muted-foreground">atualizando…</span>}
         {connection.readOnly && (
@@ -149,15 +152,15 @@ export function SessionsView({ connection }: SessionsViewProps) {
           <table className="w-full border-collapse text-xs">
             <caption className="sr-only">Sessões de {connection.name}</caption>
             <thead>
-              <tr className="h-7 border-b border-foreground text-left">
-                <th className="pr-3 font-semibold">Id</th>
-                <th className="pr-3 font-semibold">Usuário</th>
-                <th className="pr-3 font-semibold">Banco</th>
-                <th className="pr-3 font-semibold">Estado</th>
-                <th className="pr-3 font-semibold">Tempo</th>
-                <th className="pr-3 font-semibold">Cliente</th>
-                <th className="pr-3 font-semibold">{isRedis ? "Último comando" : "Query"}</th>
-                <th className="font-semibold">
+              <tr className="h-7 border-b text-left legend text-muted-foreground">
+                <th className="pr-3 font-medium">Id</th>
+                <th className="pr-3 font-medium">Usuário</th>
+                <th className="pr-3 font-medium">Banco</th>
+                <th className="pr-3 font-medium">Estado</th>
+                <th className="pr-3 font-medium">Tempo</th>
+                <th className="pr-3 font-medium">Cliente</th>
+                <th className="pr-3 font-medium">{isRedis ? "Último comando" : "Query"}</th>
+                <th className=" font-medium">
                   <span className="sr-only">Ações</span>
                 </th>
               </tr>
@@ -242,12 +245,12 @@ function SlowLog({ entries }: { entries: SlowCommand[] }) {
       ) : (
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="h-7 border-b border-foreground text-left">
-              <th className="pr-3 font-semibold">Id</th>
-              <th className="pr-3 font-semibold">Início (UTC)</th>
-              <th className="pr-3 font-semibold">Duração</th>
-              <th className="pr-3 font-semibold">Comando</th>
-              <th className="font-semibold">Cliente</th>
+            <tr className="h-7 border-b text-left legend text-muted-foreground">
+              <th className="pr-3 font-medium">Id</th>
+              <th className="pr-3 font-medium">Início (UTC)</th>
+              <th className="pr-3 font-medium">Duração</th>
+              <th className="pr-3 font-medium">Comando</th>
+              <th className=" font-medium">Cliente</th>
             </tr>
           </thead>
           <tbody className="font-mono">

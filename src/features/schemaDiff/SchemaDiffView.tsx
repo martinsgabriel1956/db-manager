@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 import { commands, type ConnectionConfig, type DiffKind, type SchemaDiff } from "@/bindings";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { ENGINE_LABEL } from "@/features/connections/options";
 import { connected, useSchemas } from "@/features/explorer/queries";
 import { errorMessage } from "@/lib/errors";
@@ -70,8 +71,12 @@ export function SchemaDiffView({ connections, connectionId, schema }: SchemaDiff
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="shrink-0 py-2 display text-[1.75rem] leading-[1.15]">Comparar schema</h2>
+      {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
+          second line, whole; py-1 here and on the title keeps one line at 48px */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
+        <h2 className="shrink-0 py-1 display-caps text-[1.75rem] leading-[1.15]">
+          Comparar schema
+        </h2>
         {opened && (
           <span className="text-xs text-muted-foreground">{ENGINE_LABEL[opened.engine]}</span>
         )}
@@ -116,11 +121,11 @@ function SidePicker({ legend, side, choices, onChange }: SidePickerProps) {
   return (
     <fieldset className="flex items-end gap-2">
       <legend className="mb-1 legend text-muted-foreground">{legend}</legend>
-      <label className="grid gap-0.5">
-        Conexão
-        <select
+      <label className="grid gap-1">
+        <span className="legend text-muted-foreground">Conexão</span>
+        <NativeSelect
           aria-label={`Conexão de ${legend.toLowerCase()}`}
-          className="h-7 border bg-background px-1.5"
+          className="h-7 text-xs"
           value={side.connectionId}
           onChange={event => onChange({ connectionId: event.target.value, schema: side.schema })}
         >
@@ -129,13 +134,13 @@ function SidePicker({ legend, side, choices, onChange }: SidePickerProps) {
               {connection.name} ({connection.environment})
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
-      <label className="grid gap-0.5">
-        Schema
-        <select
+      <label className="grid gap-1">
+        <span className="legend text-muted-foreground">Schema</span>
+        <NativeSelect
           aria-label={`Schema de ${legend.toLowerCase()}`}
-          className="h-7 border bg-background px-1.5"
+          className="h-7 text-xs"
           value={side.schema}
           onChange={event => onChange({ ...side, schema: event.target.value })}
         >
@@ -148,7 +153,7 @@ function SidePicker({ legend, side, choices, onChange }: SidePickerProps) {
               {schema.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
     </fieldset>
   );
@@ -175,11 +180,11 @@ function DiffResult({ diff, sourceName, targetName }: DiffResultProps) {
           <h3 className="mb-1 font-mono text-sm font-semibold">{table.table}</h3>
           <table className="w-full border-collapse text-xs">
             <thead>
-              <tr className="h-7 border-b border-foreground text-left">
-                <th className="w-32 pr-3 font-semibold">Tipo</th>
-                <th className="pr-3 font-semibold">Nome</th>
-                <th className="pr-3 font-semibold">Origem</th>
-                <th className="font-semibold">Destino</th>
+              <tr className="h-7 border-b text-left legend text-muted-foreground">
+                <th className="w-32 pr-3 font-medium">Tipo</th>
+                <th className="pr-3 font-medium">Nome</th>
+                <th className="pr-3 font-medium">Origem</th>
+                <th className=" font-medium">Destino</th>
               </tr>
             </thead>
             <tbody>

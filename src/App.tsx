@@ -292,8 +292,9 @@ export function App() {
       } else {
         openHistory();
       }
-      // focus follows the pick to the tab it opened
-      requestAnimationFrame(focusActiveTab);
+      // focus follows the pick into the view it opened (its grid or editor, as F6 enters it):
+      // the pick says where the work is; the tab is one Shift+F6 away
+      requestAnimationFrame(focusOpenedView);
     }
   }
 
@@ -666,7 +667,7 @@ function EmptyWorkspace({
         {hasConnections && anyConnectionOpen && (
           <Button onClick={() => onSearch()}>
             <Search /> Ir para…
-            <kbd className="ml-1 legend opacity-70">Ctrl K</kbd>
+            <kbd className="ml-1 legend">Ctrl K</kbd>
           </Button>
         )}
         {hasConnections && !anyConnectionOpen && (
@@ -756,6 +757,31 @@ function cycleRegion(step: 1 | -1) {
       return;
     }
   }
+}
+
+/**
+ * Focus the view a pick just opened. Its grid arrives with the first rows, after this
+ * frame: the panel holds focus meanwhile and hands it on when the grid shows up, unless
+ * the user has moved on. ponytail: polls for up to 2s, a MutationObserver if that ever
+ * shows in a profile.
+ */
+function focusOpenedView() {
+  const workspace = document.getElementById("workspace");
+  const first = viewTarget(workspace);
+  first?.focus();
+  if (!first || first.matches("[role='grid'], .cm-content")) {
+    return;
+  }
+  let tries = 0;
+  const timer = window.setInterval(() => {
+    const target = viewTarget(workspace);
+    if (document.activeElement !== first || ++tries > 20) {
+      window.clearInterval(timer);
+    } else if (target && target !== first) {
+      window.clearInterval(timer);
+      target.focus();
+    }
+  }, 100);
 }
 
 function viewTarget(workspace: HTMLElement | null): HTMLElement | null {
