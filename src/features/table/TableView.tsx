@@ -34,7 +34,6 @@ import { StructureView } from "@/features/table/StructureView";
 import { useTableEditing } from "@/features/table/useTableEditing";
 import { tableKey, useTabs } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
-import { cn } from "@/lib/utils";
 
 type TableViewProps = { connectionId: string; schema: string; table: string; readOnly: boolean };
 
@@ -66,9 +65,13 @@ export function TableView({ initialFilters = [], ...props }: TableViewOwnProps) 
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
-      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach */}
-        <h2 className="flex min-w-0 items-baseline py-2">
+      {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
+          second line, whole; py-1 here and on the title keeps one line at 48px */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
+        {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach;
+            up to half the header it keeps its width, so the connection name truncates first and
+            a short name never breaks mid-word */}
+        <h2 className="flex max-w-1/2 shrink-0 items-baseline py-1">
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{props.schema}.</span>
           <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
             {props.table}
@@ -79,7 +82,7 @@ export function TableView({ initialFilters = [], ...props }: TableViewOwnProps) 
           <TabsTrigger value="structure">Estrutura</TabsTrigger>
         </TabsList>
         {props.readOnly && <Badge variant="held">Somente leitura</Badge>}
-        <div className="ml-auto flex min-w-0 items-center gap-4">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
           <ConnectionContext connectionId={props.connectionId} />
           {/* somente leitura: the database would refuse the INSERT anyway */}
           {!props.readOnly && (
@@ -192,10 +195,16 @@ function TableData({
   // production keeps the words on its write buttons at any width: an icon alone is not enough there
   const isProd =
     connections.data?.find(candidate => candidate.id === connectionId)?.environment === "prod";
-  const rowLabelClass = isProd ? "inline" : "hidden @min-[52rem]:inline";
-  // with edits staged in a narrow window, Descartar and Salvar need the room: the add
-  // button gives its word first, Excluir keeps it
-  const addLabelClass = isProd && dirty ? "hidden @min-[52rem]:inline" : rowLabelClass;
+  const rowLabelClass = isProd ? "inline" : "hidden @min-[53rem]:inline";
+  // in a narrow window the add button gives its word first (in production too, at the
+  // minimum width or with edits staged, when Descartar and Salvar need the room); Excluir keeps it
+  const addLabelClass =
+    isProd && !dirty ? "hidden @min-[47rem]:inline" : "hidden @min-[58.5rem]:inline";
+  // one scale for both states, set by the crowded one (edits staged: Descartar and Salvar
+  // in the bar), so starting an edit never reshapes the buttons under the cursor; the hint
+  // takes their room while nothing is staged. Words give way in this order: hint, Valor,
+  // Referências, Copiar, the write buttons (not in production), the estimate
+  const estimateClass = isProd ? "hidden @min-[58.5rem]:inline" : "hidden @min-[47rem]:inline";
   // the panel stays mounted behind other tabs: the saved notice belongs to the visit that saved
   const isActiveTab = useTabs(state => {
     const tab = state.tabs.find(open => open.id === state.activeId);
@@ -475,7 +484,9 @@ function TableData({
             <Receipt connectionId={connectionId} confirmed text={edit.notice.text} verb="salvo" />
           </p>
         )}
-        <div className="flex items-center gap-3 px-3 py-1.5 text-sm">
+        {/* never clipped: if the words above still do not fit (production keeps its write
+            words at any width), the write group drops to a second line, whole */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5 text-sm">
           <div className="flex shrink-0 items-center gap-1">
             <Button
               size="icon-sm"
@@ -509,11 +520,18 @@ function TableData({
             key={`${JSON.stringify(filters)}|${edit.saves}`}
             connectionId={connectionId}
             request={request}
+            estimateClassName={estimateClass}
           />
           {!dirty && browse.isFetching && (
             <span className="text-xs text-muted-foreground">atualizando…</span>
           )}
-          {batch && <DetailToggle open={detailOpen} onToggle={detail.toggle} />}
+          {batch && (
+            <DetailToggle
+              open={detailOpen}
+              onToggle={detail.toggle}
+              labelClassName="hidden @min-[67.5rem]:inline"
+            />
+          )}
           {batch && (
             <ReferencesMenu
               connectionId={connectionId}
@@ -523,6 +541,7 @@ function TableData({
               open={referencesOpen}
               onOpenChange={setReferencesOpen}
               onPick={incoming => void followBack(incoming)}
+              labelClassName="hidden @min-[65rem]:inline"
             />
           )}
           {batch && (
@@ -531,6 +550,7 @@ function TableData({
               rows={batch.rows}
               // a row added in the grid is not stored yet: nothing to copy
               selectedRow={selected && selected.row < batch.rows.length ? selected.row : null}
+              labelClassName="hidden @min-[61rem]:inline"
               insert={rows =>
                 connected(connectionId, () =>
                   commands.copyAsInsert(
@@ -551,15 +571,9 @@ function TableData({
                   {/* gone while edits are staged or the saved notice speaks; the short form
                       keeps the hint in the 960px window with the sidebar open */}
                   {!dirty && !edit.notice && (
-                    <span
-                      className={cn(
-                        "hidden text-xs text-muted-foreground",
-                        // in production the button words take this room first
-                        isProd ? "@min-[60rem]:inline" : "@min-[40rem]:inline"
-                      )}
-                    >
-                      <span className="@min-[56rem]:hidden">Enter edita a célula</span>
-                      <span className="hidden @min-[56rem]:inline">
+                    <span className="hidden text-xs text-muted-foreground @min-[68.5rem]:inline">
+                      <span className="@min-[73rem]:hidden">Enter edita a célula</span>
+                      <span className="hidden @min-[73rem]:inline">
                         Duplo clique ou Enter edita a célula
                       </span>
                     </span>
@@ -609,7 +623,7 @@ function TableData({
               )}
               {dirty && (
                 <>
-                  <span className="sr-only text-xs font-medium @min-[64rem]:not-sr-only">
+                  <span className="sr-only text-xs font-medium @min-[75.5rem]:not-sr-only">
                     {pending}
                   </span>
                   <Button

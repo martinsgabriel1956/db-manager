@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +32,7 @@ export function DocumentEditorDialog({
 }: DocumentEditorDialogProps) {
   const [text, setText] = useState(initial);
   const [syntaxError, setSyntaxError] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   function save() {
     if (!isValidJson(text)) {
@@ -44,7 +45,19 @@ export function DocumentEditorDialog({
 
   return (
     <Dialog open onOpenChange={open => !open && onCancel()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent
+        ref={contentRef}
+        className="sm:max-w-3xl"
+        // the editor is the task: focus it, not the first button (the dialog would pick
+        // Cancelar, since the editor's content is not in its list of tab stops)
+        onOpenAutoFocus={event => {
+          const editor = contentRef.current?.querySelector<HTMLElement>(".cm-content");
+          if (editor) {
+            event.preventDefault();
+            editor.focus();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>

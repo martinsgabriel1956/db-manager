@@ -282,6 +282,9 @@
   --xy-minimap-node-background-color: var(--z6);
   --xy-minimap-node-stroke-color: var(--z5);
   --xy-attribution-background-color: transparent;
+  /* the foreign key's columns on the edge: paper and ink, whatever React Flow's colorMode reads */
+  --xy-edge-label-background-color: var(--z10);
+  --xy-edge-label-color: var(--foreground);
 }
 
 .react-flow__minimap {
@@ -301,6 +304,12 @@
 /* the credit stays, at the 11px floor and in the zone scale (React Flow's own #999 at 10px
    fails 4.5:1); doubled class: React Flow's stylesheet loads after this one */
 .react-flow .react-flow__attribution {
+  font-size: 11px;
+}
+
+/* column names are data: mono, at the 11px floor (React Flow ships 10px) */
+.react-flow .react-flow__edge-text {
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 

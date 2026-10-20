@@ -150,7 +150,7 @@ export function ConsolePanel({ connectionId, db, promptRef }: ConsolePanelProps)
           aria-label="Comando Redis"
           autoComplete="off"
           spellCheck={false}
-          className="min-w-0 flex-1 bg-transparent outline-none"
+          className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
           placeholder="GET user:1"
           value={input}
           onChange={event => {

@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { ChevronRight, FolderOpen } from "lucide-react";
 import type { Engine } from "@/bindings";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -128,6 +130,30 @@ export function ConnectionFields({
     );
   }
 
+  /** A path typed or pasted as it is, or picked in the system's "Abrir" (`what` names the
+   *  button: three "Escolher…" in one form must not read alike) */
+  function pathInput(id: keyof ConnectionFormValues, placeholder: string, what: string) {
+    return (
+      <div className="flex gap-2">
+        {textInput(id, { placeholder })}
+        <Button
+          type="button"
+          variant="outline"
+          aria-label={`Escolher ${what}`}
+          title={`Escolher ${what}`}
+          onClick={async () => {
+            const path = await open({ multiple: false, directory: false });
+            if (path) {
+              onChange({ [id]: path });
+            }
+          }}
+        >
+          <FolderOpen /> Escolher…
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4">
       {/* the engine reshapes every field below it, so it comes first */}
@@ -221,7 +247,7 @@ export function ConnectionFields({
 
       {isSqlite ? (
         <Field id="filePath" label="Arquivo" error={errors.filePath}>
-          {textInput("filePath", { placeholder: "/caminho/para/banco.db" })}
+          {pathInput("filePath", "/caminho/para/banco.db", "o arquivo do banco")}
         </Field>
       ) : isUri ? (
         <>
@@ -416,7 +442,7 @@ export function ConnectionFields({
                   {textInput("sshUser")}
                 </Field>
                 <Field id="sshIdentityFile" label="Chave privada (opcional)">
-                  {textInput("sshIdentityFile", { placeholder: "~/.ssh/id_ed25519" })}
+                  {pathInput("sshIdentityFile", "~/.ssh/id_ed25519", "a chave privada")}
                 </Field>
               </div>
               <Field
@@ -551,7 +577,7 @@ export function ConnectionFields({
                 </NativeSelect>
               </Field>
               <Field id="caCertPath" label="Certificado CA (opcional)">
-                {textInput("caCertPath", { placeholder: "/caminho/para/ca.pem" })}
+                {pathInput("caCertPath", "/caminho/para/ca.pem", "o certificado CA")}
               </Field>
             </div>
           )}

@@ -154,7 +154,8 @@ export function DocumentsPanel({
         )}
       </form>
 
-      <div className="flex items-center gap-2 border-b bg-muted px-3 py-1.5 text-sm">
+      {/* wraps rather than clips: zoomed in, import and export drop to a second line */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b bg-muted px-3 py-1.5 text-sm">
         {/* filtration is the only magenta: the chips carry the applied query itself */}
         {filtered && (
           <span className="inline-flex h-[18px] min-w-0 items-center gap-1 bg-filter px-1.5 text-background">
@@ -201,7 +202,7 @@ export function DocumentsPanel({
         {documents.isFetching && (
           <span className="text-xs text-muted-foreground">atualizando…</span>
         )}
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1.5">
           {/* somente leitura: the backend refuses the insert anyway */}
           {!readOnly && (
             <ImportDocumentsButton

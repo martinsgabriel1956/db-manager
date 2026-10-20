@@ -31,8 +31,10 @@ export function RedisView({ connection, db }: RedisViewProps) {
 
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
-      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        <h2 className="shrink-0 py-2 display text-[1.75rem] leading-[1.15]">db{db}</h2>
+      {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
+          second line, whole; py-1 here and on the title keeps one line at 48px */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
+        <h2 className="shrink-0 py-1 display text-[1.75rem] leading-[1.15]">db{db}</h2>
         <TabsList aria-label="Seções do Redis" className="shrink-0">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
             <TabsTrigger

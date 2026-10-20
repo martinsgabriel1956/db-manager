@@ -58,102 +58,110 @@ export function ConfirmDialog({
         {...focusReturn}
         role="alertdialog"
         showCloseButton={false}
-        className="gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl"
+        className="flex flex-col gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl"
       >
-        <div className="flex items-end justify-between gap-4 border-b border-foreground px-5 pt-6 pb-3 grid-paper">
+        <div className="flex shrink-0 items-end justify-between gap-4 border-b border-foreground px-5 pt-6 pb-3 grid-paper">
           <DialogTitle className="display-caps text-[2rem]">Confirmar execução</DialogTitle>
           <svg aria-hidden viewBox="0 0 16 24" className="mb-0.5 h-8 w-5 text-select">
             <line x1="2" y1="23" x2="14" y2="1" stroke="currentColor" strokeWidth="2.5" />
           </svg>
         </div>
-        {/* the record's fields */}
-        {/* the statements below speak for their own count */}
-        <dl className="grid grid-cols-[2fr_1fr] border-b">
-          <div className="border-r px-5 py-2.5">
-            <dt className="legend text-muted-foreground">Conexão</dt>
-            <dd className="mt-1.5 truncate text-sm font-semibold">{connection?.name ?? "—"}</dd>
-          </div>
-          <div className="px-4 py-2.5">
-            <dt className="legend text-muted-foreground">Ambiente</dt>
-            <dd className="mt-1.5">
-              {connection ? <EnvTag environment={connection.environment} labelled /> : "—"}
-            </dd>
-          </div>
-        </dl>
-        <div className="border-b px-5 py-2.5">
-          <p className="legend text-muted-foreground">Motivo</p>
-          <DialogDescription className="mt-1.5 text-sm text-foreground">
-            {confirmation?.reason}
-          </DialogDescription>
-        </div>
-        {changes.length > 0 && (
+        {/* in a short window (the minimum one, or zoomed in) the record scrolls between the
+            title and the buttons: "Executar em produção" never leaves the screen */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* the record's fields */}
+          {/* the statements below speak for their own count */}
+          <dl className="grid grid-cols-[2fr_1fr] border-b">
+            <div className="border-r px-5 py-2.5">
+              <dt className="legend text-muted-foreground">Conexão</dt>
+              <dd className="mt-1.5 truncate text-sm font-semibold">{connection?.name ?? "—"}</dd>
+            </div>
+            <div className="px-4 py-2.5">
+              <dt className="legend text-muted-foreground">Ambiente</dt>
+              <dd className="mt-1.5">
+                {connection ? <EnvTag environment={connection.environment} labelled /> : "—"}
+              </dd>
+            </div>
+          </dl>
           <div className="border-b px-5 py-2.5">
-            <p className="legend text-muted-foreground">Antes → depois</p>
-            {/* focusable so a long list scrolls from the keyboard */}
-            <table
-              tabIndex={0}
-              aria-label="Valores alterados"
-              className="mt-1.5 block max-h-36 w-full overflow-auto font-mono text-xs outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
-            >
-              <tbody>
-                {changes.map(change => (
-                  <tr key={`${change.key}:${change.column}`} className="align-baseline">
-                    <th
-                      scope="row"
-                      className="py-0.5 pr-3 text-left font-normal whitespace-nowrap text-muted-foreground"
-                    >
-                      {change.key}
-                    </th>
-                    <td className="py-0.5 pr-3 font-semibold whitespace-nowrap">{change.column}</td>
-                    <td className="py-0.5 break-all">
-                      <DiffValue value={change.before} />
-                      <span className="text-muted-foreground"> → </span>
-                      <DiffValue value={change.after} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <p className="legend text-muted-foreground">Motivo</p>
+            <DialogDescription className="mt-1.5 text-sm text-foreground">
+              {confirmation?.reason}
+            </DialogDescription>
           </div>
-        )}
-        {/* focusable so a long command scrolls from the keyboard: WebKitGTK never focuses scrollers */}
-        <pre
-          tabIndex={0}
-          role="region"
-          aria-label="Comando que será executado"
-          className="mx-5 my-4 max-h-80 overflow-auto border border-foreground bg-background px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)] focus-visible:border-ring"
-        >
-          {confirmation?.statements.map(statement => `${statement}${statementSuffix}`).join("\n\n")}
-        </pre>
-        {isProd && (
-          <p className="flex h-7 items-center gap-2 bg-safelight px-5 text-xs text-white">
-            <span className="legend text-[0.75rem]">Produção</span>
-            <span>este comando roda no banco de produção</span>
-          </p>
-        )}
-        {mustType && (
-          <div className="px-5 pt-3 pb-4">
-            <label htmlFor={typeId} className="text-sm">
-              Para executar, digite o nome da conexão:{" "}
-              <span className="font-mono font-semibold select-all">{connection?.name}</span>
-            </label>
-            <Input
-              id={typeId}
-              value={typed}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={event => setTyped(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === "Enter" && armed && !pending) {
-                  event.preventDefault();
-                  onConfirm();
-                }
-              }}
-              className="mt-2 font-mono"
-            />
-          </div>
-        )}
-        <div className="flex flex-col-reverse gap-2 border-t border-foreground bg-muted px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          {changes.length > 0 && (
+            <div className="border-b px-5 py-2.5">
+              <p className="legend text-muted-foreground">Antes → depois</p>
+              {/* focusable so a long list scrolls from the keyboard */}
+              <table
+                tabIndex={0}
+                aria-label="Valores alterados"
+                className="mt-1.5 block max-h-36 w-full overflow-auto font-mono text-xs outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
+              >
+                <tbody>
+                  {changes.map(change => (
+                    <tr key={`${change.key}:${change.column}`} className="align-baseline">
+                      <th
+                        scope="row"
+                        className="py-0.5 pr-3 text-left font-normal whitespace-nowrap text-muted-foreground"
+                      >
+                        {change.key}
+                      </th>
+                      <td className="py-0.5 pr-3 font-semibold whitespace-nowrap">
+                        {change.column}
+                      </td>
+                      <td className="py-0.5 break-all">
+                        <DiffValue value={change.before} />
+                        <span className="text-muted-foreground"> → </span>
+                        <DiffValue value={change.after} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {/* focusable so a long command scrolls from the keyboard: WebKitGTK never focuses scrollers */}
+          <pre
+            tabIndex={0}
+            role="region"
+            aria-label="Comando que será executado"
+            className="mx-5 my-4 max-h-80 overflow-auto border border-foreground bg-background px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)] focus-visible:border-ring"
+          >
+            {confirmation?.statements
+              .map(statement => `${statement}${statementSuffix}`)
+              .join("\n\n")}
+          </pre>
+          {isProd && (
+            <p className="flex h-7 items-center gap-2 bg-safelight px-5 text-xs text-white">
+              <span className="legend text-[0.75rem]">Produção</span>
+              <span>este comando roda no banco de produção</span>
+            </p>
+          )}
+          {mustType && (
+            <div className="px-5 pt-3 pb-4">
+              <label htmlFor={typeId} className="text-sm">
+                Para executar, digite o nome da conexão:{" "}
+                <span className="font-mono font-semibold select-all">{connection?.name}</span>
+              </label>
+              <Input
+                id={typeId}
+                value={typed}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={event => setTyped(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === "Enter" && armed && !pending) {
+                    event.preventDefault();
+                    onConfirm();
+                  }
+                }}
+                className="mt-2 font-mono"
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-foreground bg-muted px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
             Confira o comando exato antes de confirmar.
           </p>

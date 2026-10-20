@@ -35,9 +35,13 @@ export function CollectionView({
 
   return (
     <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
-      <div className="flex items-center gap-5 border-b border-foreground bg-background px-4">
-        {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach */}
-        <h2 className="flex min-w-0 items-baseline py-2">
+      {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
+          second line, whole; py-1 here and on the title keeps one line at 48px */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
+        {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach;
+            up to half the header it keeps its width, so the connection name truncates first and
+            a short name never breaks mid-word */}
+        <h2 className="flex max-w-1/2 shrink-0 items-baseline py-1">
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{database}.</span>
           <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
             {collection}

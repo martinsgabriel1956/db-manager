@@ -97,7 +97,8 @@ where
     let session = engine.session_id(&mut conn).await?;
     on_started(session);
 
-    for statement in init {
+    let total = statements.len();
+    for (index, statement) in init.iter().enumerate() {
         let execution = async {
             sqlx::raw_sql(AssertSqlSafe(statement.clone()))
                 .execute(&mut *conn)
@@ -110,7 +111,7 @@ where
                 // dropped mid-protocol: the connection is not reusable
                 conn.close_on_drop();
             }
-            return Err(err);
+            return Err(failed_at(err, index, total));
         }
     }
 
@@ -125,12 +126,32 @@ where
     ));
     let cursor = Cursor { requests };
 
-    let mut first = with_timeout(engine, session, timeout_secs, cursor.next()).await?;
+    let mut first = with_timeout(engine, session, timeout_secs, cursor.next())
+        .await
+        .map_err(|err| failed_at(err, init.len(), total))?;
     if first.batch.rows.is_empty() && first.batch.columns.is_empty() {
         first.batch.columns = engine.describe(last).await;
     }
     let cursor = first.batch.has_more.then_some(cursor);
     Ok(ScriptRun { first, cursor })
+}
+
+/// A script stops at its first failing statement, and the ones before it already ran:
+/// each is committed on its own unless the script opened a transaction itself. The
+/// message says where it stopped and what that means, like the imports do.
+fn failed_at(err: AppError, index: usize, total: usize) -> AppError {
+    if total < 2 {
+        return err;
+    }
+    let position = index + 1;
+    let before = match index {
+        0 => "Nada rodou antes dele".to_string(),
+        1 => "O comando anterior já rodou e, sem BEGIN no script, já foi confirmado".to_string(),
+        n => format!(
+            "Os {n} comandos anteriores já rodaram e, sem BEGIN no script, já foram confirmados"
+        ),
+    };
+    err.map_message(|message| format!("comando {position} de {total}: {message}. {before}"))
 }
 
 /// One page of a query that is read to its end right away (table browsing).
@@ -289,4 +310,37 @@ async fn read_batch<E: Engine>(
         batch: engine.batch(rows, has_more).await,
         rows_affected: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_script_says_where_it_stopped_and_what_already_ran() {
+        let err = || AppError::Database("syntax error at or near \"FROMM\" [42601]".to_string());
+
+        // one statement: the driver's message as it is
+        assert_eq!(
+            failed_at(err(), 0, 1).to_string(),
+            "syntax error at or near \"FROMM\" [42601]"
+        );
+        assert_eq!(
+            failed_at(err(), 0, 3).to_string(),
+            "comando 1 de 3: syntax error at or near \"FROMM\" [42601]. Nada rodou antes dele"
+        );
+        assert_eq!(
+            failed_at(err(), 1, 3).to_string(),
+            "comando 2 de 3: syntax error at or near \"FROMM\" [42601]. O comando anterior já rodou e, sem BEGIN no script, já foi confirmado"
+        );
+        assert_eq!(
+            failed_at(err(), 2, 5).to_string(),
+            "comando 3 de 5: syntax error at or near \"FROMM\" [42601]. Os 2 comandos anteriores já rodaram e, sem BEGIN no script, já foram confirmados"
+        );
+        // the kind survives: the UI still reads a cancel as a cancel
+        assert!(matches!(
+            failed_at(AppError::cancelled(), 2, 5),
+            AppError::Cancelled(message) if message.starts_with("comando 3 de 5: query cancelada")
+        ));
+    }
 }

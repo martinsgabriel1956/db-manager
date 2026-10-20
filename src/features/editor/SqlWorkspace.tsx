@@ -171,12 +171,13 @@ export function SqlWorkspace({
   return (
     <div className="flex h-full flex-col">
       {/* the same view header as tables and collections: title left, connection and action right */}
-      <div className="flex items-center gap-4 border-b border-foreground bg-background px-4 py-2">
+      {/* wraps rather than clips (zoomed in, the actions drop to a second line, flush right) */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-foreground bg-background px-4 py-2">
         <h2 className="display-caps text-[1.75rem] leading-[1.15]">SQL</h2>
         <span className="hidden text-xs text-muted-foreground min-[1100px]:inline">
           {RUN_SHORTCUT} executa a seleção ou tudo
         </span>
-        <div className="ml-auto flex min-w-0 items-center gap-4">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
           <ConnectionContext connectionId={connectionId} />
           {formatError && (
             <span
@@ -261,7 +262,10 @@ export function SqlWorkspace({
           />
         </Panel>
         {/* 1px line with a 9px grab area; focused it thickens to 3px without moving the panels */}
-        <Separator className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40" />
+        <Separator
+          aria-label="Altura do editor"
+          className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40"
+        />
         <Panel minSize={80}>
           {/* keyed per run so a stale cell selection never points into a new result */}
           <ResultsPanel

@@ -6,10 +6,12 @@ import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
 import { ENGINE_LABEL, ENGINES } from "@/features/connections/options";
 import { useFocusReturn } from "@/features/tabs/focus";
 import { RUN_SHORTCUT, SIDEBAR_SHORTCUT } from "@/lib/platform";
+import { cn } from "@/lib/utils";
 
 type LegendDialogProps = { open: boolean; onOpenChange: (open: boolean) => void };
 
-type RowProps = { mark: ReactNode; children: ReactNode };
+/** `narrow`: the mark is a short tag (environment, engine), so the meaning gets the width */
+type RowProps = { mark: ReactNode; children: ReactNode; narrow?: boolean };
 
 type SectionProps = { title: string; children: ReactNode };
 
@@ -76,9 +78,14 @@ const SHORTCUT_GROUPS = [
   ]
 ] as const;
 
-function Row({ mark, children }: RowProps) {
+function Row({ mark, children, narrow = false }: RowProps) {
   return (
-    <li className="grid min-h-7 grid-cols-[8rem_1fr] items-center gap-3 text-[13px]">
+    <li
+      className={cn(
+        "grid min-h-7 items-center gap-3 text-[13px]",
+        narrow ? "grid-cols-[5.5rem_1fr]" : "grid-cols-[8rem_1fr]"
+      )}
+    >
       <span className="flex items-center">{mark}</span>
       <span className="text-muted-foreground">{children}</span>
     </li>
@@ -99,17 +106,14 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
   const focusReturn = useFocusReturn();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-3xl lg:max-w-6xl"
-        {...focusReturn}
-      >
+      <DialogContent className="sm:max-w-3xl lg:max-w-6xl" {...focusReturn}>
         <DialogTitle className="display-caps text-[1.75rem]">Legenda</DialogTitle>
         <DialogDescription>
           Estado nunca depende só de cor: cada marca tem textura ou palavra.
         </DialogDescription>
         {/* three columns where the window allows, the shortcuts widest so their lines do not wrap:
             the whole card reads without scrolling at 800px */}
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[1fr_0.85fr_1.35fr]">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[0.95fr_0.85fr_1.5fr]">
           <div className="grid content-start gap-6">
             <Section title="Na grade">
               <Row mark={<span aria-hidden className="h-5 w-16 bg-select" />}>
@@ -200,7 +204,7 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
           <div className="grid content-start gap-6">
             <Section title="Ambientes">
               {ENVIRONMENT_MEANING.map(([environment, meaning]) => (
-                <Row key={environment} mark={<EnvTag environment={environment} />}>
+                <Row key={environment} narrow mark={<EnvTag environment={environment} />}>
                   {meaning}
                 </Row>
               ))}
@@ -211,13 +215,13 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
             </Section>
             <Section title="Bancos">
               {ENGINES.map(engine => (
-                <Row key={engine} mark={<EngineCode engine={engine} />}>
+                <Row key={engine} narrow mark={<EngineCode engine={engine} />}>
                   {ENGINE_LABEL[engine]}
                 </Row>
               ))}
             </Section>
           </div>
-          <section className="grid content-start gap-2">
+          <section className="grid content-start gap-2 lg:row-span-2">
             <h3 className="border-b border-foreground pb-1.5 legend text-muted-foreground">
               Atalhos
             </h3>
@@ -238,14 +242,15 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
               </div>
             ))}
           </section>
+          {/* plain text, selectable: a link would open inside the app's own window;
+              from lg it sits under the two shorter columns, not under the shortcuts */}
+          <p className="self-end border-t pt-3 text-xs text-muted-foreground sm:col-span-2">
+            Instalação, keychain e bancos de demonstração no README:{" "}
+            <span className="font-mono whitespace-nowrap text-foreground select-all">
+              github.com/martinsgabriel1956/db-manager
+            </span>
+          </p>
         </div>
-        {/* plain text, selectable: a link would open inside the app's own window */}
-        <p className="border-t pt-3 text-xs text-muted-foreground">
-          Instalação, keychain e bancos de demonstração no README:{" "}
-          <span className="font-mono text-foreground select-all">
-            github.com/martinsgabriel1956/db-manager
-          </span>
-        </p>
       </DialogContent>
     </Dialog>
   );

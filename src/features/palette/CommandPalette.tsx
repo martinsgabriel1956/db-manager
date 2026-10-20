@@ -48,7 +48,7 @@ export function CommandPalette({
       <DialogContent
         showCloseButton={false}
         aria-describedby={undefined}
-        className="top-[12vh] translate-y-0 gap-0 p-0 sm:max-w-xl"
+        className="top-[12vh] max-h-[calc(88dvh-1rem)] translate-y-0 gap-0 p-0 sm:max-w-xl"
         onOpenAutoFocus={() => {
           picked.current = false;
           focusReturn.onOpenAutoFocus();

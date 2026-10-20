@@ -119,15 +119,18 @@ export function CellDetail({
           Selecione uma célula na grade para ver o valor inteiro, como está gravado.
         </p>
       ) : (
-        <CellValue
-          column={column}
-          cell={cell}
-          onSetNull={onSetNull}
-          original={original}
-          onRevert={onRevert}
-          editValue={editValue}
-          onEdit={onEdit}
-        />
+        // in a short window the panel scrolls as a whole: its parts never ride over each other
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <CellValue
+            column={column}
+            cell={cell}
+            onSetNull={onSetNull}
+            original={original}
+            onRevert={onRevert}
+            editValue={editValue}
+            onEdit={onEdit}
+          />
+        </div>
       )}
     </aside>
   );
@@ -190,7 +193,7 @@ function CellValue({
       )}
       {json && !onEdit && cell.t === "json" && (
         // formatted for reading only: nothing is written from here
-        <div className="flex min-h-0 flex-1 flex-col p-2">
+        <div className="flex min-h-24 flex-1 flex-col p-2">
           <JsonEditor
             key={`${column.name}:read`}
             value={prettyJson(cell.v)}
@@ -331,47 +334,68 @@ function JsonValueEditor({ label, initial, onCommit }: ValueEditorProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
+    // a grid, not a flex column: the editor row's floor is a fixed 6rem, so the block never
+    // shrinks under its buttons (they used to ride over Definir como NULL in a short window)
+    // and a long JSON scrolls inside the editor instead of stretching the panel
+    <div
+      className={cn(
+        "grid flex-1 gap-1.5 p-2",
+        draft === null
+          ? "grid-rows-[auto_minmax(6rem,1fr)_auto]"
+          : "grid-rows-[minmax(6rem,1fr)_auto]"
+      )}
+    >
       {draft === null && (
         <p className="text-xs text-muted-foreground">
           Gravado como <span className="font-mono italic">NULL</span>: digite o JSON para substituir
         </p>
       )}
-      <div className="min-h-24 flex-1">
+      <div className="min-h-0">
         <JsonEditor value={draft ?? ""} onChange={setDraft} onRun={apply} label={label} />
       </div>
-      {problem && (
-        // polite: it changes with every keystroke while the JSON is half typed
-        <p role="status" className="text-xs text-destructive">
-          JSON inválido na linha {problem.line}, coluna {problem.column}: {problem.message}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={draft === null || problem !== null}
-          title="Reindenta o texto, sem converter os números"
-          onClick={() => draft !== null && setDraft(prettyJson(draft))}
-        >
-          Formatar
-        </Button>
-        <Button size="xs" disabled={!canApply} aria-keyshortcuts="Control+Enter" onClick={apply}>
-          Aplicar
-        </Button>
-        <p className="text-xs text-muted-foreground">Ctrl+Enter também aplica</p>
+      <div className="grid gap-1.5">
+        {problem && (
+          // polite: it changes with every keystroke while the JSON is half typed
+          <p role="status" className="text-xs text-destructive">
+            JSON inválido na linha {problem.line}, coluna {problem.column}: {problem.message}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={draft === null || problem !== null}
+            title="Reindenta o texto, sem converter os números"
+            onClick={() => draft !== null && setDraft(prettyJson(draft))}
+          >
+            Formatar
+          </Button>
+          <Button size="xs" disabled={!canApply} aria-keyshortcuts="Control+Enter" onClick={apply}>
+            Aplicar
+          </Button>
+          <p className="text-xs text-muted-foreground">Ctrl+Enter também aplica</p>
+        </div>
       </div>
     </div>
   );
 }
 
-type DetailToggleProps = { open: boolean; onToggle: () => void };
+type DetailToggleProps = {
+  open: boolean;
+  onToggle: () => void;
+  /** when the word shows: each bar has its own crowd of controls */
+  labelClassName?: string;
+};
 
 /**
  * Opens the full-value panel beside the grid; Space does the same from a selected cell.
  * Inside a narrow @container bar only the icon shows; the name stays for the reader.
  */
-export function DetailToggle({ open, onToggle }: DetailToggleProps) {
+export function DetailToggle({
+  open,
+  onToggle,
+  labelClassName = "hidden @min-[44rem]:inline"
+}: DetailToggleProps) {
   return (
     <Button
       size="xs"
@@ -384,7 +408,7 @@ export function DetailToggle({ open, onToggle }: DetailToggleProps) {
       className="aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background aria-pressed:hover:bg-foreground aria-pressed:hover:text-background"
     >
       <PanelRight />
-      <span className="hidden @min-[44rem]:inline">Valor</span>
+      <span className={labelClassName}>Valor</span>
     </Button>
   );
 }

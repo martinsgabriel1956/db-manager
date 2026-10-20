@@ -21,6 +21,8 @@ type ReferencesMenuProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPick: (incoming: IncomingKey) => void;
+  /** when the word shows; the icon and the name (read aloud and on hover) always do */
+  labelClassName: string;
 };
 
 /**
@@ -34,7 +36,8 @@ export function ReferencesMenu({
   enabled,
   open,
   onOpenChange,
-  onPick
+  onPick,
+  labelClassName
 }: ReferencesMenuProps) {
   // ponytail: only this schema's tables are read (as in the ER diagram); a reference
   // from another schema is not listed, and the menu says so
@@ -53,10 +56,11 @@ export function ReferencesMenu({
           size="xs"
           variant="outline"
           disabled={!enabled}
+          aria-label="Referências"
           aria-keyshortcuts="Alt+Shift+Enter"
           title="Linhas de outras tabelas que apontam para a linha selecionada (Alt+Shift+Enter)"
         >
-          <CornerDownLeft /> Referências <ChevronDown />
+          <CornerDownLeft /> <span className={labelClassName}>Referências</span> <ChevronDown />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

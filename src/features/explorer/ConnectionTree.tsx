@@ -99,8 +99,10 @@ type RowMenuProps = {
 };
 
 /** Rows on the grid paper under a connection (schemas, tables, Redis databases). */
+// min-h, not h: a long name wraps (it is data, and no hover title reaches the keyboard);
+// one line still reads at the 28px row
 const TREE_ROW =
-  "flex w-full items-center gap-1.5 px-1.5 h-7 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+  "flex w-full items-center gap-1.5 px-1.5 min-h-7 py-1 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 /** Where you are: the table open in the active tab, filled in Crouwel blue; focus inks it in paper. */
 const ACTIVE_ROW =
@@ -267,12 +269,12 @@ function GroupNode({ name, connections, ...actions }: GroupNodeProps) {
         aria-expanded={open}
         tabIndex={-1}
         onClick={() => setGroupOpen(name, !open)}
-        className={cn(TREE_ROW, "h-8 gap-2 px-2")}
+        className={cn(TREE_ROW, "min-h-8 gap-2 px-2")}
       >
         <Chevron aria-hidden className="size-3.5 shrink-0" />
         <Folder aria-hidden className="size-3.5 shrink-0" />
         {/* the user's name for it, case kept, like a connection's */}
-        <span className="min-w-0 truncate font-semibold">{name}</span>
+        <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">{name}</span>
         {/* read as "Cliente X · 3 conexões"; the bare number on screen */}
         {/* the space between the spans, not inside one: names trim each span's own */}{" "}
         <span className="sr-only">· {count}</span>
@@ -452,8 +454,11 @@ function ConnectionNode({
           )}
         >
           <EngineCode engine={connection.engine} className="row-span-2" />
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate text-[13px] font-semibold">{connection.name}</span>
+          {/* the name wraps rather than truncating: "Postgres staging-eu" and "-us" never read alike */}
+          <span className="flex min-w-0 items-start gap-1.5">
+            <span className="min-w-0 text-[13px] font-semibold [overflow-wrap:anywhere]">
+              {connection.name}
+            </span>
             <EnvTag environment={connection.environment} className="ml-auto" />
           </span>
           {/* the second line ends short of the corner: the "⋯" sits there */}
@@ -461,7 +466,11 @@ function ConnectionNode({
             <Chevron aria-hidden className="-ml-0.5 size-3 shrink-0" />
             {/* the engine is already in the code cell; screen readers still hear it */}
             <span className="sr-only">{ENGINE_LABEL[connection.engine]} · </span>
-            <span className="min-w-0 truncate">{targetSummary(connection)}</span>
+            {/* the address stays on one line (wrapped at its hyphens it took three); the name above
+                is what tells connections apart, and the whole address is read aloud and on hover */}
+            <span className="min-w-0 truncate" title={targetSummary(connection)}>
+              {targetSummary(connection)}
+            </span>
             {connection.readOnly && (
               <span
                 title="Somente leitura: o próprio banco recusa escritas"
@@ -680,7 +689,7 @@ function SchemaNode({
           className={cn(TREE_ROW, "min-w-0 flex-1 text-muted-foreground hover:bg-transparent")}
         >
           <Chevron className="size-3.5 shrink-0" />
-          <span className="truncate">{schema.name}</span>
+          <span className="min-w-0 [overflow-wrap:anywhere]">{schema.name}</span>
           {/* read as "public · 2 tabelas", never "public2"; the word shows on hover */}
           <span className="sr-only"> · </span>
           <span aria-hidden className="font-mono text-[11px]" title={relationCount}>
@@ -738,7 +747,7 @@ function SchemaNode({
                   className={cn(TREE_ROW, isActive && ACTIVE_ROW)}
                 >
                   <Icon className="size-3.5 shrink-0 opacity-70" />
-                  <span className="truncate">{relation.name}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{relation.name}</span>
                 </button>
               </li>
             );

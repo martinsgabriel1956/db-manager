@@ -126,7 +126,8 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
               data-row={item.index}
               tabIndex={item.index === current ? 0 : -1}
               onFocus={() => setCursor(item.index)}
-              title={isFolder ? undefined : node.entry.name}
+              // a folder's segment truncates in the narrow list: the hover shows the whole prefix
+              title={isFolder ? node.id : node.entry.name}
               // inside a folder the row shows only the last segment: the name read aloud
               // starts with what is shown, then says the whole key
               aria-label={

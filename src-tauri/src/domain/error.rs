@@ -71,6 +71,23 @@ impl AppError {
         AppError::ReadOnly(format!("a conexão {connection_name} é somente leitura"))
     }
 
+    /// The same error with its message rewritten: the kind (cancelled, timeout…) is
+    /// what the UI reacts to, so context is added without changing it.
+    pub fn map_message(self, f: impl FnOnce(String) -> String) -> Self {
+        match self {
+            AppError::Validation(m) => AppError::Validation(f(m)),
+            AppError::NotFound(m) => AppError::NotFound(f(m)),
+            AppError::Storage(m) => AppError::Storage(f(m)),
+            AppError::Keychain(m) => AppError::Keychain(f(m)),
+            AppError::NotConnected(m) => AppError::NotConnected(f(m)),
+            AppError::Database(m) => AppError::Database(f(m)),
+            AppError::Cancelled(m) => AppError::Cancelled(f(m)),
+            AppError::Timeout(m) => AppError::Timeout(f(m)),
+            AppError::Conflict(m) => AppError::Conflict(f(m)),
+            AppError::ReadOnly(m) => AppError::ReadOnly(f(m)),
+        }
+    }
+
     pub fn timeout(secs: u32) -> Self {
         AppError::Timeout(format!(
             "query excedeu o timeout de {secs}s e foi cancelada"
