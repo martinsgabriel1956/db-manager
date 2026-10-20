@@ -123,6 +123,12 @@ export function App() {
   const activeConnectionId = form && formShown ? form.connectionId : tabConnectionId;
   const active = list.find(connection => connection.id === activeConnectionId) ?? null;
   const isProd = active?.environment === "prod";
+  // a tab with no connection (history) is not "nothing in use" while production is open behind it
+  const prodOpenElsewhere = tabs.some(
+    tab =>
+      tab.kind !== "history" &&
+      list.find(connection => connection.id === tab.connectionId)?.environment === "prod"
+  );
   const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
 
   // app-wide accelerators; each one is also reachable from a visible control
@@ -362,7 +368,15 @@ export function App() {
               </span>
             </>
           ) : (
-            <span>Nenhuma conexão em uso</span>
+            <span>
+              {activeTab ? "Nenhuma conexão nesta aba" : "Nenhuma conexão em uso"}
+              {prodOpenElsewhere && (
+                <>
+                  {" · "}
+                  <span className="text-foreground">produção aberta em outra aba</span>
+                </>
+              )}
+            </span>
           )}
         </p>
       )}

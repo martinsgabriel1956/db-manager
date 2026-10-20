@@ -10,7 +10,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-z5 dark:hover:bg-z4",
+        // disabled, the ink lifts: a faded fill still read as a button to press in the darkroom
+        default:
+          "bg-primary text-primary-foreground hover:bg-z5 disabled:border-input disabled:bg-transparent disabled:text-foreground dark:hover:bg-z4",
         outline:
           "border-input bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-transparent dark:hover:bg-muted",
         secondary:

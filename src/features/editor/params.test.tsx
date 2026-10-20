@@ -72,10 +72,17 @@ test("asks the values before running and runs the filled SQL", async () => {
   await user.type(within(dialog).getByLabelText(":name"), "O'Brien");
   await user.type(within(dialog).getByLabelText(":min"), "10");
   await user.selectOptions(within(dialog).getByLabelText("Tipo de :min"), "Número");
+  // the exact command, filled by the backend, is read before Executar
+  await waitFor(() =>
+    expect(within(dialog).getByRole("region", { name: "Comando que vai rodar" })).toHaveTextContent(
+      "SELECT * FROM users WHERE name = 'O'Brien' AND id > 10 OR note IS 'O'Brien'"
+    )
+  );
   await user.click(within(dialog).getByRole("button", { name: "Executar" }));
 
   await waitFor(() => expect(callsTo(calls, "run_script")).toHaveLength(1));
-  expect(callsTo(calls, "fill_params")[0]).toEqual({
+  // the sheet previews as the values are typed; the last fill is the one that ran
+  expect(callsTo(calls, "fill_params").at(-1)).toEqual({
     connectionId: "pg-dev",
     parts: ["SELECT * FROM users WHERE name = ", " AND id > ", " OR note IS ", ""],
     values: [

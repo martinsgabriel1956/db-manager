@@ -21,6 +21,8 @@ export function JsonEditor({ value, onChange, onRun, label, readOnly = false }: 
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
   const labelRef = useRef(new Compartment());
+  // set while `value` is written in from outside: that text is not an edit to echo back
+  const syncingRef = useRef(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -47,7 +49,7 @@ export function JsonEditor({ value, onChange, onRun, label, readOnly = false }: 
             ])
           ),
           EditorView.updateListener.of(update => {
-            if (update.docChanged) {
+            if (update.docChanged && !syncingRef.current) {
               onChangeRef.current(update.state.doc.toString());
             }
           }),
@@ -65,7 +67,10 @@ export function JsonEditor({ value, onChange, onRun, label, readOnly = false }: 
   useEffect(() => {
     const view = viewRef.current;
     if (view && view.state.doc.toString() !== value) {
+      // echoed, a NULL shown as "" came back as the text "" and read as invalid JSON
+      syncingRef.current = true;
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
+      syncingRef.current = false;
     }
   }, [value]);
 

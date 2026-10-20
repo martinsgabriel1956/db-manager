@@ -195,15 +195,16 @@ function TableData({
   // production keeps the words on its write buttons at any width: an icon alone is not enough there
   const isProd =
     connections.data?.find(candidate => candidate.id === connectionId)?.environment === "prod";
-  const rowLabelClass = isProd ? "inline" : "hidden @min-[53rem]:inline";
+  const rowLabelClass = isProd ? "inline" : "hidden @min-[62rem]:inline";
   // in a narrow window the add button gives its word first (in production too, at the
   // minimum width or with edits staged, when Descartar and Salvar need the room); Excluir keeps it
   const addLabelClass =
-    isProd && !dirty ? "hidden @min-[47rem]:inline" : "hidden @min-[58.5rem]:inline";
+    isProd && !dirty ? "hidden @min-[47rem]:inline" : "hidden @min-[66rem]:inline";
   // one scale for both states, set by the crowded one (edits staged: Descartar and Salvar
   // in the bar), so starting an edit never reshapes the buttons under the cursor; the hint
-  // takes their room while nothing is staged. Words give way in this order: hint, Valor,
-  // Referências, Copiar, the write buttons (not in production), the estimate
+  // takes their room while nothing is staged. Words give way in this order: hint, the write
+  // buttons (not in production: + and the bin read alone), Valor, Referências, Copiar, the
+  // estimate. So the default window (1200px, sidebar of 288px) names the row's tools
   const estimateClass = isProd ? "hidden @min-[58.5rem]:inline" : "hidden @min-[47rem]:inline";
   // the panel stays mounted behind other tabs: the saved notice belongs to the visit that saved
   const isActiveTab = useTabs(state => {
@@ -529,7 +530,7 @@ function TableData({
             <DetailToggle
               open={detailOpen}
               onToggle={detail.toggle}
-              labelClassName="hidden @min-[67.5rem]:inline"
+              labelClassName="hidden @min-[56rem]:inline"
             />
           )}
           {batch && (
@@ -541,7 +542,7 @@ function TableData({
               open={referencesOpen}
               onOpenChange={setReferencesOpen}
               onPick={incoming => void followBack(incoming)}
-              labelClassName="hidden @min-[65rem]:inline"
+              labelClassName="hidden @min-[54rem]:inline"
             />
           )}
           {batch && (
@@ -550,7 +551,7 @@ function TableData({
               rows={batch.rows}
               // a row added in the grid is not stored yet: nothing to copy
               selectedRow={selected && selected.row < batch.rows.length ? selected.row : null}
-              labelClassName="hidden @min-[61rem]:inline"
+              labelClassName="hidden @min-[50rem]:inline"
               insert={rows =>
                 connected(connectionId, () =>
                   commands.copyAsInsert(
@@ -578,7 +579,7 @@ function TableData({
                       </span>
                     </span>
                   )}
-                  {/* words from 1100px; below, the icon and its name (read aloud and on hover) */}
+                  {/* words in a wide bar (66rem); below, the icon and its name (read aloud and on hover) */}
                   <Button
                     size="sm"
                     variant="outline"

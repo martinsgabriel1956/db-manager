@@ -152,23 +152,23 @@ export function SessionsView({ connection }: SessionsViewProps) {
           <table className="w-full border-collapse text-xs">
             <caption className="sr-only">Sessões de {connection.name}</caption>
             <thead>
-              <tr className="h-7 border-b text-left legend text-muted-foreground">
-                <th className="pr-3 font-medium">Id</th>
-                <th className="pr-3 font-medium">Usuário</th>
-                <th className="pr-3 font-medium">Banco</th>
-                <th className="pr-3 font-medium">Estado</th>
-                <th className="pr-3 font-medium">Tempo</th>
-                <th className="pr-3 font-medium">Cliente</th>
-                <th className="pr-3 font-medium">{isRedis ? "Último comando" : "Query"}</th>
-                <th className=" font-medium">
+              <tr className="sticky top-0 h-7 border-b border-foreground bg-muted text-left legend text-muted-foreground [&>th]:px-2">
+                <th className="font-medium">Id</th>
+                <th className="font-medium">Usuário</th>
+                <th className="font-medium">Banco</th>
+                <th className="font-medium">Estado</th>
+                <th className="font-medium">Tempo</th>
+                <th className="font-medium">Cliente</th>
+                <th className="font-medium">{isRedis ? "Último comando" : "Query"}</th>
+                <th className="font-medium">
                   <span className="sr-only">Ações</span>
                 </th>
               </tr>
             </thead>
             <tbody className="font-mono">
               {list.sessions.map(session => (
-                <tr key={session.id} className="border-b align-top">
-                  <td className="py-1 pr-3 whitespace-nowrap">
+                <tr key={session.id} className="h-7 border-b align-top [&>td]:px-2">
+                  <td className="py-1 whitespace-nowrap">
                     {session.id}
                     {session.own && (
                       <Badge variant="held" className="ml-1.5 font-sans">
@@ -176,12 +176,12 @@ export function SessionsView({ connection }: SessionsViewProps) {
                       </Badge>
                     )}
                   </td>
-                  <td className="py-1 pr-3">{session.user ?? "—"}</td>
-                  <td className="py-1 pr-3">{session.database ?? "—"}</td>
-                  <td className="py-1 pr-3">{session.state ?? "—"}</td>
-                  <td className="py-1 pr-3 whitespace-nowrap">{duration(session.seconds)}</td>
-                  <td className="py-1 pr-3">{session.client ?? "—"}</td>
-                  <td className="max-w-[40ch] py-1 pr-3 break-words whitespace-pre-wrap">
+                  <td className="py-1">{session.user ?? "—"}</td>
+                  <td className="py-1">{session.database ?? "—"}</td>
+                  <td className="py-1">{session.state ?? "—"}</td>
+                  <td className="py-1 whitespace-nowrap">{duration(session.seconds)}</td>
+                  <td className="py-1">{session.client ?? "—"}</td>
+                  <td className="max-w-[40ch] py-1 break-words whitespace-pre-wrap">
                     {session.query ?? "—"}
                   </td>
                   <td className="py-1 font-sans whitespace-nowrap">
@@ -245,25 +245,25 @@ function SlowLog({ entries }: { entries: SlowCommand[] }) {
       ) : (
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="h-7 border-b text-left legend text-muted-foreground">
-              <th className="pr-3 font-medium">Id</th>
-              <th className="pr-3 font-medium">Início (UTC)</th>
-              <th className="pr-3 font-medium">Duração</th>
-              <th className="pr-3 font-medium">Comando</th>
-              <th className=" font-medium">Cliente</th>
+            <tr className="sticky top-0 h-7 border-b border-foreground bg-muted text-left legend text-muted-foreground [&>th]:px-2">
+              <th className="font-medium">Id</th>
+              <th className="font-medium">Início (UTC)</th>
+              <th className="font-medium">Duração</th>
+              <th className="font-medium">Comando</th>
+              <th className="font-medium">Cliente</th>
             </tr>
           </thead>
           <tbody className="font-mono">
             {entries.map(entry => (
-              <tr key={entry.id} className="border-b align-top">
-                <td className="py-1 pr-3">{entry.id}</td>
-                <td className="py-1 pr-3 whitespace-nowrap">
+              <tr key={entry.id} className="h-7 border-b align-top [&>td]:px-2">
+                <td className="py-1">{entry.id}</td>
+                <td className="py-1 whitespace-nowrap">
                   {new Date(entry.startedAt * 1000).toISOString().replace("T", " ").slice(0, 19)}
                 </td>
-                <td className="py-1 pr-3 whitespace-nowrap">
+                <td className="py-1 whitespace-nowrap">
                   {entry.durationUs.toLocaleString("pt-BR")} µs
                 </td>
-                <td className="py-1 pr-3 break-all">{entry.command}</td>
+                <td className="py-1 break-all">{entry.command}</td>
                 <td className="py-1">{entry.client ?? "—"}</td>
               </tr>
             ))}

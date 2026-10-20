@@ -196,6 +196,62 @@ export function ConnectionFields({
         </datalist>
       </Field>
 
+      {/* what guards this connection: chosen together, each one says what it changes. Right
+          under the name, above the address: the choice that sets every guard never sits
+          below the fold, after the SSH tunnel */}
+      <div
+        role="group"
+        aria-labelledby="protection-title"
+        className="grid gap-4 border-y border-foreground py-4"
+      >
+        <h3 id="protection-title" className="legend text-muted-foreground">
+          Proteção
+        </h3>
+        <div className="grid grid-cols-2 items-start gap-4">
+          <Field
+            id="environment"
+            label="Ambiente"
+            hint={ENVIRONMENT_HINT[values.environment]}
+            error={errors.environment}
+          >
+            <NativeSelect
+              id="environment"
+              className="w-full px-2.5"
+              aria-invalid={errors.environment ? true : undefined}
+              aria-describedby={describedBy("environment", errors.environment, true)}
+              value={values.environment}
+              onChange={event =>
+                onChange({ environment: event.target.value as ConnectionFormValues["environment"] })
+              }
+            >
+              {/* no default: the least protected regime must not be the silent choice */}
+              <option value="" disabled>
+                Escolha o ambiente
+              </option>
+              {ENVIRONMENTS.map(environment => (
+                <option key={environment} value={environment}>
+                  {ENVIRONMENT_STYLE[environment].label}
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <div className="grid gap-1 pt-6">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={values.readOnly}
+                aria-describedby="readOnly-hint"
+                onChange={event => onChange({ readOnly: event.target.checked })}
+              />
+              Somente leitura
+            </label>
+            <p id="readOnly-hint" className="pl-6 text-xs text-muted-foreground">
+              {READ_ONLY_HINT[values.engine]}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {!isSqlite && !isMongo && !hasNodes && (
         <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />
       )}
@@ -491,60 +547,6 @@ export function ConnectionFields({
           {textInput("keySeparator")}
         </Field>
       )}
-
-      {/* what guards this connection: chosen together, each one says what it changes */}
-      <div
-        role="group"
-        aria-labelledby="protection-title"
-        className="grid gap-4 border-t border-foreground pt-4"
-      >
-        <h3 id="protection-title" className="legend text-muted-foreground">
-          Proteção
-        </h3>
-        <div className="grid grid-cols-2 items-start gap-4">
-          <Field
-            id="environment"
-            label="Ambiente"
-            hint={ENVIRONMENT_HINT[values.environment]}
-            error={errors.environment}
-          >
-            <NativeSelect
-              id="environment"
-              className="w-full px-2.5"
-              aria-invalid={errors.environment ? true : undefined}
-              aria-describedby={describedBy("environment", errors.environment, true)}
-              value={values.environment}
-              onChange={event =>
-                onChange({ environment: event.target.value as ConnectionFormValues["environment"] })
-              }
-            >
-              {/* no default: the least protected regime must not be the silent choice */}
-              <option value="" disabled>
-                Escolha o ambiente
-              </option>
-              {ENVIRONMENTS.map(environment => (
-                <option key={environment} value={environment}>
-                  {ENVIRONMENT_STYLE[environment].label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <div className="grid gap-1 pt-6">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={values.readOnly}
-                aria-describedby="readOnly-hint"
-                onChange={event => onChange({ readOnly: event.target.checked })}
-              />
-              Somente leitura
-            </label>
-            <p id="readOnly-hint" className="pl-6 text-xs text-muted-foreground">
-              {READ_ONLY_HINT[values.engine]}
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* rarely changed: folded, but opened by itself when one of its fields has an error */}
       <details open={advancedError || undefined} className="group border-t border-foreground pt-4">

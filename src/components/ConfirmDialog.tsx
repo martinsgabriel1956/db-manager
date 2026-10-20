@@ -1,9 +1,15 @@
 import { useEffect, useId, useState } from "react";
 import type { Confirmation } from "@/bindings";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
+  ProdStrip,
+  SHEET_CLASS,
+  SheetConnection,
+  SheetFooter,
+  SheetHeader
+} from "@/components/Sheet";
+import { Dialog, DialogContent, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { EnvTag } from "@/features/connections/EnvTag";
 import { useConnections } from "@/features/connections/queries";
 import type { CellDiff } from "@/features/table/staged";
 import { useFocusReturn } from "@/features/tabs/focus";
@@ -58,31 +64,15 @@ export function ConfirmDialog({
         {...focusReturn}
         role="alertdialog"
         showCloseButton={false}
-        className="flex flex-col gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl"
+        className={SHEET_CLASS}
       >
-        <div className="flex shrink-0 items-end justify-between gap-4 border-b border-foreground px-5 pt-6 pb-3 grid-paper">
-          <DialogTitle className="display-caps text-[2rem]">Confirmar execução</DialogTitle>
-          <svg aria-hidden viewBox="0 0 16 24" className="mb-0.5 h-8 w-5 text-select">
-            <line x1="2" y1="23" x2="14" y2="1" stroke="currentColor" strokeWidth="2.5" />
-          </svg>
-        </div>
+        <SheetHeader title="Confirmar execução" />
         {/* in a short window (the minimum one, or zoomed in) the record scrolls between the
             title and the buttons: "Executar em produção" never leaves the screen */}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {/* the record's fields */}
           {/* the statements below speak for their own count */}
-          <dl className="grid grid-cols-[2fr_1fr] border-b">
-            <div className="border-r px-5 py-2.5">
-              <dt className="legend text-muted-foreground">Conexão</dt>
-              <dd className="mt-1.5 truncate text-sm font-semibold">{connection?.name ?? "—"}</dd>
-            </div>
-            <div className="px-4 py-2.5">
-              <dt className="legend text-muted-foreground">Ambiente</dt>
-              <dd className="mt-1.5">
-                {connection ? <EnvTag environment={connection.environment} labelled /> : "—"}
-              </dd>
-            </div>
-          </dl>
+          <SheetConnection connection={connection} />
           <div className="border-b px-5 py-2.5">
             <p className="legend text-muted-foreground">Motivo</p>
             <DialogDescription className="mt-1.5 text-sm text-foreground">
@@ -132,12 +122,7 @@ export function ConfirmDialog({
               .map(statement => `${statement}${statementSuffix}`)
               .join("\n\n")}
           </pre>
-          {isProd && (
-            <p className="flex h-7 items-center gap-2 bg-safelight px-5 text-xs text-white">
-              <span className="legend text-[0.75rem]">Produção</span>
-              <span>este comando roda no banco de produção</span>
-            </p>
-          )}
+          {isProd && <ProdStrip>este comando roda no banco de produção</ProdStrip>}
           {mustType && (
             <div className="px-5 pt-3 pb-4">
               <label htmlFor={typeId} className="text-sm">
@@ -161,19 +146,14 @@ export function ConfirmDialog({
             </div>
           )}
         </div>
-        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-foreground bg-muted px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Confira o comando exato antes de confirmar.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onCancel}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" disabled={pending || !armed} onClick={onConfirm}>
-              {pending ? "Executando…" : label}
-            </Button>
-          </div>
-        </div>
+        <SheetFooter hint="Confira o comando exato antes de confirmar.">
+          <Button variant="outline" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" disabled={pending || !armed} onClick={onConfirm}>
+            {pending ? "Executando…" : label}
+          </Button>
+        </SheetFooter>
       </DialogContent>
     </Dialog>
   );

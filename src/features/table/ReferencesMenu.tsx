@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, CornerDownLeft } from "lucide-react";
+import { ChevronDown, Link2 } from "lucide-react";
 import { commands } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,7 +60,7 @@ export function ReferencesMenu({
           aria-keyshortcuts="Alt+Shift+Enter"
           title="Linhas de outras tabelas que apontam para a linha selecionada (Alt+Shift+Enter)"
         >
-          <CornerDownLeft /> <span className={labelClassName}>Referências</span> <ChevronDown />
+          <Link2 /> <span className={labelClassName}>Referências</span> <ChevronDown />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
