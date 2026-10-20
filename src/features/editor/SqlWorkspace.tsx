@@ -17,7 +17,6 @@ import { ParamsDialog } from "@/features/editor/ParamsDialog";
 import {
   findParams,
   paramValue,
-  uniqueNames,
   type FoundParams,
   type ParamInput
 } from "@/features/editor/params";
@@ -280,7 +279,8 @@ export function SqlWorkspace({
       </Group>
       {paramRequest && (
         <ParamsDialog
-          names={uniqueNames(paramRequest.found.names)}
+          connectionId={connectionId}
+          found={paramRequest.found}
           remembered={params}
           error={paramError}
           pending={filling}

@@ -168,6 +168,21 @@ test("the value panel edits JSON as stored, formats only on request and blocks i
   ]);
 });
 
+test("undoing an edit of a NULL JSON cell puts the panel back on NULL, not on invalid JSON", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.click(cell("NULL"));
+  const panel = screen.getByRole("complementary", { name: "Valor da célula" });
+  const view = jsonView(panel);
+  act(() => view.dispatch({ changes: { from: 0, insert: '{"a": 1}' } }));
+  await user.click(within(panel).getByRole("button", { name: "Aplicar" }));
+  await user.click(within(panel).getByRole("button", { name: "Desfazer alteração" }));
+
+  expect(within(panel).getByText(/^Gravado como/)).toHaveTextContent("Gravado como NULL");
+  expect(within(panel).queryByText(/JSON inválido/)).not.toBeInTheDocument();
+});
+
 test("rows can be added, deleted, restored and set to NULL", async () => {
   const calls = fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);

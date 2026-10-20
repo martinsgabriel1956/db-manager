@@ -4,7 +4,9 @@ import { Copy } from "lucide-react";
 import { commands, type ConnectionConfig, type DiffKind, type SchemaDiff } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { ENGINE_LABEL } from "@/features/connections/options";
+import { ConnectionContext } from "@/features/connections/ConnectionContext";
+import { EnvTag } from "@/features/connections/EnvTag";
+import { ENGINE_LABEL, ENVIRONMENT_STYLE } from "@/features/connections/options";
 import { connected, useSchemas } from "@/features/explorer/queries";
 import { errorMessage } from "@/lib/errors";
 
@@ -34,9 +36,15 @@ const KIND_LABEL: Record<DiffKind, string> = {
   foreignKey: "Chave estrangeira"
 };
 
-/** Another connection of the same engine (prod for dev), else the same one. */
+/**
+ * Another connection of the same engine, never production by default: the suggested DDL is
+ * written for the target, and pointing it at prod is a choice the user makes. Else the same one.
+ */
 function defaultTarget(source: ConnectionConfig | undefined, choices: ConnectionConfig[]) {
-  return choices.find(connection => connection.id !== source?.id) ?? source;
+  return (
+    choices.find(connection => connection.id !== source?.id && connection.environment !== "prod") ??
+    source
+  );
 }
 
 /**
@@ -80,6 +88,7 @@ export function SchemaDiffView({ connections, connectionId, schema }: SchemaDiff
         {opened && (
           <span className="text-xs text-muted-foreground">{ENGINE_LABEL[opened.engine]}</span>
         )}
+        <ConnectionContext connectionId={connectionId} className="ml-auto" />
       </div>
       <form
         className="flex flex-wrap items-end gap-4 border-b bg-muted px-3 py-2 text-xs"
@@ -99,10 +108,15 @@ export function SchemaDiffView({ connections, connectionId, schema }: SchemaDiff
           DDL sugerido leva o destino ao estado da origem e nunca é executado por esta tela.
         </p>
       </form>
-      {compare.isError && (
-        <p role="alert" className="border-b px-3 py-2 text-sm text-destructive">
-          {errorMessage(compare.error)}
-        </p>
+      {compare.isError && compare.variables && (
+        <div role="alert" className="grid gap-1 border-b px-3 py-2">
+          <p className="text-sm font-semibold text-destructive">
+            Não foi possível comparar {name(compare.variables.source)} com{" "}
+            {name(compare.variables.target)}
+          </p>
+          {/* the driver's own words, as data */}
+          <p className="font-mono text-[11px] break-words">{errorMessage(compare.error)}</p>
+        </div>
       )}
       {/* named after the sides that were compared, not the ones picked since */}
       {compare.data && compare.variables && (
@@ -118,6 +132,7 @@ export function SchemaDiffView({ connections, connectionId, schema }: SchemaDiff
 
 function SidePicker({ legend, side, choices, onChange }: SidePickerProps) {
   const schemas = useSchemas(side.connectionId, true);
+  const picked = choices.find(connection => connection.id === side.connectionId);
   return (
     <fieldset className="flex items-end gap-2">
       <legend className="mb-1 legend text-muted-foreground">{legend}</legend>
@@ -131,11 +146,13 @@ function SidePicker({ legend, side, choices, onChange }: SidePickerProps) {
         >
           {choices.map(connection => (
             <option key={connection.id} value={connection.id}>
-              {connection.name} ({connection.environment})
+              {connection.name} · {ENVIRONMENT_STYLE[connection.environment].label}
             </option>
           ))}
         </NativeSelect>
       </label>
+      {/* the picked side's environment as the tag every other screen prints, not a word in a list */}
+      {picked && <EnvTag environment={picked.environment} className="mb-[5px]" />}
       <label className="grid gap-1">
         <span className="legend text-muted-foreground">Schema</span>
         <NativeSelect
@@ -180,21 +197,22 @@ function DiffResult({ diff, sourceName, targetName }: DiffResultProps) {
           <h3 className="mb-1 font-mono text-sm font-semibold">{table.table}</h3>
           <table className="w-full border-collapse text-xs">
             <thead>
-              <tr className="h-7 border-b text-left legend text-muted-foreground">
-                <th className="w-32 pr-3 font-medium">Tipo</th>
-                <th className="pr-3 font-medium">Nome</th>
-                <th className="pr-3 font-medium">Origem</th>
-                <th className=" font-medium">Destino</th>
+              <tr className="sticky top-0 h-7 border-b border-foreground bg-muted text-left legend text-muted-foreground [&>th]:px-2">
+                <th className="w-32 font-medium">Tipo</th>
+                <th className="font-medium">Nome</th>
+                <th className="font-medium">Origem</th>
+                <th className="font-medium">Destino</th>
               </tr>
             </thead>
             <tbody>
               {table.items.map(item => (
-                <tr key={`${item.kind}/${item.name}`} className="border-b align-top">
-                  <td className="py-1 pr-3">{KIND_LABEL[item.kind]}</td>
-                  <td className="py-1 pr-3 font-mono">{item.name}</td>
-                  <td className="py-1 pr-3 font-mono break-all">
-                    {item.source ?? "— (não existe)"}
-                  </td>
+                <tr
+                  key={`${item.kind}/${item.name}`}
+                  className="h-7 border-b align-top [&>td]:px-2"
+                >
+                  <td className="py-1">{KIND_LABEL[item.kind]}</td>
+                  <td className="py-1 font-mono">{item.name}</td>
+                  <td className="py-1 font-mono break-all">{item.source ?? "— (não existe)"}</td>
                   <td className="py-1 font-mono break-all">{item.target ?? "— (não existe)"}</td>
                 </tr>
               ))}

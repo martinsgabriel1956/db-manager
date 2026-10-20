@@ -47,10 +47,14 @@ test("a schema is compared with another connection of the same engine", async ()
   });
   const user = await openComparison();
 
-  // the source is where it was opened from; the target, another Postgres
+  // the source is where it was opened from; production is never the target by default
   expect(screen.getByLabelText("Conexão de origem")).toHaveValue("pg-dev");
   const target = screen.getByLabelText("Conexão de destino");
-  expect(target).toHaveValue("pg-1");
+  expect(target).toHaveValue("pg-dev");
+  await user.selectOptions(target, "pg-1");
+  // the picked side prints its environment as the tag, not a word in the list
+  const targetSide = screen.getByRole("group", { name: "Destino" });
+  expect(within(targetSide).getByText("Prod")).toBeInTheDocument();
   // a Mongo connection cannot be the other side
   expect(within(target).queryByText(/Mongo dev/)).toBeNull();
   expect(screen.getByText(/nunca é executado por esta tela/)).toBeInTheDocument();
@@ -104,7 +108,9 @@ test("the target schema can be another one, and a failure says why", async () =>
   await user.selectOptions(await screen.findByLabelText("Schema de destino"), "audit");
   await user.click(screen.getByRole("button", { name: "Comparar" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("não encontrado: schema audit");
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Não foi possível comparar Postgres dev · public com");
+  expect(alert).toHaveTextContent("não encontrado: schema audit");
   expect(callsTo(calls, "compare_schemas")[0]).toMatchObject({ targetSchema: "audit" });
 });
 

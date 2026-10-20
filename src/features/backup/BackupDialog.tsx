@@ -12,12 +12,13 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+  ProdStrip,
+  SHEET_CLASS,
+  SheetConnection,
+  SheetFooter,
+  SheetHeader
+} from "@/components/Sheet";
+import { Dialog, DialogContent, DialogDescription } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import { connected, isConnectionQuery } from "@/features/explorer/queries";
 import { errorMessage } from "@/lib/errors";
@@ -184,112 +185,127 @@ export function BackupDialog({ connection, onClose }: BackupDialogProps) {
   return (
     // a running job keeps the dialog: its cancel button lives here
     <Dialog open onOpenChange={next => !next && !running && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Backup e restauração</DialogTitle>
-          <DialogDescription>
-            {connection.name} · {TOOLS[connection.engine]}
-          </DialogDescription>
-        </DialogHeader>
-
-        <section aria-labelledby={`${formatSelectId}-backup`} className="grid gap-2">
-          <h3 id={`${formatSelectId}-backup`} className="legend text-muted-foreground">
-            Backup
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            {formats.length > 1 && (
-              <NativeSelect
-                aria-label="Formato do backup"
-                value={option?.format}
-                disabled={running}
-                onChange={event =>
-                  setFormatId(formats.find(f => f.format === event.target.value)?.format)
-                }
-              >
-                {formats.map(candidate => (
-                  <option key={candidate.format} value={candidate.format}>
-                    {candidate.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
-            {formats.length === 1 && <span className="text-sm">{option?.label}</span>}
-            <Button size="sm" disabled={running || !option} onClick={startBackup}>
-              <DatabaseBackup /> Fazer backup…
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Grava em um arquivo .part e renomeia no fim: um backup que falha ou é cancelado não
-            apaga um arquivo existente.
-          </p>
-        </section>
-
-        <section aria-labelledby={`${formatSelectId}-restore`} className="grid gap-2">
-          <h3 id={`${formatSelectId}-restore`} className="legend text-muted-foreground">
-            Restaurar
-          </h3>
-          {connection.engine === "sqlite" ? (
-            <p className="text-sm">
-              O app não restaura SQLite: feche a conexão e copie o arquivo do backup no lugar do
-              banco.
-            </p>
-          ) : connection.readOnly ? (
-            <p className="text-sm">
-              Conexão somente leitura: restaurar está desligado, porque escreve no banco.
-            </p>
-          ) : (
-            <>
-              <div>
-                <Button size="sm" variant="outline" disabled={running} onClick={pickRestore}>
-                  <Upload /> Restaurar de um arquivo…
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {restoreNote} O comando exato aparece para confirmar antes de rodar.
-              </p>
-            </>
+      {/* the same sheet as the confirmation: a restore rewrites the database, so where it
+          acts (and production, in words) is read before any button */}
+      <DialogContent showCloseButton={false} className={SHEET_CLASS}>
+        <SheetHeader title="Backup e restauração" />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <SheetConnection connection={connection} />
+          {connection.environment === "prod" && (
+            <ProdStrip>
+              {connection.readOnly
+                ? "o backup lê o banco de produção"
+                : "restaurar escreve no banco de produção"}
+            </ProdStrip>
           )}
-        </section>
-
-        {job.status === "running" && (
-          <div role="status" className="flex items-center gap-2 border-t pt-3 text-sm">
-            {job.label}
-            {connection.engine === "sqlite" ? (
-              <span className="text-xs text-muted-foreground">
-                O SQLite não interrompe a cópia no meio.
-              </span>
-            ) : (
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={() => commands.cancelRun(job.runId).catch(() => undefined)}
-              >
-                <Square /> Cancelar
+          <section
+            aria-labelledby={`${formatSelectId}-backup`}
+            className="grid gap-2 border-b px-5 py-3"
+          >
+            <h3 id={`${formatSelectId}-backup`} className="legend text-muted-foreground">
+              Backup
+            </h3>
+            <DialogDescription className="text-sm text-foreground">
+              {TOOLS[connection.engine]}
+            </DialogDescription>
+            <div className="flex flex-wrap items-center gap-2">
+              {formats.length > 1 && (
+                <NativeSelect
+                  aria-label="Formato do backup"
+                  value={option?.format}
+                  disabled={running}
+                  onChange={event =>
+                    setFormatId(formats.find(f => f.format === event.target.value)?.format)
+                  }
+                >
+                  {formats.map(candidate => (
+                    <option key={candidate.format} value={candidate.format}>
+                      {candidate.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              )}
+              {formats.length === 1 && <span className="text-sm">{option?.label}</span>}
+              <Button size="sm" disabled={running || !option} onClick={startBackup}>
+                <DatabaseBackup /> Fazer backup…
               </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Grava em um arquivo .part e renomeia no fim: um backup que falha ou é cancelado não
+              apaga um arquivo existente.
+            </p>
+          </section>
+
+          <section aria-labelledby={`${formatSelectId}-restore`} className="grid gap-2 px-5 py-3">
+            <h3 id={`${formatSelectId}-restore`} className="legend text-muted-foreground">
+              Restaurar
+            </h3>
+            {connection.engine === "sqlite" ? (
+              <p className="text-sm">
+                O app não restaura SQLite: feche a conexão e copie o arquivo do backup no lugar do
+                banco.
+              </p>
+            ) : connection.readOnly ? (
+              <p className="text-sm">
+                Conexão somente leitura: restaurar está desligado, porque escreve no banco.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm">{restoreNote}</p>
+                <div>
+                  <Button size="sm" variant="outline" disabled={running} onClick={pickRestore}>
+                    <Upload /> Restaurar de um arquivo…
+                  </Button>
+                </div>
+              </>
             )}
-          </div>
-        )}
-        {job.status === "done" && (
-          <div className="grid gap-1.5 border-t pt-3">
-            <p role="status" className="text-sm text-success">
+          </section>
+
+          {job.status === "running" && (
+            <div role="status" className="flex items-center gap-2 border-t px-5 py-3 text-sm">
+              {job.label}
+              {connection.engine === "sqlite" ? (
+                <span className="text-xs text-muted-foreground">
+                  O SQLite não interrompe a cópia no meio.
+                </span>
+              ) : (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => commands.cancelRun(job.runId).catch(() => undefined)}
+                >
+                  <Square /> Cancelar
+                </Button>
+              )}
+            </div>
+          )}
+          {job.status === "done" && (
+            <div className="grid gap-1.5 border-t px-5 py-3">
+              <p role="status" className="text-sm text-success">
+                {job.message}
+              </p>
+              <p className="legend text-muted-foreground">Comando executado (sem a senha)</p>
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label="Comando executado"
+                className="max-h-40 overflow-auto border border-foreground bg-background px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap outline-none focus-visible:border-ring"
+              >
+                {job.command}
+              </pre>
+            </div>
+          )}
+          {job.status === "error" && (
+            <p role="alert" className="border-t px-5 py-3 text-sm break-words text-destructive">
               {job.message}
             </p>
-            <p className="legend text-muted-foreground">Comando executado (sem a senha)</p>
-            <pre
-              tabIndex={0}
-              role="region"
-              aria-label="Comando executado"
-              className="max-h-40 overflow-auto border bg-muted px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap outline-none focus-visible:border-ring"
-            >
-              {job.command}
-            </pre>
-          </div>
-        )}
-        {job.status === "error" && (
-          <p role="alert" className="border-t pt-3 text-sm break-words text-destructive">
-            {job.message}
-          </p>
-        )}
+          )}
+        </div>
+        <SheetFooter hint="Um restore mostra o comando exato para confirmar antes de rodar.">
+          <Button variant="outline" disabled={running} onClick={onClose}>
+            Fechar
+          </Button>
+        </SheetFooter>
 
         <ConfirmDialog
           connectionId={connection.id}

@@ -155,3 +155,14 @@ test("read-only connections and SQLite say why there is no restore", () => {
   expect(screen.getByText(/copie o arquivo do backup no lugar do banco/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Restaurar/ })).not.toBeInTheDocument();
 });
+
+test("a production backup says so under the safelight, whatever tab is active", () => {
+  const writable = { ...prodPostgres, readOnly: false };
+  fakeBackend([writable]);
+  renderWithClient(<BackupDialog connection={writable} onClose={() => undefined} />);
+
+  const dialog = screen.getByRole("dialog", { name: "Backup e restauração" });
+  expect(within(dialog).getByText("Postgres prod")).toBeInTheDocument();
+  expect(within(dialog).getByText("Prod")).toBeInTheDocument();
+  expect(within(dialog).getByText("restaurar escreve no banco de produção")).toBeInTheDocument();
+});
