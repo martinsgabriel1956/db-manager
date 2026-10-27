@@ -2,7 +2,7 @@
 
 Uma linha por feature: PRD → techspec → tasks → review.
 
-- [Resultado de cada comando do script](prd-resultados-por-comando/prd.md): uma aba por resultado e um resumo da execução no editor SQL. Status: implementado (branch `feat/resultados-por-comando`, PR a abrir)
+- [Resultado de cada comando do script](prd-resultados-por-comando/prd.md): uma aba por resultado e um resumo da execução no editor SQL. Status: mergeado (PR #49)
 - [Funções, procedures, triggers e sequences na árvore](prd-objetos-programaveis/prd.md): listar, ver o DDL e remover os objetos programáveis do SQL. Status: em prd
 - [Importar e exportar conexões](prd-importar-conexoes/prd.md): trazer conexões do `.pgpass`, do `.my.cnf`, do DBeaver e de um arquivo do Ordo (sem senhas). Status: em prd
 - [Editar arrays e binários na grade](prd-editar-arrays-binarios/prd.md): arrays elemento por elemento e binários por arquivo ou hex, no stage. Status: em prd
