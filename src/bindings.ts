@@ -51,7 +51,7 @@ export const commands = {
 	 *  (Postgres). Only reads: the DDL is never run from here.
 	 */
 	compareSchemas: (sourceConnectionId: string, sourceSchema: string, targetConnectionId: string, targetSchema: string) => __TAURI_INVOKE<SchemaDiff>("compare_schemas", { sourceConnectionId, sourceSchema, targetConnectionId, targetSchema }),
-	exportQuery: (connectionId: string, runId: string, sql: string, path: string) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path }),
+	exportQuery: (connectionId: string, runId: string, sql: string, path: string, statement: number | null) => __TAURI_INVOKE<ExportOutcome>("export_query", { connectionId, runId, sql, path, statement }),
 	exportTable: (connectionId: string, runId: string, request: BrowseRequest, path: string) => __TAURI_INVOKE<ExportOutcome>("export_table", { connectionId, runId, request, path }),
 	exportCollection: (connectionId: string, runId: string, request: FindRequest, format: DocumentFormat, path: string) => __TAURI_INVOKE<ExportOutcome>("export_collection", { connectionId, runId, request, format, path }),
 	previewCsv: (path: string) => __TAURI_INVOKE<CsvPreview>("preview_csv", { path }),

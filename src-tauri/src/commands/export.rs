@@ -12,6 +12,7 @@ pub async fn export_query(
     run_id: String,
     sql: String,
     path: String,
+    statement: Option<u32>,
 ) -> Result<ExportOutcome, AppError> {
     export::export_query(
         &state.registry,
@@ -20,6 +21,7 @@ pub async fn export_query(
         &run_id,
         &sql,
         &path,
+        statement,
     )
     .await
 }

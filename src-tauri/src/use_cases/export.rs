@@ -16,8 +16,9 @@ use crate::storage::history::HistoryStore;
 use crate::use_cases::guard;
 use crate::use_cases::sql::{EDITOR_BATCH_SIZE, elapsed_ms, record, validate_browse};
 
-/// Runs a read-only script and writes the last statement's rows as CSV. Tagged
-/// with `run_id`, so `cancel_run` stops it.
+/// Runs a read-only script and writes the last statement's rows as CSV; with
+/// `statement`, the script runs only up to that one (0-based), which is exported
+/// whole. Tagged with `run_id`, so `cancel_run` stops it.
 pub async fn export_query(
     registry: &Registry,
     history: &HistoryStore,
@@ -25,12 +26,20 @@ pub async fn export_query(
     run_id: &str,
     sql: &str,
     path: &str,
+    statement: Option<u32>,
 ) -> Result<ExportOutcome, AppError> {
     let connection = registry.connection(connection_id)?;
     let dialect = connection.sql()?.dialect();
-    let statements = dialect.split(sql);
+    let mut statements = dialect.split(sql);
     if statements.is_empty() {
         return Err(AppError::validation("nenhum comando para exportar"));
+    }
+    if let Some(index) = statement {
+        let keep = index as usize + 1;
+        if keep > statements.len() {
+            return Err(AppError::validation("comando fora do script"));
+        }
+        statements.truncate(keep);
     }
     // exporting must never change data: writes go through the editor and its confirmations
     if statements
@@ -398,6 +407,7 @@ mod integration_tests {
             "e1",
             "SET search_path TO public; SELECT id, name, note FROM people ORDER BY id",
             &path,
+            None,
         )
         .await
         .unwrap();
@@ -407,6 +417,35 @@ mod integration_tests {
             read(&path),
             "id,name,note\n1,Ana,\n2,\"\",\"a,b\"\n3,Bia,\"say \"\"hi\"\"\nbye\"\n"
         );
+
+        // one statement of the script: run up to it, exported whole
+        let middle_path = path_in(&dir, "middle.csv");
+        let outcome = export_query(
+            &registry,
+            &history,
+            &id,
+            "e6",
+            "SELECT g FROM generate_series(1, 1500) g; SELECT 1",
+            &middle_path,
+            Some(0),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.rows, 1500);
+        assert!(read(&middle_path).starts_with("g\n1\n2\n"));
+        assert!(matches!(
+            export_query(
+                &registry,
+                &history,
+                &id,
+                "e7",
+                "SELECT 1; SELECT 2",
+                &middle_path,
+                Some(5)
+            )
+            .await,
+            Err(AppError::Validation(_))
+        ));
 
         // the table with the grid's filter, every page
         let table_path = path_in(&dir, "table.csv");
@@ -430,8 +469,16 @@ mod integration_tests {
 
         // never writes, and a failure leaves an existing file as it was
         std::fs::write(&path, "old").unwrap();
-        let refused =
-            export_query(&registry, &history, &id, "e3", "DELETE FROM people", &path).await;
+        let refused = export_query(
+            &registry,
+            &history,
+            &id,
+            "e3",
+            "DELETE FROM people",
+            &path,
+            None,
+        )
+        .await;
         assert!(matches!(refused, Err(AppError::Validation(_))));
         let failed = export_query(
             &registry,
@@ -440,6 +487,7 @@ mod integration_tests {
             "e4",
             "SELECT * FROM missing",
             &path,
+            None,
         )
         .await;
         assert!(matches!(failed, Err(AppError::Database(_))));
@@ -455,7 +503,8 @@ mod integration_tests {
                 &id,
                 "slow",
                 "SELECT pg_sleep(10)",
-                &slow_path
+                &slow_path,
+                None
             ),
             async {
                 tokio::time::sleep(Duration::from_millis(500)).await;
@@ -467,7 +516,16 @@ mod integration_tests {
         assert!(!std::path::Path::new(&slow_path).exists());
 
         assert!(matches!(
-            export_query(&registry, &history, &id, "e5", "SELECT 1", "relative.csv").await,
+            export_query(
+                &registry,
+                &history,
+                &id,
+                "e5",
+                "SELECT 1",
+                "relative.csv",
+                None
+            )
+            .await,
             Err(AppError::Validation(_))
         ));
 

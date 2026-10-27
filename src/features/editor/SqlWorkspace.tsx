@@ -446,7 +446,7 @@ function ResultsPanel({
                 extension: "csv",
                 run: (path, runId) =>
                   connected(connectionId, () =>
-                    commands.exportQuery(connectionId, runId, sql, path)
+                    commands.exportQuery(connectionId, runId, sql, path, null)
                   )
               }
             ]}
