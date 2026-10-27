@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import type { ScriptOutcome, StatementResult } from "@/bindings";
@@ -116,4 +117,26 @@ test("an earlier result says it kept its first rows and exports up to its statem
       expect.objectContaining({ sql: "SELECT 1; UPDATE x; SELECT 3", statement: 0 })
     ])
   );
+});
+
+test("picking a statement in the summary selects it in the editor", async () => {
+  const { user } = await run(scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }]));
+
+  await user.click(await screen.findByRole("tab", { name: "Execução" }));
+  await user.click(screen.getByRole("button", { name: "comando 2 de 2, concluído" }));
+
+  const view = EditorView.findFromDOM(document.querySelector(".cm-content") as HTMLElement)!;
+  const { from, to } = view.state.selection.main;
+  expect(view.state.sliceDoc(from, to)).toBe("UPDATE x;");
+});
+
+test("a statement is not selected once the editor no longer holds what ran", async () => {
+  const { user } = await run(scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }]));
+  const view = EditorView.findFromDOM(document.querySelector(".cm-content") as HTMLElement)!;
+  act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "SELECT 9" } }));
+
+  await user.click(await screen.findByRole("tab", { name: "Execução" }));
+  await user.click(screen.getByRole("button", { name: "comando 2 de 2, concluído" }));
+
+  expect(view.state.selection.main.empty).toBe(true);
 });

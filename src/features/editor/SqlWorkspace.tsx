@@ -273,7 +273,7 @@ export function SqlWorkspace({
             state={runner.state}
             engine={engine}
             onLoadMore={runner.loadMore}
-            onSelectStatement={() => undefined}
+            onSelectStatement={(from, to) => editorApi.current?.select(lastSql, from, to)}
           />
         </Panel>
       </Group>
