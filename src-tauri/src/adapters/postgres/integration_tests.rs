@@ -10,7 +10,7 @@ use tokio::sync::oneshot;
 
 use super::PostgresAdapter;
 use crate::adapters::dialect::Dialect;
-use crate::adapters::stream::ScriptRun;
+use crate::adapters::stream::{ScriptRun, ScriptSteps};
 use crate::domain::{
     AppError, BrowseRequest, Cell, ConnectionConfig, Engine, Environment, Filter, FilterOp,
     RelationKind, Sort, SortDirection, Target, TlsConfig, TlsMode,
@@ -603,5 +603,90 @@ CREATE INDEX orders_lower_code ON public."Orders" USING btree (lower((code)::tex
     assert!(matches!(
         db.ddl("public", "missing").await,
         Err(AppError::NotFound(_))
+    ));
+}
+
+async fn steps(adapter: &PostgresAdapter, sql: &str, reads: &[bool]) -> ScriptSteps {
+    adapter
+        .run_steps(&Dialect::Postgres.split(sql), reads, 1000, |_| {})
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn every_statement_of_a_script_brings_its_own_result() {
+    let (_container, config) = start().await;
+    let db = connect(&config, false).await;
+
+    // earlier statements keep their first batch and count the rest; only the last streams
+    let run = steps(
+        &db,
+        "SELECT 1; SELECT g FROM generate_series(1, 1500) g; SELECT 2",
+        &[true, true, true],
+    )
+    .await;
+    assert!(run.failure.is_none());
+    assert_eq!(run.steps.len(), 3);
+    let big = run.steps[1].first.as_ref().unwrap();
+    assert_eq!(big.batch.rows.len(), 1000);
+    assert!(big.batch.has_more);
+    assert_eq!(run.steps[1].row_count, Some(1500));
+    assert_eq!(run.steps[2].row_count, Some(1));
+    assert!(run.cursor.is_none());
+
+    // a SELECT matching nothing keeps its header; a write is a command
+    let run = steps(
+        &db,
+        "SELECT 1 AS one WHERE false; CREATE TEMP TABLE t (x int); INSERT INTO t VALUES (1), (2); SELECT 3",
+        &[true, false, false, true],
+    )
+    .await;
+    let empty = run.steps[0].first.as_ref().unwrap();
+    assert_eq!(empty.batch.columns.len(), 1);
+    assert_eq!(run.steps[0].row_count, Some(0));
+    assert!(
+        run.steps[1]
+            .first
+            .as_ref()
+            .unwrap()
+            .batch
+            .columns
+            .is_empty()
+    );
+    assert_eq!(run.steps[2].row_count, Some(2));
+
+    // past the limit, earlier results only count their rows; the last one always keeps its own
+    let run = steps(&db, &"SELECT 1;".repeat(25), &[true; 25]).await;
+    assert_eq!(run.steps.len(), 25);
+    let kept: Vec<bool> = run.steps.iter().map(|step| step.first.is_some()).collect();
+    assert_eq!(kept.iter().filter(|kept| **kept).count(), 20);
+    assert!(kept[..19].iter().all(|kept| *kept) && kept[24]);
+    assert!(run.steps.iter().all(|step| step.row_count == Some(1)));
+
+    // a failure stops the script and keeps the steps before it
+    let run = steps(&db, "SELECT 1; SELECT FROMM; SELECT 2", &[true, true, true]).await;
+    assert_eq!(run.steps.len(), 2);
+    assert!(run.steps[0].first.is_some());
+    assert!(run.steps[1].first.is_none());
+    let failure = run.failure.unwrap().to_string();
+    assert!(failure.starts_with("comando 2 de 3:"), "{failure}");
+
+    // a cancel mid-script says where it stopped and keeps its kind
+    let (pid_tx, pid_rx) = oneshot::channel();
+    let statements = Dialect::Postgres.split("SELECT 1; SELECT pg_sleep(30); SELECT 2");
+    let running = db.run_steps(&statements, &[true; 3], 1000, |pid| {
+        let _ = pid_tx.send(pid);
+    });
+    let canceller = async {
+        let pid = pid_rx.await.unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        db.cancel(pid).await;
+    };
+    let (run, ()) = tokio::join!(running, canceller);
+    let run = run.unwrap();
+    assert_eq!(run.steps.len(), 2);
+    assert!(matches!(
+        run.failure,
+        Some(AppError::Cancelled(message)) if message.starts_with("comando 2 de 3:")
     ));
 }

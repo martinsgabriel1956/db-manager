@@ -281,7 +281,7 @@ mod integration_tests {
 
     async fn names(registry: &Registry, history: &HistoryStore, id: &str) -> Vec<String> {
         let outcome = exec(registry, history, id, "SELECT name FROM t ORDER BY id").await;
-        let StatementResult::Rows { batch, .. } = outcome.result else {
+        let StatementResult::Rows { batch, .. } = outcome.into_last().unwrap() else {
             panic!("expected rows");
         };
         batch

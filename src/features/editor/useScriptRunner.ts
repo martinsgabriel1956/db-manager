@@ -30,7 +30,8 @@ export type RunState =
 
 /** A run that finished; `confirmed` when it went through the confirmation first. */
 export type SettledRun =
-  | { status: "error"; runId: string; message: string }
+  /** `outcome` when a statement of the script failed: the steps before it ran */
+  | { status: "error"; runId: string; message: string; outcome?: ScriptOutcome }
   | { status: "plan"; runId: string; confirmed: boolean; plan: ExplainPlan }
   | {
       status: "command";
@@ -121,7 +122,12 @@ export function useScriptRunner(connectionId: string) {
           return;
         }
         const { outcome } = response;
-        const { result } = outcome;
+        if (outcome.error) {
+          setState({ status: "error", runId, message: errorMessage(outcome.error), outcome });
+          return;
+        }
+        // a script that ran to its end has the last statement's result
+        const result = outcome.steps[outcome.steps.length - 1].result!;
         if (result.kind === "command") {
           setState({
             status: "command",

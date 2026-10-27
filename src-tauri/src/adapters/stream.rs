@@ -1,11 +1,11 @@
 //! Script execution shared by the SQL engines: run every statement on one
-//! connection, stream the last one in batches through a `Cursor`, cancel on
-//! timeout or when the cursor is abandoned. Engine specifics (turning rows into
+//! connection, keep the first batch of each, stream the last one in batches
+//! through a `Cursor`, cancel on timeout or when the cursor is abandoned. Engine specifics (turning rows into
 //! cells, cancelling, session ids) come from the `Engine` trait.
 
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use futures_util::stream::{BoxStream, Peekable};
@@ -75,8 +75,31 @@ pub struct ScriptRun {
     pub cursor: Option<Cursor>,
 }
 
-/// Runs every statement on one connection; the last one keeps streaming through a
-/// `Cursor`. `on_started` receives the session id so the caller can cancel.
+/// Earlier statements keep their first batch for the UI up to this many; past it they
+/// only count rows. The last one always keeps it, so 20 result tabs at most.
+// ponytail: 20 × the batch size in rows held per run; lower it if memory ever shows up
+pub const EARLIER_RESULTS_KEPT: usize = 19;
+
+/// One statement of a script that ran (or failed).
+pub struct StepRun {
+    pub duration: Duration,
+    /// the first batch (or the affected rows of a command); None past the limit or on failure
+    pub first: Option<BatchRead>,
+    /// rows read to the end (query) or affected (write); None while the last one streams
+    pub row_count: Option<u64>,
+}
+
+/// Every statement that ran, the failed one included; the ones after it did not run.
+pub struct ScriptSteps {
+    pub steps: Vec<StepRun>,
+    /// Some while the last statement has more rows to fetch
+    pub cursor: Option<Cursor>,
+    /// why the script stopped; the message says where, as `failed_at` writes it
+    pub failure: Option<AppError>,
+}
+
+/// All or error, for callers that only want the last result (explain, schema changes,
+/// export…): the first failing statement is the error.
 pub async fn run_script<E>(
     engine: &E,
     pool: &Pool<E::Db>,
@@ -85,6 +108,51 @@ pub async fn run_script<E>(
     timeout_secs: u32,
     on_started: impl FnOnce(i64),
 ) -> Result<ScriptRun, AppError>
+where
+    E: Engine,
+    for<'c> &'c mut <E::Db as Database>::Connection: Executor<'c, Database = E::Db>,
+{
+    let run = run_steps(
+        engine,
+        pool,
+        statements,
+        &[],
+        batch_size,
+        timeout_secs,
+        on_started,
+    )
+    .await?;
+    if let Some(err) = run.failure {
+        return Err(err);
+    }
+    let first = run
+        .steps
+        .into_iter()
+        .last()
+        .and_then(|step| step.first)
+        .ok_or_else(AppError::result_closed)?;
+    Ok(ScriptRun {
+        first,
+        cursor: run.cursor,
+    })
+}
+
+/// Runs every statement on one connection, each with its result: earlier ones keep
+/// their first batch and count the rest, the last one keeps streaming through a
+/// `Cursor`. A failing statement stops the script and comes back as `failure`, with
+/// the steps before it; `Err` is only for what fails before the first statement.
+/// `reads[i]` says statement i may return rows: an empty earlier result is described
+/// (to keep a SELECT's header) only then. `on_started` receives the session id so
+/// the caller can cancel.
+pub async fn run_steps<E>(
+    engine: &E,
+    pool: &Pool<E::Db>,
+    statements: &[String],
+    reads: &[bool],
+    batch_size: usize,
+    timeout_secs: u32,
+    on_started: impl FnOnce(i64),
+) -> Result<ScriptSteps, AppError>
 where
     E: Engine,
     for<'c> &'c mut <E::Db as Database>::Connection: Executor<'c, Database = E::Db>,
@@ -98,23 +166,51 @@ where
     on_started(session);
 
     let total = statements.len();
+    let mut steps = Vec::with_capacity(total);
+    let mut kept = 0;
     for (index, statement) in init.iter().enumerate() {
-        let execution = async {
-            sqlx::raw_sql(AssertSqlSafe(statement.clone()))
-                .execute(&mut *conn)
-                .await
-                .map(|_| ())
-                .map_err(AppError::from)
-        };
-        if let Err(err) = with_timeout(engine, session, timeout_secs, execution).await {
-            if matches!(err, AppError::Timeout(_)) {
-                // dropped mid-protocol: the connection is not reusable
-                conn.close_on_drop();
+        let started = Instant::now();
+        let reads = reads.get(index).copied().unwrap_or(false);
+        let read = with_timeout(
+            engine,
+            session,
+            timeout_secs,
+            read_earlier(engine, &mut conn, statement, batch_size, reads),
+        )
+        .await;
+        match read {
+            Ok((first, row_count)) => {
+                let has_rows = !first.batch.columns.is_empty();
+                let keep = !has_rows || kept < EARLIER_RESULTS_KEPT;
+                if has_rows && keep {
+                    kept += 1;
+                }
+                steps.push(StepRun {
+                    duration: started.elapsed(),
+                    first: keep.then_some(first),
+                    row_count: Some(row_count),
+                });
             }
-            return Err(failed_at(err, index, total));
+            Err(err) => {
+                if matches!(err, AppError::Timeout(_)) {
+                    // dropped mid-protocol: the connection is not reusable
+                    conn.close_on_drop();
+                }
+                steps.push(StepRun {
+                    duration: started.elapsed(),
+                    first: None,
+                    row_count: None,
+                });
+                return Ok(ScriptSteps {
+                    steps,
+                    cursor: None,
+                    failure: Some(failed_at(err, index, total)),
+                });
+            }
         }
     }
 
+    let started = Instant::now();
     let (requests, receiver) = mpsc::channel(1);
     tokio::spawn(stream_task(
         engine.clone(),
@@ -126,14 +222,81 @@ where
     ));
     let cursor = Cursor { requests };
 
-    let mut first = with_timeout(engine, session, timeout_secs, cursor.next())
-        .await
-        .map_err(|err| failed_at(err, init.len(), total))?;
+    let mut first = match with_timeout(engine, session, timeout_secs, cursor.next()).await {
+        Ok(first) => first,
+        Err(err) => {
+            steps.push(StepRun {
+                duration: started.elapsed(),
+                first: None,
+                row_count: None,
+            });
+            return Ok(ScriptSteps {
+                steps,
+                cursor: None,
+                failure: Some(failed_at(err, init.len(), total)),
+            });
+        }
+    };
     if first.batch.rows.is_empty() && first.batch.columns.is_empty() {
         first.batch.columns = engine.describe(last).await;
     }
+    let row_count = (!first.batch.has_more).then(|| {
+        if first.batch.columns.is_empty() {
+            first.rows_affected.unwrap_or(0)
+        } else {
+            first.batch.rows.len() as u64
+        }
+    });
     let cursor = first.batch.has_more.then_some(cursor);
-    Ok(ScriptRun { first, cursor })
+    steps.push(StepRun {
+        duration: started.elapsed(),
+        first: Some(first),
+        row_count,
+    });
+    Ok(ScriptSteps {
+        steps,
+        cursor,
+        failure: None,
+    })
+}
+
+/// A statement before the last: its first batch, then read to its end to count the
+/// rest (what `execute` did anyway, minus keeping rows). Reading to the end also
+/// lets MySQL mark the connection idle, as `drain` explains.
+async fn read_earlier<E>(
+    engine: &E,
+    conn: &mut PoolConnection<E::Db>,
+    sql: &str,
+    batch_size: usize,
+    reads: bool,
+) -> Result<(BatchRead, u64), AppError>
+where
+    E: Engine,
+    for<'c> &'c mut <E::Db as Database>::Connection: Executor<'c, Database = E::Db>,
+{
+    let mut stream = sqlx::raw_sql(AssertSqlSafe(sql.to_string()))
+        .fetch_many(&mut **conn)
+        .peekable();
+    let mut first = read_batch(Pin::new(&mut stream), batch_size, engine).await?;
+    let mut rows = first.batch.rows.len() as u64;
+    let mut affected = first.rows_affected.unwrap_or(0);
+    while let Some(item) = stream.next().await {
+        match item? {
+            Either::Right(_) => rows += 1,
+            Either::Left(done) => affected = E::rows_affected(&done),
+        }
+    }
+    drop(stream);
+    // a write with no rows skips the round trip; a SELECT matching nothing keeps its header
+    if reads && rows == 0 && first.batch.columns.is_empty() {
+        first.batch.columns = engine.describe(sql).await;
+    }
+    let count = if first.batch.columns.is_empty() {
+        affected
+    } else {
+        rows
+    };
+    Ok((first, count))
 }
 
 /// A script stops at its first failing statement, and the ones before it already ran:

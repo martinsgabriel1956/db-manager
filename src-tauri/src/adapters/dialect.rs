@@ -1,6 +1,8 @@
 //! What differs between SQL dialects in the SQL we generate and parse: identifier
 //! and string quoting, text casts, statement splitting and the parser grammar.
 
+use std::ops::Range;
+
 use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect, SQLiteDialect};
 
 use crate::adapters::split::{self, SplitRules};
@@ -54,12 +56,20 @@ impl Dialect {
     }
 
     pub fn split(self, sql: &str) -> Vec<String> {
-        let rules: SplitRules = match self {
+        split::split_statements(sql, self.split_rules())
+    }
+
+    /// Where each statement of `split` sits in `sql`, as byte ranges.
+    pub fn spans(self, sql: &str) -> Vec<Range<usize>> {
+        split::statement_spans(sql, self.split_rules())
+    }
+
+    fn split_rules(self) -> SplitRules {
+        match self {
             Dialect::Postgres => split::POSTGRES,
             Dialect::Mysql { backslash_escapes } => split::mysql(backslash_escapes),
             Dialect::Sqlite => split::SQLITE,
-        };
-        split::split_statements(sql, rules)
+        }
     }
 
     pub fn parser(self) -> Box<dyn sqlparser::dialect::Dialect> {

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::domain::cell::Cell;
+use crate::domain::error::AppError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -177,7 +178,7 @@ pub struct RowBatch {
     pub has_more: bool,
 }
 
-/// Result of the last statement of a script.
+/// Result of one statement of a script.
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StatementResult {
@@ -192,12 +193,67 @@ pub enum StatementResult {
     Command { rows_affected: u32 },
 }
 
+/// How far a statement of a script got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum StepStatus {
+    Done,
+    Failed,
+    Cancelled,
+    /// after the statement the script stopped at
+    NotRun,
+}
+
+/// One statement of a script, in script order.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptStep {
+    pub status: StepStatus,
+    pub duration_ms: u32,
+    /// [from, to) in UTF-16 code units of the executed text: the UI slices it for labels
+    /// and finds it in the editor, so the statements never travel back
+    pub span: (u32, u32),
+    /// rows returned (query) or affected (write); None while the last one still streams
+    pub row_count: Option<u32>,
+    /// the grid: None past the tab limit and for what did not run. An earlier result
+    /// that kept only its first batch has `has_more` and no cursor.
+    pub result: Option<StatementResult>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptOutcome {
     pub statement_count: u32,
     pub duration_ms: u32,
-    pub result: StatementResult,
+    /// one per statement
+    pub steps: Vec<ScriptStep>,
+    /// why the script stopped early; its step is the Failed or Cancelled one
+    pub error: Option<AppError>,
+}
+
+impl ScriptOutcome {
+    /// One statement that ran as a command (schema changes).
+    pub fn command(duration_ms: u32, sql: &str) -> Self {
+        let len = u32::try_from(sql.encode_utf16().count()).unwrap_or(u32::MAX);
+        ScriptOutcome {
+            statement_count: 1,
+            duration_ms,
+            steps: vec![ScriptStep {
+                status: StepStatus::Done,
+                duration_ms,
+                span: (0, len),
+                row_count: Some(0),
+                result: Some(StatementResult::Command { rows_affected: 0 }),
+            }],
+            error: None,
+        }
+    }
+
+    /// The last statement's result, for tests that ran a script to its end.
+    #[cfg(test)]
+    pub fn into_last(self) -> Option<StatementResult> {
+        self.steps.into_iter().last().and_then(|step| step.result)
+    }
 }
 
 /// A write the user must confirm before it runs: destructive statements anywhere,

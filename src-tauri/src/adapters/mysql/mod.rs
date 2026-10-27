@@ -14,7 +14,7 @@ use sqlx::{
 
 use crate::adapters::dialect::Dialect;
 use crate::adapters::sql_builder;
-use crate::adapters::stream::{self, Engine, ScriptRun};
+use crate::adapters::stream::{self, Engine, ScriptRun, ScriptSteps};
 use crate::domain::{
     AppError, BrowseRequest, ColumnInfo, CompletionTable, ConnectionConfig, ConstraintInfo,
     ForeignKeyInfo, IndexInfo, Relation, RelationKind, ResultColumn, RowBatch, SchemaInfo,
@@ -476,6 +476,25 @@ impl MysqlAdapter {
             &self.engine,
             &self.pool,
             statements,
+            batch_size,
+            self.timeout_secs,
+            on_started,
+        )
+        .await
+    }
+
+    pub async fn run_steps(
+        &self,
+        statements: &[String],
+        reads: &[bool],
+        batch_size: usize,
+        on_started: impl FnOnce(i64),
+    ) -> Result<ScriptSteps, AppError> {
+        stream::run_steps(
+            &self.engine,
+            &self.pool,
+            statements,
+            reads,
             batch_size,
             self.timeout_secs,
             on_started,

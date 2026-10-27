@@ -49,6 +49,11 @@ export type SqlEditorApi = {
   prepareRun: () => string;
   prepareExplain: () => string;
   format: () => void;
+  /**
+   * Finds `text` (what ran) in the document and selects [from, to) of it; false when it
+   * is not there anymore (edited since, or the text had its `:name` values filled in).
+   */
+  select: (text: string, from: number, to: number) => boolean;
 };
 
 /** `{ schema: { table: [columns] } }` for CodeMirror's schema-aware autocomplete. */
@@ -238,7 +243,20 @@ export function SqlEditor({
         closeCompletion(view);
         return statementAt(view.state);
       },
-      format: () => format(view)
+      format: () => format(view),
+      select: (text, from, to) => {
+        // ponytail: first occurrence; a selection run whose text repeats earlier in the
+        // document highlights that earlier copy
+        const origin = view.state.doc.toString().indexOf(text);
+        if (origin < 0) {
+          return false;
+        }
+        view.dispatch({
+          selection: EditorSelection.range(origin + from, origin + to),
+          scrollIntoView: true
+        });
+        return true;
+      }
     };
     return () => {
       cancelAnimationFrame(focusFrame);

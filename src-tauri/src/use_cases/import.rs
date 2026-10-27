@@ -516,7 +516,7 @@ mod integration_tests {
             else {
                 panic!("{script} ran");
             };
-            match outcome.result {
+            match outcome.into_last().unwrap() {
                 StatementResult::Rows { batch, .. } => batch
                     .rows
                     .into_iter()
