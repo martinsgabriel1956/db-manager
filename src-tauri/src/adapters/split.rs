@@ -2,6 +2,8 @@
 //! dialect's lexical rules (strings, quoted identifiers, comments). Statements that
 //! are only whitespace/comments are dropped.
 
+use std::ops::Range;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SplitRules {
     /// MySQL: '\'' escapes inside strings
@@ -66,7 +68,7 @@ struct Splitter<'a> {
     sql: &'a str,
     bytes: &'a [u8],
     rules: SplitRules,
-    statements: Vec<String>,
+    statements: Vec<Range<usize>>,
     delimiter: String,
     start: usize,
     has_code: bool,
@@ -77,6 +79,15 @@ struct Splitter<'a> {
 }
 
 pub fn split_statements(sql: &str, rules: SplitRules) -> Vec<String> {
+    statement_spans(sql, rules)
+        .into_iter()
+        .map(|span| sql[span].to_string())
+        .collect()
+}
+
+/// Byte range of each statement in `sql`, trimmed: `&sql[span]` is what
+/// `split_statements` returns for it.
+pub fn statement_spans(sql: &str, rules: SplitRules) -> Vec<Range<usize>> {
     let mut splitter = Splitter {
         sql,
         bytes: sql.as_bytes(),
@@ -217,8 +228,10 @@ impl Splitter<'_> {
 
     fn finish_statement(&mut self, end: usize) {
         if self.has_code {
+            let text = &self.sql[self.start..end];
+            let from = self.start + (text.len() - text.trim_start().len());
             self.statements
-                .push(self.sql[self.start..end].trim().to_string());
+                .push(from..end - (text.len() - text.trim_end().len()));
         }
         self.has_code = false;
         self.words.clear();
@@ -313,7 +326,23 @@ mod tests {
     fn check(rules: SplitRules, cases: &[(&str, &[&str])]) {
         for (input, expected) in cases {
             assert_eq!(split_statements(input, rules), *expected, "input: {input}");
+            // every span cuts exactly the statement out of the script
+            let spans: Vec<&str> = statement_spans(input, rules)
+                .into_iter()
+                .map(|span| &input[span])
+                .collect();
+            assert_eq!(spans, *expected, "spans of: {input}");
         }
+    }
+
+    #[test]
+    fn spans_point_into_the_script_past_accents_and_delimiters() {
+        let sql = "  -- café\nSELECT 'ã';\n\nDELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; END$$\n";
+        let spans = statement_spans(sql, mysql(true));
+        assert_eq!(
+            spans.iter().map(|span| &sql[span.clone()]).collect::<Vec<_>>(),
+            ["-- café\nSELECT 'ã'", "CREATE PROCEDURE p() BEGIN SELECT 1; END"]
+        );
     }
 
     #[test]
