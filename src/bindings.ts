@@ -695,7 +695,28 @@ export type SchemaSample = {
 export type ScriptOutcome = {
 	statementCount: number,
 	durationMs: number,
-	result: StatementResult,
+	/**  one per statement */
+	steps: ScriptStep[],
+	/**  why the script stopped early; its step is the Failed or Cancelled one */
+	error: AppError | null,
+};
+
+/**  One statement of a script, in script order. */
+export type ScriptStep = {
+	status: StepStatus,
+	durationMs: number,
+	/**
+	 *  [from, to) in UTF-16 code units of the executed text: the UI slices it for labels
+	 *  and finds it in the editor, so the statements never travel back
+	 */
+	span: [number, number],
+	/**  rows returned (query) or affected (write); None while the last one still streams */
+	rowCount: number | null,
+	/**
+	 *  the grid: None past the tab limit and for what did not run. An earlier result
+	 *  that kept only its first batch has `has_more` and no cursor.
+	 */
+	result: StatementResult | null,
 };
 
 /**
@@ -765,12 +786,17 @@ export type SshConfig = {
 	identityFile: string | null,
 };
 
-/**  Result of the last statement of a script. */
+/**  Result of one statement of a script. */
 export type StatementResult = 
 /**  `cursor_id` is set while more rows can be fetched with `fetch_more` */
 { kind: "rows"; batch: RowBatch; cursorId: string | null } | 
 /**  DDL/DML/utility statement. u32 because specta forbids u64; saturates at ~4 billion. */
 { kind: "command"; rowsAffected: number };
+
+/**  How far a statement of a script got. */
+export type StepStatus = "done" | "failed" | "cancelled" | 
+/**  after the statement the script stopped at */
+"notRun";
 
 export type StreamEntry = {
 	id: string,

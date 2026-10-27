@@ -337,11 +337,18 @@ mod tests {
 
     #[test]
     fn spans_point_into_the_script_past_accents_and_delimiters() {
-        let sql = "  -- café\nSELECT 'ã';\n\nDELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; END$$\n";
+        let sql =
+            "  -- café\nSELECT 'ã';\n\nDELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; END$$\n";
         let spans = statement_spans(sql, mysql(true));
         assert_eq!(
-            spans.iter().map(|span| &sql[span.clone()]).collect::<Vec<_>>(),
-            ["-- café\nSELECT 'ã'", "CREATE PROCEDURE p() BEGIN SELECT 1; END"]
+            spans
+                .iter()
+                .map(|span| &sql[span.clone()])
+                .collect::<Vec<_>>(),
+            [
+                "-- café\nSELECT 'ã'",
+                "CREATE PROCEDURE p() BEGIN SELECT 1; END"
+            ]
         );
     }
 

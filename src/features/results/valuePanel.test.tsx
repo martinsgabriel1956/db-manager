@@ -6,7 +6,7 @@ import type { Cell, ResultColumn } from "@/bindings";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
 import { wantsPanel } from "@/features/results/CellDetail";
 import { jsonProblem } from "@/features/results/jsonCheck";
-import { devPostgres, executed, fakeBackend } from "@/test/fakeBackend";
+import { devPostgres, executed, fakeBackend, scriptOutcome } from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
 test("JSON problems name the line and column", () => {
@@ -66,27 +66,27 @@ test("long text in a query result opens whole, wrapped, beside a resizable split
   const body = `${"palavra ".repeat(60)}\nfim`;
   fakeBackend([devPostgres], {
     run_script: () =>
-      executed({
-        statementCount: 1,
-        durationMs: 2,
-        result: {
-          kind: "rows",
-          batch: {
-            columns: [
-              { name: "id", typeName: "int4", editable: true },
-              { name: "body", typeName: "text", editable: true }
-            ],
-            rows: [
-              [
-                { t: "int", v: "1" },
-                { t: "text", v: body }
-              ]
-            ],
-            hasMore: false
-          },
-          cursorId: null
-        }
-      })
+      executed(
+        scriptOutcome([
+          {
+            kind: "rows",
+            batch: {
+              columns: [
+                { name: "id", typeName: "int4", editable: true },
+                { name: "body", typeName: "text", editable: true }
+              ],
+              rows: [
+                [
+                  { t: "int", v: "1" },
+                  { t: "text", v: body }
+                ]
+              ],
+              hasMore: false
+            },
+            cursorId: null
+          }
+        ])
+      )
   });
   const user = userEvent.setup();
   renderWithClient(<Workspace />);

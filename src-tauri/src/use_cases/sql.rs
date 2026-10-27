@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -9,11 +10,13 @@ use crate::adapters::mongo::MongoAdapter;
 use crate::adapters::redis::RedisAdapter;
 use crate::adapters::sql_builder;
 use crate::adapters::ssh::SshTunnel;
+use crate::adapters::stream::{BatchRead, StepRun};
 use crate::domain::{
     AppError, ApplyResponse, BrowseRequest, Cell, CompletionTable, Confirmation, ConnectionConfig,
     DiagramTable, Engine, Environment, ExplainPlan, ExplainResponse, FilterOp, ParamValue,
     RelationKind, RowBatch, RowChange, RunResponse, SchemaChange, SchemaInfo, ScriptOutcome,
-    Secrets, StatementResult, TableChanges, TableDdl, TableStructure, Target,
+    ScriptStep, Secrets, StatementResult, StepStatus, TableChanges, TableDdl, TableStructure,
+    Target,
 };
 use crate::registry::{Live, OpenConnection, Registry};
 use crate::storage::history::{HistoryStore, NewHistoryEntry};
@@ -275,8 +278,10 @@ pub async fn count_rows(
 }
 
 /// Splits the script and asks for confirmation when it is destructive (or writes on
-/// prod). Otherwise runs it, keeping the last statement's rows streaming under
-/// `run_id`, which is also the cursor id for `fetch_more`/`close_cursor`.
+/// prod). Otherwise runs it: every statement brings its own result, the last one's
+/// rows keep streaming under `run_id`, which is also the cursor id for
+/// `fetch_more`/`close_cursor`. A failing statement comes back in the outcome, with
+/// the steps that ran before it.
 pub async fn run_script(
     registry: &Registry,
     history: &HistoryStore,
@@ -287,7 +292,11 @@ pub async fn run_script(
 ) -> Result<RunResponse, AppError> {
     let connection = registry.connection(connection_id)?;
     let dialect = connection.sql()?.dialect();
-    let statements = dialect.split(sql);
+    let spans = dialect.spans(sql);
+    let statements: Vec<String> = spans
+        .iter()
+        .map(|span| sql[span.clone()].to_string())
+        .collect();
     if statements.is_empty() {
         return Err(AppError::validation("nenhum comando para executar"));
     }
@@ -305,51 +314,117 @@ pub async fn run_script(
     // a re-run under the same id replaces the previous result
     registry.remove_cursor(run_id);
 
+    // only reads get their empty result described: a write would pay a round trip for nothing
+    let reads: Vec<bool> = statements
+        .iter()
+        .map(|statement| !guard::classify(statement, dialect).writes)
+        .collect();
     let started = Instant::now();
     let result = connection
         .sql()?
-        .run_script(&statements, EDITOR_BATCH_SIZE, |pid| {
+        .run_steps(&statements, &reads, EDITOR_BATCH_SIZE, |pid| {
             registry.start_run(run_id, connection.clone(), pid)
         })
         .await;
     registry.finish_run(run_id);
     let duration_ms = elapsed_ms(started);
-    record(
-        history,
-        connection_id,
-        &connection,
-        sql,
-        duration_ms,
-        result.as_ref().err(),
-    )
-    .await;
+    let error = match &result {
+        Ok(run) => run.failure.as_ref(),
+        Err(err) => Some(err),
+    };
+    record(history, connection_id, &connection, sql, duration_ms, error).await;
     let run = result?;
 
-    let has_cursor = run.cursor.is_some();
+    let cursor_id = run.cursor.is_some().then_some(run_id);
     if let Some(cursor) = run.cursor {
         registry.insert_cursor(run_id, connection_id, cursor);
     }
+    let steps = script_steps(
+        run.steps,
+        run.failure.as_ref(),
+        &utf16_spans(sql, &spans),
+        cursor_id,
+    );
+    Ok(RunResponse::Executed {
+        outcome: ScriptOutcome {
+            statement_count: u32::try_from(statements.len()).unwrap_or(u32::MAX),
+            duration_ms,
+            steps,
+            error: run.failure,
+        },
+    })
+}
 
-    let first = run.first;
-    let is_command = first.batch.columns.is_empty() && first.batch.rows.is_empty();
-    let result = if is_command {
+/// One step per statement: the last that ran is the failed one when the script
+/// stopped (cancelled by its error's kind), the ones after it did not run.
+fn script_steps(
+    ran: Vec<StepRun>,
+    failure: Option<&AppError>,
+    spans: &[(u32, u32)],
+    cursor_id: Option<&str>,
+) -> Vec<ScriptStep> {
+    let ran_count = ran.len();
+    let mut steps: Vec<ScriptStep> = ran
+        .into_iter()
+        .zip(spans)
+        .enumerate()
+        .map(|(index, (step, &span))| {
+            let stopped_here = index + 1 == ran_count;
+            let status = match failure {
+                Some(AppError::Cancelled(_)) if stopped_here => StepStatus::Cancelled,
+                Some(_) if stopped_here => StepStatus::Failed,
+                _ => StepStatus::Done,
+            };
+            // only the last statement can stream, and only when it ran to its first batch
+            let cursor_id = (index + 1 == spans.len()).then_some(cursor_id).flatten();
+            ScriptStep {
+                status,
+                duration_ms: u32::try_from(step.duration.as_millis()).unwrap_or(u32::MAX),
+                span,
+                row_count: step.row_count.map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
+                result: step.first.map(|first| statement_result(first, cursor_id)),
+            }
+        })
+        .collect();
+    steps.extend(spans[ran_count..].iter().map(|&span| ScriptStep {
+        status: StepStatus::NotRun,
+        duration_ms: 0,
+        span,
+        row_count: None,
+        result: None,
+    }));
+    steps
+}
+
+/// A batch with no columns came from a command (DDL, DML without RETURNING…).
+fn statement_result(first: BatchRead, cursor_id: Option<&str>) -> StatementResult {
+    if first.batch.columns.is_empty() && first.batch.rows.is_empty() {
         StatementResult::Command {
             rows_affected: u32::try_from(first.rows_affected.unwrap_or(0)).unwrap_or(u32::MAX),
         }
     } else {
         StatementResult::Rows {
             batch: first.batch,
-            cursor_id: has_cursor.then(|| run_id.to_string()),
+            cursor_id: cursor_id.map(str::to_string),
         }
-    };
+    }
+}
 
-    Ok(RunResponse::Executed {
-        outcome: ScriptOutcome {
-            statement_count: u32::try_from(statements.len()).unwrap_or(u32::MAX),
-            duration_ms,
-            result,
-        },
-    })
+/// Byte ranges as UTF-16 offsets, what the editor counts. One pass: spans come in order.
+fn utf16_spans(sql: &str, spans: &[Range<usize>]) -> Vec<(u32, u32)> {
+    let (mut byte, mut unit) = (0, 0_usize);
+    let mut at = |target: usize| {
+        unit += sql[byte..target].encode_utf16().count();
+        byte = target;
+        u32::try_from(unit).unwrap_or(u32::MAX)
+    };
+    spans
+        .iter()
+        .map(|span| {
+            let from = at(span.start);
+            (from, at(span.end))
+        })
+        .collect()
 }
 
 /// The plan of one statement. Plain EXPLAIN only plans; ANALYZE runs the statement,
@@ -565,11 +640,7 @@ pub async fn alter_schema(
     .await;
     result?;
     Ok(RunResponse::Executed {
-        outcome: ScriptOutcome {
-            statement_count: 1,
-            duration_ms,
-            result: StatementResult::Command { rows_affected: 0 },
-        },
+        outcome: ScriptOutcome::command(duration_ms, &format!("{statement};")),
     })
 }
 
@@ -705,6 +776,7 @@ pub async fn cancel_run(registry: &Registry, run_id: &str) -> Result<(), AppErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::dialect::Dialect;
     use crate::domain::Filter;
 
     fn request(page_size: u32, filters: Vec<Filter>) -> BrowseRequest {
@@ -716,6 +788,16 @@ mod tests {
             page: 0,
             page_size,
         }
+    }
+
+    #[test]
+    fn spans_count_utf16_units_like_the_editor() {
+        // "é" is 2 bytes and 1 unit; "🦀" is 4 bytes and 2 units
+        let sql = "SELECT 'é'; SELECT '🦀'; SELECT 1";
+        let spans = utf16_spans(sql, &Dialect::Postgres.spans(sql));
+        assert_eq!(spans, [(0, 10), (12, 23), (25, 33)]);
+        let units: Vec<u16> = sql.encode_utf16().collect();
+        assert_eq!(String::from_utf16(&units[12..23]).unwrap(), "SELECT '🦀'");
     }
 
     #[test]
@@ -809,6 +891,13 @@ mod integration_tests {
         }
     }
 
+    /// A statement that failed comes back in the outcome, not as an `Err`.
+    fn failure(response: RunResponse) -> AppError {
+        executed(response)
+            .error
+            .expect("the script should have failed")
+    }
+
     async fn exec(
         registry: &Registry,
         history: &HistoryStore,
@@ -820,6 +909,60 @@ mod integration_tests {
                 .await
                 .unwrap(),
         )
+    }
+
+    #[tokio::test]
+    async fn every_statement_comes_back_with_its_step_and_a_failure_keeps_the_ones_before() {
+        let (_container, config) = start().await;
+        let registry = Registry::default();
+        let history = HistoryStore::in_memory().await;
+        connect(&registry, &ContainerPassword, config)
+            .await
+            .unwrap();
+
+        let outcome = exec(
+            &registry,
+            &history,
+            "s1",
+            "SELECT 1; CREATE TEMP TABLE t AS SELECT 1 AS x; SELECT 'é' AS s",
+        )
+        .await;
+        assert_eq!(outcome.error, None);
+        let status: Vec<StepStatus> = outcome.steps.iter().map(|step| step.status).collect();
+        assert_eq!(status, [StepStatus::Done; 3]);
+        assert_eq!(
+            outcome.steps[1].result,
+            Some(StatementResult::Command { rows_affected: 1 })
+        );
+        assert_eq!(outcome.steps[2].span, (48, 63));
+        assert!(matches!(
+            &outcome.steps[2].result,
+            Some(StatementResult::Rows {
+                cursor_id: None,
+                ..
+            })
+        ));
+
+        let outcome = exec(
+            &registry,
+            &history,
+            "s2",
+            "SELECT 1; SELECT FROMM; SELECT 2",
+        )
+        .await;
+        let status: Vec<StepStatus> = outcome.steps.iter().map(|step| step.status).collect();
+        assert_eq!(
+            status,
+            [StepStatus::Done, StepStatus::Failed, StepStatus::NotRun]
+        );
+        assert!(outcome.steps[0].result.is_some());
+        let error = outcome.error.unwrap().to_string();
+        assert!(error.starts_with("comando 2 de 3:"), "{error}");
+        // the history keeps the same message
+        let entries = search_history(&history, "FROMM", None, false)
+            .await
+            .unwrap();
+        assert_eq!(entries[0].error.as_deref(), Some(error.as_str()));
     }
 
     #[tokio::test]
@@ -845,7 +988,7 @@ mod integration_tests {
         )
         .await;
         assert_eq!(outcome.statement_count, 2);
-        let StatementResult::Rows { batch, cursor_id } = outcome.result else {
+        let StatementResult::Rows { batch, cursor_id } = outcome.into_last().unwrap() else {
             panic!("expected rows");
         };
         assert_eq!(batch.rows.len(), 1000);
@@ -862,7 +1005,7 @@ mod integration_tests {
         // a complete result has no cursor
         let small = exec(&registry, &history, "r2", "SELECT 1").await;
         assert!(matches!(
-            small.result,
+            small.into_last().unwrap(),
             StatementResult::Rows {
                 cursor_id: None,
                 ..
@@ -871,7 +1014,7 @@ mod integration_tests {
 
         let command = exec(&registry, &history, "r3", "SET search_path TO public").await;
         assert_eq!(
-            command.result,
+            command.into_last().unwrap(),
             StatementResult::Command { rows_affected: 0 }
         );
 
@@ -900,7 +1043,8 @@ mod integration_tests {
             cancel_run(&registry, "r5").await.unwrap();
         };
         let (result, ()) = tokio::join!(running, cancel);
-        assert!(matches!(result, Err(AppError::Cancelled(_))), "{result:?}");
+        let error = failure(result.unwrap());
+        assert!(matches!(error, AppError::Cancelled(_)), "{error:?}");
         assert!(registry.running("r5").is_none());
         // cancelling a finished run is a no-op
         cancel_run(&registry, "r5").await.unwrap();
@@ -970,7 +1114,7 @@ mod integration_tests {
         assert_eq!(confirmation.statements, vec!["DELETE FROM t"]);
         let still_there = exec(&registry, &history, "w3", "SELECT count(*) FROM t").await;
         assert!(
-            matches!(still_there.result, StatementResult::Rows { batch, .. } if batch.rows[0][0] == Cell::Int("2".into()))
+            matches!(still_there.into_last().unwrap(), StatementResult::Rows { batch, .. } if batch.rows[0][0] == Cell::Int("2".into()))
         );
         // not recorded: it never ran
         assert!(
@@ -987,7 +1131,7 @@ mod integration_tests {
                 .unwrap(),
         );
         assert_eq!(
-            confirmed.result,
+            confirmed.into_last().unwrap(),
             StatementResult::Command { rows_affected: 2 }
         );
 
@@ -1018,9 +1162,11 @@ mod integration_tests {
         connect(&registry, &ContainerPassword, config)
             .await
             .unwrap();
-        let err = run_script(&registry, &history, "it", "w7", "DROP TABLE t", false)
-            .await
-            .unwrap_err();
+        let err = failure(
+            run_script(&registry, &history, "it", "w7", "DROP TABLE t", false)
+                .await
+                .unwrap(),
+        );
         assert!(err.to_string().contains("read-only"), "{err}");
     }
 
@@ -1079,7 +1225,7 @@ mod integration_tests {
                 .unwrap(),
         );
         assert_eq!(
-            deleted.result,
+            deleted.into_last().unwrap(),
             StatementResult::Command { rows_affected: 1 }
         );
         let entries = history
@@ -1093,7 +1239,7 @@ mod integration_tests {
             .into();
         let sql = fill_params(&registry, "it", &parts, &[ParamValue::Text("1".into())]).unwrap();
         let outcome = exec(&registry, &history, "p4", &sql).await;
-        let StatementResult::Rows { batch, .. } = outcome.result else {
+        let StatementResult::Rows { batch, .. } = outcome.into_last().unwrap() else {
             panic!("expected rows");
         };
         assert_eq!(batch.rows, vec![vec![Cell::Text("a'b".into())]]);
@@ -1401,16 +1547,18 @@ mod integration_tests {
                 .any(|i| i.name == "people_by_email")
         );
         // the database enforces what was added
-        let refused = run_script(
-            &registry,
-            &history,
-            "it",
-            "t2",
-            "INSERT INTO people VALUES (1, NULL, 'a', 10)",
-            false,
-        )
-        .await
-        .unwrap_err();
+        let refused = failure(
+            run_script(
+                &registry,
+                &history,
+                "it",
+                "t2",
+                "INSERT INTO people VALUES (1, NULL, 'a', 10)",
+                false,
+            )
+            .await
+            .unwrap(),
+        );
         assert!(refused.to_string().contains("people_adult"), "{refused}");
 
         // dropping a constraint or a table is destructive
@@ -1672,7 +1820,7 @@ mod integration_tests {
         )
         .await;
         assert!(
-            matches!(after.result, StatementResult::Rows { batch, .. } if batch.rows[0][0] == Cell::Text("Ana O'Neil".into()))
+            matches!(after.into_last().unwrap(), StatementResult::Rows { batch, .. } if batch.rows[0][0] == Cell::Text("Ana O'Neil".into()))
         );
 
         // a database error also rolls back and is reported
@@ -1800,7 +1948,7 @@ mod integration_tests {
                 "SELECT count(*) FROM users",
             )
             .await;
-            match outcome.result {
+            match outcome.into_last().unwrap() {
                 StatementResult::Rows { batch, .. } => batch.rows[0][0].clone(),
                 other => panic!("expected rows: {other:?}"),
             }
@@ -2011,7 +2159,7 @@ mod integration_tests {
                 .unwrap(),
         );
         assert!(matches!(
-            rows.result,
+            rows.into_last().unwrap(),
             StatementResult::Rows { batch, .. }
                 if batch.rows == vec![vec![Cell::Text("a".into())], vec![Cell::Text("B".into())]]
         ));

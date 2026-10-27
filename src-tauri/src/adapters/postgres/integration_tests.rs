@@ -644,7 +644,15 @@ async fn every_statement_of_a_script_brings_its_own_result() {
     let empty = run.steps[0].first.as_ref().unwrap();
     assert_eq!(empty.batch.columns.len(), 1);
     assert_eq!(run.steps[0].row_count, Some(0));
-    assert!(run.steps[1].first.as_ref().unwrap().batch.columns.is_empty());
+    assert!(
+        run.steps[1]
+            .first
+            .as_ref()
+            .unwrap()
+            .batch
+            .columns
+            .is_empty()
+    );
     assert_eq!(run.steps[2].row_count, Some(2));
 
     // past the limit, earlier results only count their rows; the last one always keeps its own

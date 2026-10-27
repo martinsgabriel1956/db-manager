@@ -485,7 +485,8 @@ async fn an_earlier_write_counts_the_rows_it_changed() {
     )
     .await;
     let db = SqliteAdapter::connect(&config, false).await.unwrap();
-    let statements = SqliteAdapter::DIALECT.split("UPDATE t SET v = 'z' WHERE id < 3; SELECT v FROM t");
+    let statements =
+        SqliteAdapter::DIALECT.split("UPDATE t SET v = 'z' WHERE id < 3; SELECT v FROM t");
     let run = db
         .run_steps(&statements, &[false, true], 1000, |_| {})
         .await

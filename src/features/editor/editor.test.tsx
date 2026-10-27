@@ -6,10 +6,17 @@ import { PostgreSQL, schemaCompletionSource, sql } from "@codemirror/lang-sql";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { expect, test } from "vitest";
-import type { AppError, RunResponse, ScriptOutcome } from "@/bindings";
+import type { AppError, RunResponse } from "@/bindings";
 import { tagNames, textToRun, toNamespace } from "@/features/editor/SqlEditor";
 import { SqlWorkspace } from "@/features/editor/SqlWorkspace";
-import { callsTo, executed, fakeBackend, prodPostgres, rowsOutcome } from "@/test/fakeBackend";
+import {
+  callsTo,
+  executed,
+  fakeBackend,
+  prodPostgres,
+  rowsOutcome,
+  scriptOutcome
+} from "@/test/fakeBackend";
 import { renderWithClient } from "@/test/render";
 
 function Workspace({ initialSql }: { initialSql: string }) {
@@ -134,19 +141,22 @@ test("an empty editor runs nothing", async () => {
 });
 
 test("streams more rows from the cursor and releases it on unmount", async () => {
-  const first: ScriptOutcome = {
-    statementCount: 3,
-    durationMs: 12,
-    result: {
-      kind: "rows",
-      batch: {
-        columns: [{ name: "g", typeName: "int4", editable: true }],
-        rows: [[{ t: "int", v: "1" }]],
-        hasMore: true
-      },
-      cursorId: "run-cursor"
-    }
-  };
+  const first = scriptOutcome(
+    [
+      { kind: "command", rowsAffected: 0 },
+      { kind: "command", rowsAffected: 0 },
+      {
+        kind: "rows",
+        batch: {
+          columns: [{ name: "g", typeName: "int4", editable: true }],
+          rows: [[{ t: "int", v: "1" }]],
+          hasMore: true
+        },
+        cursorId: "run-cursor"
+      }
+    ],
+    12
+  );
   let fetches = 0;
   const calls = fakeBackend([prodPostgres], {
     run_script: () => executed(first),
@@ -175,14 +185,19 @@ test("a failing fetch shows its error under the rows", async () => {
   const error: AppError = { kind: "database", message: "division by zero [22012]" };
   fakeBackend([prodPostgres], {
     run_script: () =>
-      executed({
-        ...rowsOutcome,
-        result: {
-          ...rowsOutcome.result,
-          batch: { ...(rowsOutcome.result as { batch: object }).batch, hasMore: true },
-          cursorId: "c"
-        } as ScriptOutcome["result"]
-      }),
+      executed(
+        scriptOutcome([
+          {
+            kind: "rows",
+            batch: {
+              columns: [{ name: "n", typeName: "int4", editable: true }],
+              rows: [[{ t: "int", v: "1" }]],
+              hasMore: true
+            },
+            cursorId: "c"
+          }
+        ])
+      ),
     fetch_more: () => Promise.reject(error)
   });
   const user = userEvent.setup();
@@ -195,8 +210,7 @@ test("a failing fetch shows its error under the rows", async () => {
 
 test("commands report affected rows", async () => {
   fakeBackend([prodPostgres], {
-    run_script: () =>
-      executed({ statementCount: 1, durationMs: 3, result: { kind: "command", rowsAffected: 1 } })
+    run_script: () => executed(scriptOutcome([{ kind: "command", rowsAffected: 1 }], 3))
   });
   const user = userEvent.setup();
   renderWorkspace("SET search_path TO app");
@@ -222,6 +236,33 @@ test("errors from the database are shown", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("read-only transaction");
 });
 
+test("a statement failing mid-script shows the error and where it stopped", async () => {
+  const outcome = scriptOutcome([
+    { kind: "command", rowsAffected: 1 },
+    { kind: "command", rowsAffected: 0 },
+    { kind: "command", rowsAffected: 0 }
+  ]);
+  const message = 'comando 2 de 3: syntax error at or near "FROMM" [42601]';
+  fakeBackend([prodPostgres], {
+    run_script: () =>
+      executed({
+        ...outcome,
+        steps: [
+          outcome.steps[0],
+          { ...outcome.steps[1], status: "failed", rowCount: null, result: null },
+          { ...outcome.steps[2], status: "notRun", rowCount: null, result: null }
+        ],
+        error: { kind: "database", message }
+      })
+  });
+  const user = userEvent.setup();
+  renderWorkspace("UPDATE t SET x = 1 WHERE id = 1; SELECT FROMM; SELECT 2");
+
+  await user.click(screen.getByRole("button", { name: "Executar" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+});
+
 test("cancel stops a running query", async () => {
   const pending = deferred<RunResponse>();
   const calls = fakeBackend([prodPostgres], { run_script: () => pending.promise });
@@ -245,11 +286,7 @@ test("destructive scripts wait for confirmation and run only after it", async ()
   const calls = fakeBackend([prodPostgres], {
     run_script: args =>
       (args as { confirmed: boolean }).confirmed
-        ? executed({
-            statementCount: 1,
-            durationMs: 4,
-            result: { kind: "command", rowsAffected: 7 }
-          })
+        ? executed(scriptOutcome([{ kind: "command", rowsAffected: 7 }], 4))
         : {
             status: "needsConfirmation",
             confirmation: {

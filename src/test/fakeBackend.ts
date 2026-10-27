@@ -11,6 +11,7 @@ import type {
   RunResponse,
   SchemaInfo,
   ScriptOutcome,
+  StatementResult,
   SessionList,
   TableStructure
 } from "@/bindings";
@@ -239,19 +240,41 @@ export const completion: CompletionTable[] = [
   { schema: "public", table: "users", columns: ["id", "profile"] }
 ];
 
-export const rowsOutcome: ScriptOutcome = {
-  statementCount: 1,
-  durationMs: 5,
-  result: {
-    kind: "rows",
-    batch: {
-      columns: [{ name: "n", typeName: "int4", editable: true }],
-      rows: [[{ t: "int", v: "1" }]],
-      hasMore: false
-    },
-    cursorId: null
-  }
-};
+/** A script that ran to its end: one done step per result, spans laid out one after another. */
+export function scriptOutcome(results: StatementResult[], durationMs = 1): ScriptOutcome {
+  return {
+    statementCount: results.length,
+    durationMs,
+    steps: results.map((result, index) => ({
+      status: "done",
+      durationMs,
+      span: [index * 10, index * 10 + 9],
+      rowCount:
+        result.kind === "command"
+          ? result.rowsAffected
+          : result.batch.hasMore
+            ? null
+            : result.batch.rows.length,
+      result
+    })),
+    error: null
+  };
+}
+
+export const rowsOutcome: ScriptOutcome = scriptOutcome(
+  [
+    {
+      kind: "rows",
+      batch: {
+        columns: [{ name: "n", typeName: "int4", editable: true }],
+        rows: [[{ t: "int", v: "1" }]],
+        hasMore: false
+      },
+      cursorId: null
+    }
+  ],
+  5
+);
 
 export const sessionList: SessionList = {
   statement: "SELECT pid, usename … FROM pg_stat_activity",
@@ -330,11 +353,7 @@ export function fakeBackend(initial: ConnectionConfig[], overrides: Record<strin
     alter_schema: args => {
       const { change, confirmed } = args as { change: { kind: string }; confirmed: boolean };
       if (confirmed) {
-        return executed({
-          statementCount: 1,
-          durationMs: 2,
-          result: { kind: "command", rowsAffected: 0 }
-        });
+        return executed(scriptOutcome([{ kind: "command", rowsAffected: 0 }], 2));
       }
       const destructive = change.kind.startsWith("drop");
       return {
