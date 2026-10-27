@@ -36,8 +36,7 @@ Cada comando que devolve linhas ganha a sua aba de resultado. É o caso principa
 1. Cada comando que devolve linhas (inclusive uma escrita com `RETURNING`) ganha uma aba de resultado própria, na ordem do script.
 2. O rótulo da aba identifica o comando pelo número da posição no script e pelo começo do texto.
 3. Quando o script termina, fica ativa a aba do último comando que devolveu linhas, como hoje.
-4. Cada aba tem tudo o que a grade de resultado já tem: painel de valor, copiar como JSON, redimensionar colunas e seguir chave estrangeira quando se aplica. Carregar mais linhas em lotes vale só para o último comando. Os anteriores mostram as primeiras 1000 linhas e o total ("mostrando 1000 de N; rode o comando sozinho para ver todas").
-5a. Até 20 comandos com linhas ganham aba (o último sempre ganha). Os demais aparecem só no resumo, com o total de linhas.
+4. Cada aba tem tudo o que a grade de resultado já tem: painel de valor, copiar como JSON, redimensionar colunas e seguir chave estrangeira quando se aplica. Carregar mais linhas em lotes vale só para o último comando. Os anteriores mostram as primeiras 1000 linhas e o total ("mostrando 1000 de N; rode o comando sozinho para ver todas"). Até 20 comandos com linhas ganham aba (o último sempre ganha); os demais aparecem só no resumo, com o total de linhas.
 5. Um script com um comando só não mostra abas: a área de resultado fica igual à de hoje.
 
 ### F2. Resumo da execução
@@ -92,3 +91,5 @@ Uma visão "Execução" funciona como log do script. É ela que responde ao "o q
 **2026-10-27**. Documento criado.
 
 **2026-10-27**. No techspec, o requisito 4 mudou: carregar mais linhas vale só para o último comando, porque uma sessão do banco mantém um único resultado aberto por vez. Os anteriores ficam com o primeiro lote e o total. Entrou o requisito 5a (limite de 20 abas), que a seção de restrições deixava para o techspec. As duas decisões foram tomadas com o usuário.
+
+**2026-10-27**. No `sdd-review`, o limite de 20 abas (antes o requisito 5a) passou a fazer parte do requisito 4, porque a numeração "5a" quebrava a lista no Markdown. O conteúdo não mudou.

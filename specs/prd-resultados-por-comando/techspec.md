@@ -10,19 +10,20 @@ A resposta de `run_script` deixa de ter um resultado único e passa a ter um `Sc
 
 ### Visão de componentes
 
-| Componente | Muda o quê |
-|---|---|
-| `adapters/split.rs` + `dialect.rs` | `split_spans` devolve cada comando com o intervalo (início e fim em bytes) que ocupa no texto executado. `split` continua devolvendo só o texto, para os outros chamadores. |
-| `adapters/stream.rs` | `run_steps` (novo) lê cada comando anterior com `read_batch` + contagem, guarda até `EARLIER_RESULTS_KEPT` grades, e devolve a falha em `ScriptSteps.failure` em vez de `Err`. `run_script` vira um envoltório "tudo ou erro" dele, com a mesma assinatura. |
-| `adapters/{postgres,mysql,sqlite}` e `adapters/mod.rs` | Ganham `run_steps`. O `describe` de um comando anterior vazio só roda quando `reads[i]` diz que é leitura. |
-| `use_cases/sql.rs::run_script` | Calcula `reads` pelo guard, chama `run_steps`, monta os `ScriptStep` (status, duração, contagem, grade, intervalo em UTF-16) e grava o histórico com o erro de `failure`. |
-| Os outros chamadores (`explain`, `alter_schema`, export, sessions, schema_diff, backup) | Continuam no `run_script`, que mantém o "tudo ou erro". Para eles, nada muda. |
-| `use_cases/export.rs::export_query` | Novo parâmetro `statement: Option<u32>`: roda o script só até esse comando, que vira o último e é exportado inteiro, em streaming. |
-| `domain/sql.rs` | `ScriptOutcome` com `steps` e `error`, mais os tipos novos `ScriptStep` e `StepStatus`. |
-| `useScriptRunner.ts` | O estado `error` ganha `outcome?` (falha com passos). Os estados `rows` e `command` continuam descrevendo o último comando, que é o único com cursor. |
-| `SqlWorkspace.tsx` | `ResultsPanel` decide: um comando, a tela de hoje; mais de um, `ScriptResults`. |
-| `ScriptResults.tsx` (novo, em `features/editor`) | As abas "Execução" e uma por resultado, mais a lista do resumo. Cada aba reaproveita `ResultGrid`, `CellDetail`, `CopyRowsMenu` e `ExportButton`. |
-| `SqlEditor.tsx` | A `SqlEditorApi` ganha `select(text, from, to)`, que acha o texto executado no documento e seleciona o trecho. |
+| Componente                                                                              | Muda o quê                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adapters/split.rs` + `dialect.rs`                                                      | `split_spans` devolve cada comando com o intervalo (início e fim em bytes) que ocupa no texto executado. `split` continua devolvendo só o texto, para os outros chamadores.                                                                                 |
+| `adapters/stream.rs`                                                                    | `run_steps` (novo) lê cada comando anterior com `read_batch` + contagem, guarda até `EARLIER_RESULTS_KEPT` grades, e devolve a falha em `ScriptSteps.failure` em vez de `Err`. `run_script` vira um envoltório "tudo ou erro" dele, com a mesma assinatura. |
+| `adapters/{postgres,mysql,sqlite}` e `adapters/mod.rs`                                  | Ganham `run_steps`. O `describe` de um comando anterior vazio só roda quando `reads[i]` diz que é leitura.                                                                                                                                                  |
+| `use_cases/sql.rs::run_script`                                                          | Calcula `reads` pelo guard, chama `run_steps`, monta os `ScriptStep` (status, duração, contagem, grade, intervalo em UTF-16) e grava o histórico com o erro de `failure`.                                                                                   |
+| Os outros chamadores (`explain`, `alter_schema`, export, sessions, schema_diff, backup) | Continuam no `run_script`, que mantém o "tudo ou erro". Para eles, nada muda.                                                                                                                                                                               |
+| `use_cases/export.rs::export_query`                                                     | Novo parâmetro `statement: Option<u32>`: roda o script só até esse comando, que vira o último e é exportado inteiro, em streaming.                                                                                                                          |
+| `domain/sql.rs`                                                                         | `ScriptOutcome` com `steps` e `error`, mais os tipos novos `ScriptStep` e `StepStatus`.                                                                                                                                                                     |
+| `useScriptRunner.ts`                                                                    | O estado `error` ganha `outcome?` (falha com passos). Os estados `rows` e `command` continuam descrevendo o último comando, que é o único com cursor.                                                                                                       |
+| `SqlWorkspace.tsx`                                                                      | `ResultsPanel` decide: um comando, a tela de hoje; mais de um, `ScriptResults`.                                                                                                                                                                             |
+| `ScriptResults.tsx` (novo, em `features/editor`)                                        | As abas "Execução" e uma por resultado, mais a lista virtualizada do resumo. O atalho Alt+PageDown/PageUp aparece escrito na barra das abas.                                                                                                                |
+| `RowsView.tsx` (novo, em `features/editor`)                                             | A grade de um resultado, extraída do `ResultsPanel`: barra com recibo, Valor, Copiar e Exportar (com `exportStatement`), aviso de truncado, `CellDetail` e `ResultGrid`. Serve o comando único e cada aba.                                                  |
+| `SqlEditor.tsx`                                                                         | A `SqlEditorApi` ganha `select(text, from, to)`, que acha o texto executado no documento e seleciona o trecho.                                                                                                                                              |
 
 Fluxo:
 
@@ -112,11 +113,11 @@ pub struct ScriptOutcome {
 
 São comandos Tauri, não HTTP:
 
-| Comando | Mudança |
-|---|---|
-| `run_script(connection_id, run_id, sql, confirmed)` | Mesma assinatura. `RunResponse::Executed.outcome` ganha o formato novo. A falha de um comando vem em `outcome.error`, não como rejeição. Uma rejeição continua valendo para erros antes do primeiro comando (conexão, validação). |
-| `export_query(connection_id, run_id, sql, path, statement)` | `statement: Option<u32>` novo. `None` mantém o comportamento de hoje (o último comando). |
-| `fetch_more` e `close_cursor` | Sem mudança: só o último comando tem cursor. |
+| Comando                                                     | Mudança                                                                                                                                                                                                                           |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run_script(connection_id, run_id, sql, confirmed)`         | Mesma assinatura. `RunResponse::Executed.outcome` ganha o formato novo. A falha de um comando vem em `outcome.error`, não como rejeição. Uma rejeição continua valendo para erros antes do primeiro comando (conexão, validação). |
+| `export_query(connection_id, run_id, sql, path, statement)` | `statement: Option<u32>` novo. `None` mantém o comportamento de hoje (o último comando).                                                                                                                                          |
+| `fetch_more` e `close_cursor`                               | Sem mudança: só o último comando tem cursor.                                                                                                                                                                                      |
 
 ## Pontos de integração
 
@@ -128,24 +129,28 @@ Nenhum serviço externo. O banco é o de sempre. Duas consequências:
 ## Estratégia de teste
 
 **Unitário (Rust)**
+
 - `split_spans` contra a tabela de casos do `split.rs`: o intervalo recorta exatamente o texto que `split` devolve, inclusive com `$tag$`, `DELIMITER` e comentários.
 - Conversão de byte para UTF-16 com acentos e emoji.
 - `StepStatus` derivado do `AppError`.
 - O envoltório `run_script` continua "tudo ou erro" (os testes atuais).
 
 **Use case (`use_cases/sql.rs`, SQLite real em arquivo, como os testes atuais)**
+
 - `SELECT; UPDATE; SELECT` gera 3 passos, com grade no 1º e no 3º e contagem de afetadas no 2º.
 - Erro no 2º de 4: passo 1 `Done` com grade, passo 2 `Failed` com a mensagem de `failed_at`, passos 3 e 4 `NotRun`. O histórico grava o erro.
 - 25 `SELECT`s: 19 grades anteriores mais a última. Os outros passos têm `rowCount` e `result: None`.
 - Anterior com mais de 1000 linhas: `hasMore` sem cursor e `rowCount` com o total.
-- Uma escrita vazia não chama `describe` (contar as chamadas no adapter de teste, se ele existir; senão, cobrir na integração).
+- Uma escrita vazia não chama `describe`. O projeto não tem adapter de teste para contar as chamadas, então isso é coberto na integração: o `CREATE TEMP TABLE` anterior volta sem colunas.
 
 **Integração (testcontainers, Postgres e MySQL)**
+
 - Cancelar no 2º comando de `SELECT 1; SELECT pg_sleep(10); SELECT 2`: o passo 1 fica `Done` e o 2 fica `Cancelled`.
 - MySQL: um anterior grande, lido até o fim, devolve a conexão ao pool. É o mesmo cuidado do bug de stream não drenado, já coberto para o último comando.
 - `export_query` com `statement` exporta todas as linhas do comando do meio.
 
 **Front (Vitest + `fakeBackend`)**
+
 - Com um comando, a tela é idêntica à de hoje (os testes atuais do editor continuam passando, só com o formato do outcome atualizado).
 - Com vários comandos, há abas "Execução" e por resultado. Alt+PageDown e Alt+PageUp trocam de aba, e o nome acessível diz "comando 3 de 5, erro".
 - Selecionar um passo chama `select(texto, span.0, span.1)`. Quando o documento mudou, nada é selecionado.
@@ -159,7 +164,7 @@ Nenhum serviço externo. O banco é o de sempre. Duas consequências:
 2. `stream::run_steps` e o `run_script` como envoltório dele. Os chamadores atuais não mudam. Este passo bloqueia os seguintes.
 3. `use_cases::run_script` montando os passos e o histórico. Regenerar `src/bindings.ts` (`cargo test`).
 4. Front: adaptar `useScriptRunner`, `summary` e `fakeBackend` ao formato novo, ainda mostrando só o último (os testes atuais ficam verdes).
-5. `ScriptResults` com abas, resumo e atalhos. `SqlEditorApi.select` e `prepareRun` com a posição.
+5. `ScriptResults` e `RowsView`, com abas, resumo e atalhos. `SqlEditorApi.select`.
 6. `export_query` com `statement`, e o export por aba.
 
 Os passos 1 a 4 entram juntos ou em sequência rápida, porque o formato da resposta muda dos dois lados.
@@ -214,7 +219,7 @@ O projeto não tem `CLAUDE.md` nem diretório de regras. As fontes são `docs/de
 - `src-tauri/src/use_cases/sql.rs` (`run_script`, `explain`, `alter_schema`), `use_cases/export.rs`
 - `src-tauri/src/commands/sql.rs`, `commands/export.rs`
 - `src/bindings.ts` (gerado)
-- `src/features/editor/useScriptRunner.ts`, `SqlWorkspace.tsx`, `SqlEditor.tsx`, `ScriptResults.tsx` (novo), `editor.test.tsx`
+- `src/features/editor/useScriptRunner.ts`, `SqlWorkspace.tsx`, `SqlEditor.tsx`, `ScriptResults.tsx` (novo), `RowsView.tsx` (novo), `editor.test.tsx`, `scriptResults.test.tsx` (novo)
 - `src/features/results/*` (reuso, sem mudança esperada)
 - `src/test/fakeBackend.ts`
 - `docs/decisions.md`
@@ -224,6 +229,14 @@ O projeto não tem `CLAUDE.md` nem diretório de regras. As fontes são `docs/de
 **2026-10-27**. Documento criado.
 
 **2026-10-27**. Ajustes ao detalhar as tasks:
+
 - `run_steps` novo, com o `run_script` como envoltório "tudo ou erro", no lugar de `ScriptRun::into_result()`. Assim nenhum chamador muda.
 - `reads: &[bool]`, calculado no use case, no lugar de `impl Fn`: o guard mora em `use_cases`.
 - `select(text, from, to)` no editor, que acha o texto executado, no lugar de mudar o `prepareRun` e o `onRun`.
+
+**2026-10-27**. Reconciliação do `sdd-review` com o código:
+
+- A grade de um resultado virou o componente `RowsView.tsx`, usado pelo comando único e por cada aba.
+- `ScriptOutcome::into_last()` existe só nos testes (`#[cfg(test)]`): o código de produção lê o último passo direto.
+- A barra das abas mostra o atalho Alt+PageDown/PageUp por escrito.
+- O teste "escrita vazia sem `describe`" ficou na integração, porque não há adapter de teste para contar chamadas.
