@@ -21,7 +21,7 @@ use mysql::MysqlAdapter;
 use postgres::PostgresAdapter;
 use sqlite::SqliteAdapter;
 use sqlx::{AssertSqlSafe, MySql, Postgres, Sqlite, Transaction};
-use stream::ScriptRun;
+use stream::{ScriptRun, ScriptSteps};
 
 /// An open SQL database. An enum rather than `Box<dyn SqlAdapter>`: the engines are
 /// a closed set, and async methods behind `dyn` would need boxed futures. The three
@@ -120,6 +120,17 @@ impl SqlConnection {
         on_started: impl FnOnce(i64),
     ) -> Result<ScriptRun, AppError> {
         each!(self, adapter => adapter.run_script(statements, batch_size, on_started).await)
+    }
+
+    /// Every statement with its own result; a failing one comes back in `failure`.
+    pub async fn run_steps(
+        &self,
+        statements: &[String],
+        reads: &[bool],
+        batch_size: usize,
+        on_started: impl FnOnce(i64),
+    ) -> Result<ScriptSteps, AppError> {
+        each!(self, adapter => adapter.run_steps(statements, reads, batch_size, on_started).await)
     }
 
     pub async fn apply(&self, statements: &[String]) -> Result<u32, AppError> {

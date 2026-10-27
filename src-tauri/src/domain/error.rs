@@ -3,7 +3,7 @@ use specta::Type;
 
 /// Serialized as `{ kind, message }`. The payload is the final, human-readable message
 /// (built by the constructors below), so `message` and `Display` always match.
-#[derive(Debug, thiserror::Error, Serialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, Serialize, Type)]
 #[serde(tag = "kind", content = "message", rename_all = "camelCase")]
 pub enum AppError {
     #[error("{0}")]

@@ -476,6 +476,10 @@ async fn connections_go_back_to_the_pool() {
     for _ in 0..20 {
         run(&db, "UPDATE t SET id = id WHERE id = 1").await.unwrap();
         run(&db, "SELECT * FROM t").await.unwrap();
+        // earlier statements are read to their end too, not left mid-result
+        run(&db, "SELECT * FROM t; SELECT * FROM t LIMIT 1; SELECT 1")
+            .await
+            .unwrap();
         db.browse(&request).await.unwrap();
     }
 }

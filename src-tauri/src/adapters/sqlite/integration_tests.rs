@@ -474,3 +474,23 @@ async fn structure_changes_within_what_sqlite_alters() {
         "{refused}"
     );
 }
+
+#[tokio::test]
+async fn an_earlier_write_counts_the_rows_it_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = database(
+        &dir,
+        "steps.db",
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT); INSERT INTO t (v) VALUES ('a'), ('b'), ('c')",
+    )
+    .await;
+    let db = SqliteAdapter::connect(&config, false).await.unwrap();
+    let statements = SqliteAdapter::DIALECT.split("UPDATE t SET v = 'z' WHERE id < 3; SELECT v FROM t");
+    let run = db
+        .run_steps(&statements, &[false, true], 1000, |_| {})
+        .await
+        .unwrap();
+    assert!(run.failure.is_none());
+    assert_eq!(run.steps[0].row_count, Some(2));
+    assert_eq!(run.steps[1].row_count, Some(3));
+}
