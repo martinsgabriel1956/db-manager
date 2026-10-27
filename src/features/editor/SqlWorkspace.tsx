@@ -14,6 +14,8 @@ import {
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
 import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
 import { ParamsDialog } from "@/features/editor/ParamsDialog";
+import { RowsView } from "@/features/editor/RowsView";
+import { ScriptResults } from "@/features/editor/ScriptResults";
 import {
   findParams,
   paramValue,
@@ -25,18 +27,9 @@ import {
   type ExplainMode,
   type RunState
 } from "@/features/editor/useScriptRunner";
-import { ExportButton } from "@/features/export/ExportButton";
-import { CopyRowsMenu } from "@/features/results/CopyRowsMenu";
 import { connected, useCompletion } from "@/features/explorer/queries";
-import {
-  CellDetail,
-  DetailSplit,
-  DetailToggle,
-  useCellDetail
-} from "@/features/results/CellDetail";
 import { PlanView } from "@/features/results/PlanView";
 import { errorMessage } from "@/lib/errors";
-import { ResultGrid, type SelectedCell } from "@/features/results/ResultGrid";
 import { EXPLAIN_SHORTCUT, FORMAT_SHORTCUT, RUN_SHORTCUT } from "@/lib/platform";
 
 type SqlWorkspaceProps = {
@@ -61,6 +54,8 @@ type ResultsPanelProps = {
   state: RunState;
   engine: Engine;
   onLoadMore: () => void;
+  /** a statement picked in a script's summary: [from, to) of `sql` */
+  onSelectStatement: (from: number, to: number) => void;
   /** an earlier run's result, under a cancelled one: it must not read as what just ran */
   superseded?: boolean;
 };
@@ -73,12 +68,16 @@ export function summary(state: RunState): string | null {
     const analyzed = state.plan.root.actualRows !== null ? " com ANALYZE · a instrução rodou" : "";
     return `Plano de execução${analyzed} · ${state.plan.durationMs} ms`;
   }
+  if (state.status === "error" && state.outcome) {
+    const { steps, durationMs } = state.outcome;
+    const at = steps.findIndex(step => step.status === "failed" || step.status === "cancelled");
+    return `Parou no comando ${at + 1} de ${steps.length} · ${durationMs} ms`;
+  }
   if (state.status !== "rows" && state.status !== "command") {
     return null;
   }
   const { statementCount, durationMs } = state.outcome;
-  const statements =
-    statementCount > 1 ? ` · ${statementCount} comandos (resultado do último)` : "";
+  const statements = statementCount > 1 ? ` · ${statementCount} comandos` : "";
   if (state.status === "command") {
     const noun = state.rowsAffected === 1 ? "linha afetada" : "linhas afetadas";
     return `Comando executado · ${state.rowsAffected} ${noun} · ${durationMs} ms${statements}`;
@@ -274,6 +273,7 @@ export function SqlWorkspace({
             state={runner.state}
             engine={engine}
             onLoadMore={runner.loadMore}
+            onSelectStatement={() => undefined}
           />
         </Panel>
       </Group>
@@ -318,13 +318,9 @@ function ResultsPanel({
   state,
   engine,
   onLoadMore,
+  onSelectStatement,
   superseded = false
 }: ResultsPanelProps) {
-  const [selected, setSelected] = useState<SelectedCell | null>(null);
-  // opens by itself on JSON and long text, otherwise on demand (Space or Valor)
-  const detail = useCellDetail();
-  const detailOpen = detail.open;
-  const gridAreaRef = useRef<HTMLDivElement>(null);
   const result = summary(state);
   const text = superseded && result ? `Resultado anterior · ${result}` : result;
   // the receipt belongs to the run that just happened, never to the one kept under a cancel
@@ -381,10 +377,26 @@ function ResultsPanel({
             state={state.previous}
             engine={engine}
             onLoadMore={onLoadMore}
+            onSelectStatement={onSelectStatement}
             superseded
           />
         </div>
       </div>
+    );
+  }
+  const outcome = "outcome" in state ? state.outcome : undefined;
+  if (outcome && outcome.statementCount > 1) {
+    return (
+      <ScriptResults
+        connectionId={connectionId}
+        sql={sql}
+        outcome={outcome}
+        last={state.status === "rows" ? state : null}
+        onLoadMore={onLoadMore}
+        onSelectStatement={onSelectStatement}
+        receipt={<Receipt connectionId={connectionId} confirmed={confirmed} text={text} />}
+        muted={!confirmed}
+      />
     );
   }
   if (state.status === "error") {
@@ -420,79 +432,20 @@ function ResultsPanel({
     );
   }
 
-  const selectedCell = selected && state.rows[selected.row]?.[selected.column];
   return (
-    <div className="flex h-full flex-col">
-      <div className="@container flex items-center gap-2 border-b bg-muted px-3 py-1">
-        <div
-          role="status"
-          className={`flex min-w-0 items-center gap-2 text-xs ${confirmed ? "" : "text-muted-foreground"}`}
-        >
-          <Receipt connectionId={connectionId} confirmed={confirmed} text={text} />
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <DetailToggle open={detailOpen} onToggle={detail.toggle} />
-          <CopyRowsMenu
-            columns={state.columns}
-            rows={state.rows}
-            selectedRow={selected?.row ?? null}
-          />
-          <ExportButton
-            baseName="resultado"
-            formats={[
-              {
-                id: "csv",
-                label: "CSV",
-                extension: "csv",
-                run: (path, runId) =>
-                  connected(connectionId, () =>
-                    commands.exportQuery(connectionId, runId, sql, path, null)
-                  )
-              }
-            ]}
-          />
-        </div>
-      </div>
-      {state.loadError && (
-        <p role="alert" className="border-b px-3 py-1 text-sm text-destructive">
-          {state.loadError}
-        </p>
-      )}
-      <div ref={gridAreaRef} className="flex min-h-0 flex-1">
-        <DetailSplit
-          detail={
-            detailOpen && (
-              <CellDetail
-                column={selected ? (state.columns[selected.column] ?? null) : null}
-                cell={selectedCell ?? null}
-                onClose={() => {
-                  detail.close();
-                  gridAreaRef.current?.querySelector<HTMLElement>("[role='grid']")?.focus();
-                }}
-              />
-            )
-          }
-        >
-          <ResultGrid
-            columns={state.columns}
-            rows={state.rows}
-            hasMore={state.hasMore}
-            isLoadingMore={state.loadingMore}
-            onLoadMore={onLoadMore}
-            selected={selected}
-            onSelect={next => {
-              setSelected(next);
-              if (next) {
-                detail.reveal(state.columns[next.column], state.rows[next.row]?.[next.column]);
-              }
-            }}
-            label="Resultado da query"
-            detailOpen={detailOpen}
-            onToggleDetail={detail.toggle}
-            readOnlyHint="Resultado de query: somente leitura; para editar, abra a tabela"
-          />
-        </DetailSplit>
-      </div>
-    </div>
+    <RowsView
+      connectionId={connectionId}
+      sql={sql}
+      columns={state.columns}
+      rows={state.rows}
+      hasMore={state.hasMore}
+      loadingMore={state.loadingMore}
+      loadError={state.loadError}
+      onLoadMore={onLoadMore}
+      notice={null}
+      exportStatement={null}
+      receipt={<Receipt connectionId={connectionId} confirmed={confirmed} text={text} />}
+      muted={!confirmed}
+    />
   );
 }

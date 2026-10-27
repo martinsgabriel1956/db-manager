@@ -175,7 +175,7 @@ test("streams more rows from the cursor and releases it on unmount", async () =>
   await waitFor(() => expect(callsTo(calls, "fetch_more").length).toBeGreaterThanOrEqual(1));
   expect(callsTo(calls, "fetch_more")[0]).toEqual({ cursorId: "run-cursor" });
   expect(await screen.findByText("2")).toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent("· 3 comandos (resultado do último)");
+  expect(screen.getByRole("status")).toHaveTextContent("· 3 comandos");
 
   unmount();
   expect(callsTo(calls, "close_cursor")).toContainEqual({ cursorId: "run-cursor" });
