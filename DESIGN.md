@@ -32,6 +32,7 @@ colors:
   filter: "#c8137a"
   night-filter: "#ff5fae"
   safelight: "#c4291c"
+  safelight-foreground: "#ffffff"
   night-destructive-text: "#ff6a4d"
   success: "#0f7446"
   night-success: "#4cc98a"
@@ -114,13 +115,13 @@ components:
     padding: "0 10px"
   button-safelight:
     backgroundColor: "{colors.safelight}"
-    textColor: "#ffffff"
+    textColor: "{colors.safelight-foreground}"
     rounded: "{rounded.none}"
     height: "32px"
     padding: "0 10px"
   env-tag-prod:
     backgroundColor: "{colors.safelight}"
-    textColor: "#ffffff"
+    textColor: "{colors.safelight-foreground}"
     typography: "{typography.legend}"
     rounded: "{rounded.none}"
     height: "18px"
@@ -194,12 +195,12 @@ Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais
 
 ### Tertiary
 
-- **Luz de Segurança** (`safelight`): produção e destrutivo. Faixa de produção de 28px no topo da janela, anel interno de 4px em volta da janela, etiqueta PROD cheia, faixa da ficha de exposição em produção, botão destrutivo. Preenchimentos usam `--safelight` (igual nos dois temas); texto de erro usa `--destructive`, que no escuro sobe para `night-destructive-text`.
+- **Luz de Segurança** (`safelight`): produção e destrutivo. Faixa de produção de 28px no topo da janela, anel interno de 4px em volta da janela, etiqueta PROD cheia, faixa da ficha de exposição em produção, botão destrutivo. Preenchimentos usam `--safelight` (igual nos dois temas), e o que vai sobre eles usa `--safelight-foreground` (papel branco, 5,7:1, também igual nos dois temas; nunca `text-white` solto); texto de erro usa `--destructive`, que no escuro sobe para `night-destructive-text`.
 - **Estados** (`success`, `warning`, com versões `night-`): linha nova na grade (`success` a 10% + hachura), aviso salvo, ícones do histórico; também são as cores de string e número na sintaxe.
 
 ### Neutral
 
-- **Escala de Zonas Z0..Z10**: Z0 é tinta (texto, botão primário, filetes principais, contagem Δ), Z10 é papel (fundo de trabalho, cartões, popovers), Z9 é o fundo da grade e de barras (`muted`, `secondary`, `accent`), Z8 é o filete comum (`border`), Z6 é o contorno de campo (`input`, 3:1 ou mais sobre papel e grade, WCAG 1.4.11), Z5 é texto secundário (`muted-foreground`), Z7 é a barra de rolagem. No escuro, `night-z0..night-z10` ocupam os mesmos papéis pelo mesmo nome de zona.
+- **Escala de Zonas Z0..Z10**: Z0 é tinta (texto, botão primário, filetes principais, contagem Δ), Z10 é papel (fundo de trabalho, cartões, popovers), Z9 é o fundo da grade e de barras (`muted`, `secondary`, `accent`), Z8 é o filete comum (`border`), Z6 é o contorno de campo (`input`, 3:1 ou mais sobre papel e grade, WCAG 1.4.11), Z5 é texto secundário (`muted-foreground`); a barra de rolagem usa Z6, 3:1 ou mais sobre papel nos dois temas. No escuro, `night-z0..night-z10` ocupam os mesmos papéis pelo mesmo nome de zona.
 - **Grade de Construção** (`grid`; `night-grid`): só o desenho da grade, em hairline de 1px.
 - **Tinta da Hachura** (`--hatch`, Z0 a 38% no claro e 34% no escuro): derivada da zona, não é cor própria.
 
@@ -285,19 +286,19 @@ Tinta sobre papel, reto.
 - **Primary:** fundo Z0, texto Z10; hover desce para Z5 (Z4 no escuro). Desabilitado, a tinta sai: contorno `input` sem fundo, a 50% (um preenchimento esmaecido ainda se lia como botão no escuro).
 - **Outline:** contorno `input` (Z6), fundo papel (transparente no escuro); hover em Z9.
 - **Ghost:** sem fundo; hover em Z9.
-- **Destructive:** `--safelight` cheio, texto branco 600, hover a 90%. Reservado para confirmar escrita destrutiva ou em produção.
+- **Destructive:** `--safelight` cheio, texto `--safelight-foreground` 600, hover a 90%. Reservado para confirmar escrita destrutiva ou em produção.
 - **Focus:** contorno sólido de 2px em `--ring` com 2px de afastamento (no destrutivo, em `--safelight`). Active desce 1px.
 
 ### Chips
 
-- **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto branco.
+- **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto `--safelight-foreground`.
 - **Badge retido:** contorno pontilhado `currentColor`, "Somente leitura". O mesmo badge com "Bin" marca um valor binário do Redis antes da prévia escapada (`\xff`), para que nunca se leia como texto.
 - **Chip de filtro:** `--filter` cheio com texto papel, só enquanto algo filtra ou ordena: um chip por condição, todas somadas com AND: o primeiro diz FILTRO e os seguintes E, em `legend`, seguidos da condição em mono 11px como se lê no SQL ("id >= 42", "id IN (1, 2)") e um × ("Remover filtro id >= 42"); aplicar de novo a mesma coluna e operador troca a condição; ORDENADO com a coluna, a seta e um × ("Remover ordenação"). No MongoDB, FILTRO e ORDENADO levam o JSON aplicado, truncado. Os chips ficam numa linha própria logo abaixo da barra de filtro, que quebra linha em vez de cortar: na janela mínima nenhuma condição se reduz a "FILTRO"; com duas ou mais, "Limpar" fecha a linha. Campos que não batem mais com o aplicado tornam o Aplicar primário; não há texto extra.
 - **Contagem Δ:** 18px, fundo Z0, texto Z10, mono 11px ("Δ 2").
 
 ### Cards / Containers
 
-- **Registro de conexões:** um único livro-razão pautado, papel sobre a grade, contorno de tinta, conexões separadas por filete Z8 (filete de tinta quando expandida). Cada linha: casa quadrada de 24px com o código da engine (PG, MY, SL, MG, RD) em `legend`, nome 13px/600, etiqueta de ambiente à direita, segunda linha em mono 11px com o alvo e cadeado pontilhado se somente leitura. Nomes (grupo, conexão, schema, tabela) quebram linha em vez de truncar, porque são dado e nenhum hover alcança o teclado: "Postgres staging-eu" e "-us" nunca se leem iguais na lateral de 240px; as linhas têm 28px como mínimo, não como altura fixa. O alvo fica numa linha só, truncado, com o endereço inteiro no hover e no nome acessível (quebrado nos hifens, ocupava três). As ações da linha ficam num "⋯" discreto (60%, cheio no hover) no canto inferior direito, sobre a linha do alvo, que reserva o espaço; nunca cobre o nome nem a etiqueta. O "⋯" usa `muted-foreground` cheio (5:1), sem opacidade. O menu (Nova query SQL, Editar conexão, Desconectar; no schema, Abrir diagrama ER) é uma folha de papel com contorno de tinta, sem sombra, itens de 28px, item realçado em azul. Abre também com Shift+F10, tecla de menu ou clique direito na linha; o "⋯" é a cópia do mouse e fica fora da árvore acessível. Todo menu do app (contexto da aba, Todas as abas, Copiar) é essa mesma folha.
+- **Registro de conexões:** um único livro-razão pautado, papel sobre a grade, contorno de tinta, conexões separadas por filete Z8 (filete de tinta quando expandida). Cada linha: casa quadrada de 24px com o código da engine (PG, MY, SL, MG, RD) em `legend`, nome 13px/600, etiqueta de ambiente à direita, segunda linha em mono 11px com o alvo e cadeado pontilhado se somente leitura. Nomes (grupo, conexão, schema, tabela) quebram linha em vez de truncar, porque são dado e nenhum hover alcança o teclado: "Postgres staging-eu" e "-us" nunca se leem iguais na lateral de 240px; as linhas têm 28px como mínimo, não como altura fixa. O alvo fica numa linha só, truncado, com o endereço inteiro no hover e no nome acessível (quebrado nos hifens, ocupava três). As ações da linha ficam num "⋯" discreto (60%, cheio no hover) no canto inferior direito, sobre a linha do alvo, que reserva o espaço; nunca cobre o nome nem a etiqueta. O "⋯" usa `muted-foreground` cheio (5:1), sem opacidade. O menu (Nova query SQL, Editar conexão, Duplicar e, separado dos outros por filete de tinta para não ser clicado no caminho, Desconectar; no schema, Abrir diagrama ER) é uma folha de papel com contorno de tinta, sem sombra, itens de 28px, item realçado em azul. Abre também com Shift+F10, tecla de menu ou clique direito na linha; o "⋯" é a cópia do mouse e fica fora da árvore acessível. Todo menu do app (contexto da aba, Todas as abas, Copiar) é essa mesma folha.
 - **Árvore:** sob a conexão expandida, recuo com filete esquerdo de tinta (tracejado em luz de segurança numa conexão de produção, textura e não só cor, com o filete inferior da linha dela em luz de segurança, para que produção continue legível quando o cabeçalho rola para fora); linhas de 28px, 13px, hover Z9; a tabela ativa é preenchida em azul.
 
 ### Formulário de conexão
@@ -356,13 +357,25 @@ Cabeçalho de view como as outras (título à esquerda; conexão e etiqueta à d
 
 Fundo papel, gutter Z9 com filete, linha ativa Z9 a 60%, cursor azul de 2px, seleção em `--ring` a 40%, foco com contorno de 2px em `--ring`, painel de autocompletar com contorno de tinta e item ativo em azul. Sintaxe: palavras-chave em Z0, strings `success`, números `warning`, tipos Z5, propriedades em tinta 600. O autocompletar fica abaixo da camada de diálogos (z 40), com opções de 4px de respiro vertical, e fecha ao executar, pelo atalho ou pelo botão Executar; o tipo de cada sugestão é um código em `legend` (KW, TB, CL, TY, FN, SC), não emoji; tabela é TB e schema é SC (o lang-sql marca os dois como `type`, então a fonte de schema é reetiquetada), TY fica só para tipo de dado.
 
+O botão do cabeçalho diz "Executar seleção" quando há texto selecionado, porque é o que ele vai rodar. Numa janela baixa (a mínima com zoom de 200%), Formatar, Explicar e Executar ficam só com o ícone e mantêm o nome para leitor de tela, para o cabeçalho caber numa linha e o editor manter altura. O divisor entre editor e resultados tem 1px e área de 25px; duplo clique alterna entre a altura padrão e um editor alto (o divisor do painel Valor faz o mesmo com a largura).
+
+### Resultado de cada comando
+
+Um script com mais de um comando abre abas internas: Execução, depois uma aba por comando que devolveu linhas ("1 · SELECT…", o número antes do texto, "comando 1 de 4" no nome acessível). Comando sem linhas não ganha aba (a Legenda diz isso junto do atalho); a partir de 1100px a faixa lembra "Alt+PageDown/PageUp troca de resultado" e cede espaço às abas. Alt+PageDown/PageUp troca de resultado de dentro dos resultados e também do editor, sem tirar o foco do texto; dentro dos resultados o foco segue a aba.
+
+Execução é um registro pautado: cabeçalho em `legend` sobre filete de tinta (Nº, Comando, Status, Linhas, Tempo), linhas de 28px com o SQL truncado em mono e as contagens à direita. Status em palavras e em textura: "erro" e "cancelado" em `--destructive` 600 sobre banda de hachura cruzada; "não executado" com contorno pontilhado de retido e a linha em `muted-foreground`. A lista é uma parada de Tab só, com setas, Home e End entre os comandos. O recibo de Execução fala do script ("4 comandos · 42 ms", ou "Parou no comando 3 de 4"); o de cada aba fala do seu comando ("Comando 1 de 4 · 1000 de 4210 linhas · 12 ms").
+
+Escolher um comando é "onde você está", nunca uma seleção: a linha ganha o filete azul de 3px à esquerda e fundo azul a 10%, e o trecho no editor ganha fundo azul a 14% com filete inferior azul de 2px, que some na próxima edição ou clique. Executar continua rodando o que rodaria. Rodar um comando sozinho é uma ação nomeada, "Rodar só este comando", numa faixa sob o recibo junto com "Comando N de M marcado no editor." (ou que o editor mudou e não o mostra mais) e, quando a aba guardou só o primeiro lote, "Mostrando as primeiras N de M linhas.". Quando o script para, o comando que falhou já abre marcado no editor com hachura cruzada e filete inferior em `--destructive`.
+
+Exportar uma aba reexecuta os comandos até ela; se algum deles escreve, o botão fica `aria-disabled` e o clique diz o motivo antes de pedir o arquivo.
+
 ### Exclusões inline (Redis, MongoDB)
 
 Armar a exclusão abre uma faixa longe do gatilho: no MongoDB sob o documento, com filete de tinta; no Redis sob a barra da chave. A faixa traz o comando exato inteiro, quebrando linha, em mono com contorno de tinta (`DEL chave`, `deleteOne({"_id": …})`), e o botão "Confirmar exclusão" à esquerda da faixa, longe dos gatilhos à direita, que vem focado e é descrito pelo comando (`aria-describedby`). O gatilho (lixeira ou "Excluir chave") fica onde estava, marcado como aberto (`aria-expanded`), e um segundo clique nele desarma: um duplo clique nunca cai na confirmação. Esc desarma e devolve o foco ao gatilho; sair do botão também desarma. "Excluir chave" é um botão outline com ícone, texto em `--destructive`.
 
 ### Diagrama ER
 
-Chave primária em tinta (não âmbar), estrangeira em `muted-foreground`. Minimapa em papel com contorno de tinta, tabelas em Z6 (3:1 ou mais), recorte da vista em azul; controles numa coluna com contorno de tinta.
+Chave primária em tinta (não âmbar), estrangeira em `muted-foreground`. Minimapa em papel com contorno de tinta, tabelas em Z6 (3:1 ou mais), recorte da vista em azul; controles numa coluna com contorno de tinta. O nó focado leva o anel de foco de 2px em `--ring`, afastado 2px. As arestas só se desenham, então o nome de cada nó diz para onde apontam as chaves ("Tabela pedidos, cliente_id aponta para clientes") e o ícone de vínculo diz o destino. O tema segue a escolha do app, não só a do sistema. O layout (ELK) roda num Web Worker.
 
 ## Do's and Don'ts
 

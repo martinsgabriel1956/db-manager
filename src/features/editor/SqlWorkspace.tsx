@@ -1,5 +1,5 @@
-import { useRef, useState, type ReactNode } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { AlignLeft, ChevronDown, ListTree, Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { commands, type Engine } from "@/bindings";
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { ConnectionContext } from "@/features/connections/ConnectionContext";
-import { SqlEditor, type SqlEditorApi } from "@/features/editor/SqlEditor";
+import { SqlEditor, type SqlEditorApi, type StepMark } from "@/features/editor/SqlEditor";
 import { ParamsDialog } from "@/features/editor/ParamsDialog";
 import { RowsView } from "@/features/editor/RowsView";
 import { ScriptResults } from "@/features/editor/ScriptResults";
@@ -54,8 +54,12 @@ type ResultsPanelProps = {
   state: RunState;
   engine: Engine;
   onLoadMore: () => void;
-  /** a statement picked in a script's summary: [from, to) of `sql` */
-  onSelectStatement: (from: number, to: number) => void;
+  /** marks a script's statement in the editor: [from, to) of `sql` */
+  onMarkStatement: (from: number, to: number, kind: StepMark) => boolean;
+  /** runs one statement of the script alone: [from, to) of `sql` */
+  onRunStatement: (from: number, to: number) => void;
+  /** set by a script's results: Alt+PageDown/PageUp in the editor switches them */
+  cycleRef: RefObject<((step: number) => void) | null>;
   /** an earlier run's result, under a cancelled one: it must not read as what just ran */
   superseded?: boolean;
 };
@@ -107,6 +111,10 @@ export function SqlWorkspace({
   const [paramRequest, setParamRequest] = useState<ParamRequest | null>(null);
   const [paramError, setParamError] = useState<string | null>(null);
   const [filling, setFilling] = useState(false);
+  // Run says when it runs only the selection
+  const [hasSelection, setHasSelection] = useState(false);
+  const cycleResults = useRef<((step: number) => void) | null>(null);
+  const editorPanel = usePanelRef();
   const isRunning = runner.state.status === "running";
 
   /** the export re-runs `lastSql`: with placeholders, that is the filled text */
@@ -166,17 +174,38 @@ export function SqlWorkspace({
 
   const explainText = () => editorApi.current?.prepareExplain() ?? sql;
 
+  // a script's results switch from the editor too; inside the results they handle it themselves
+  function onKeyDown(event: KeyboardEvent) {
+    if (
+      !event.defaultPrevented &&
+      event.altKey &&
+      (event.key === "PageDown" || event.key === "PageUp") &&
+      cycleResults.current
+    ) {
+      event.preventDefault();
+      cycleResults.current(event.key === "PageDown" ? 1 : -1);
+    }
+  }
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" onKeyDown={onKeyDown}>
       {/* the same view header as tables and collections: title left, connection and action right */}
       {/* wraps rather than clips (zoomed in, the actions drop to a second line, flush right) */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-foreground bg-background px-4 py-2">
-        <h2 className="display-caps text-[1.75rem] leading-[1.15]">SQL</h2>
+        {/* a low window (the minimum at 200% zoom): the actions keep their icons, the words stay
+            for screen readers, so the header holds one line and the editor keeps its height */}
+        <h2 className="display-caps text-[1.75rem] leading-[1.15] [@media(max-height:420px)]:text-xl">
+          SQL
+        </h2>
         <span className="hidden text-xs text-muted-foreground min-[1100px]:inline">
           {RUN_SHORTCUT} executa a seleção ou tudo
         </span>
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
-          <ConnectionContext connectionId={connectionId} />
+          {/* low, the environment band at the top of the window already names it */}
+          <ConnectionContext
+            connectionId={connectionId}
+            className="[@media(max-height:420px)]:sr-only"
+          />
           {formatError && (
             <span
               role="alert"
@@ -192,7 +221,7 @@ export function SqlWorkspace({
             title={`${FORMAT_SHORTCUT} formata a seleção ou tudo`}
             onClick={() => editorApi.current?.format()}
           >
-            <AlignLeft /> Formatar
+            <AlignLeft /> <span className="[@media(max-height:420px)]:sr-only">Formatar</span>
           </Button>
           <div className="flex">
             <Button
@@ -202,7 +231,7 @@ export function SqlWorkspace({
               title={`${EXPLAIN_SHORTCUT} explica a seleção ou a instrução sob o cursor`}
               onClick={() => explainFromEditor(explainText())}
             >
-              <ListTree /> Explicar
+              <ListTree /> <span className="[@media(max-height:420px)]:sr-only">Explicar</span>
             </Button>
             {/* only Postgres reports ANALYZE as JSON; it runs the statement, so no shortcut */}
             {engine === "postgres" && (
@@ -236,13 +265,16 @@ export function SqlWorkspace({
               title={`${RUN_SHORTCUT} executa a seleção ou tudo`}
               onClick={() => runFromEditor(editorApi.current?.prepareRun() ?? sql)}
             >
-              <Play /> Executar
+              <Play />{" "}
+              <span className="[@media(max-height:420px)]:sr-only">
+                {hasSelection ? "Executar seleção" : "Executar"}
+              </span>
             </Button>
           )}
         </div>
       </div>
       <Group orientation="vertical" className="min-h-0 flex-1">
-        <Panel defaultSize="45" minSize={80}>
+        <Panel defaultSize="45" minSize={80} panelRef={editorPanel}>
           <SqlEditor
             value={sql}
             onChange={text => {
@@ -252,6 +284,7 @@ export function SqlWorkspace({
             onRun={runFromEditor}
             onFormatted={setFormatError}
             onExplain={explainFromEditor}
+            onSelectionChange={setHasSelection}
             completion={completion.data}
             engine={engine}
             defaultSchema={defaultSchema}
@@ -259,10 +292,16 @@ export function SqlWorkspace({
             autoFocus={autoFocus}
           />
         </Panel>
-        {/* 1px line with a 9px grab area; focused it thickens to 3px without moving the panels */}
+        {/* 1px line with a 25px grab area; focused it thickens to 3px without moving the panels.
+            A double click switches between the usual height and a tall editor, without dragging */}
         <Separator
           aria-label="Altura do editor"
-          className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40"
+          title="Arraste, use as setas ou dê duplo clique para alternar a altura"
+          onDoubleClick={() => {
+            const panel = editorPanel.current;
+            panel?.resize(panel.getSize().asPercentage > 60 ? "45" : "75");
+          }}
+          className="relative h-px bg-border outline-none after:absolute after:inset-x-0 after:-inset-y-3 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40"
         />
         <Panel minSize={80}>
           {/* keyed per run so a stale cell selection never points into a new result */}
@@ -273,7 +312,11 @@ export function SqlWorkspace({
             state={runner.state}
             engine={engine}
             onLoadMore={runner.loadMore}
-            onSelectStatement={(from, to) => editorApi.current?.select(lastSql, from, to)}
+            onMarkStatement={(from, to, kind) =>
+              editorApi.current?.mark(lastSql, from, to, kind) ?? false
+            }
+            onRunStatement={(from, to) => start(lastSql.slice(from, to), null)}
+            cycleRef={cycleResults}
           />
         </Panel>
       </Group>
@@ -318,7 +361,9 @@ function ResultsPanel({
   state,
   engine,
   onLoadMore,
-  onSelectStatement,
+  onMarkStatement,
+  onRunStatement,
+  cycleRef,
   superseded = false
 }: ResultsPanelProps) {
   const result = summary(state);
@@ -377,7 +422,9 @@ function ResultsPanel({
             state={state.previous}
             engine={engine}
             onLoadMore={onLoadMore}
-            onSelectStatement={onSelectStatement}
+            onMarkStatement={onMarkStatement}
+            onRunStatement={onRunStatement}
+            cycleRef={cycleRef}
             superseded
           />
         </div>
@@ -393,8 +440,16 @@ function ResultsPanel({
         outcome={outcome}
         last={state.status === "rows" ? state : null}
         onLoadMore={onLoadMore}
-        onSelectStatement={onSelectStatement}
-        receipt={<Receipt connectionId={connectionId} confirmed={confirmed} text={text} />}
+        onMarkStatement={onMarkStatement}
+        onRunStatement={onRunStatement}
+        cycleRef={cycleRef}
+        receipt={line => (
+          <Receipt
+            connectionId={connectionId}
+            confirmed={confirmed}
+            text={superseded ? `Resultado anterior · ${line}` : line}
+          />
+        )}
         muted={!confirmed}
       />
     );

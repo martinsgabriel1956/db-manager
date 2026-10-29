@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { EngineCode, EnvTag } from "@/features/connections/EnvTag";
 import { ENGINE_LABEL, ENGINES } from "@/features/connections/options";
 import { useFocusReturn } from "@/features/tabs/focus";
-import { RUN_SHORTCUT, SIDEBAR_SHORTCUT } from "@/lib/platform";
+import { EXPLAIN_SHORTCUT, FORMAT_SHORTCUT, RUN_SHORTCUT, SIDEBAR_SHORTCUT } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 type LegendDialogProps = { open: boolean; onOpenChange: (open: boolean) => void };
@@ -73,6 +73,9 @@ const SHORTCUT_GROUPS = [
     "No editor",
     [
       [RUN_SHORTCUT, "Executar a seleção ou o editor inteiro"],
+      [FORMAT_SHORTCUT, "Formatar a seleção ou o editor inteiro"],
+      [EXPLAIN_SHORTCUT, "Explicar a seleção ou a instrução sob o cursor"],
+      ["Alt+PgDn PgUp", "Outro resultado do script (sem linhas: em Execução)"],
       ["Esc", "Fechar painel, diálogo ou edição"]
     ]
   ]
@@ -232,7 +235,8 @@ export function LegendDialog({ open, onOpenChange }: LegendDialogProps) {
                   {shortcuts.map(([keys, action]) => (
                     <li
                       key={keys}
-                      className="grid min-h-6 grid-cols-[8rem_1fr] items-center gap-3 text-[13px]"
+                      // 20px rows: the shortcuts column is the tallest, and the sheet fits an 800px window
+                      className="grid min-h-5 grid-cols-[8rem_1fr] items-center gap-3 text-[13px]"
                     >
                       <kbd className="legend">{keys}</kbd>
                       <span className="text-muted-foreground">{action}</span>

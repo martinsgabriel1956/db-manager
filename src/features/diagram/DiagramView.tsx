@@ -24,6 +24,7 @@ import {
 } from "@/features/diagram/layout";
 import type { TableTarget } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
+import { storedTheme } from "@/lib/theme";
 
 type DiagramViewProps = {
   connectionId: string;
@@ -113,7 +114,8 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
           ariaLabelConfig={ARIA_LABELS}
           minZoom={0.05}
           fitView
-          colorMode="system"
+          // the app's own choice, not only the OS's: a theme picked in Ordo reaches the diagram
+          colorMode={storedTheme()}
           // the diagram is part of Ordo's own drawing; the library is credited in the README
           proOptions={{ hideAttribution: true }}
           onNodeDoubleClick={(_, node) => onOpenTable({ connectionId, schema, table: node.id })}
@@ -140,6 +142,8 @@ export function DiagramView({ connectionId, schema, onOpenTable }: DiagramViewPr
 }
 
 function TableNodeView({ data }: NodeProps<TableNode>) {
+  const targets = (column: string) =>
+    data.references.filter(key => key.columns.includes(column)).map(key => key.target);
   return (
     <div
       className="overflow-hidden border border-foreground bg-card text-xs"
@@ -161,9 +165,9 @@ function TableNodeView({ data }: NodeProps<TableNode>) {
           >
             {column.isPrimaryKey ? (
               <KeyRound aria-label="chave primária" className="size-3 shrink-0 text-foreground" />
-            ) : data.foreignKeyColumns.includes(column.name) ? (
+            ) : targets(column.name).length > 0 ? (
               <Link
-                aria-label="chave estrangeira"
+                aria-label={`chave estrangeira para ${targets(column.name).join(" e ")}`}
                 className="size-3 shrink-0 text-muted-foreground"
               />
             ) : (

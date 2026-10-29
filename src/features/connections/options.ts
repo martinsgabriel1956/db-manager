@@ -49,7 +49,10 @@ export const ENVIRONMENT_STYLE: Record<Environment, { label: string; tagClass: s
     tagClass:
       "border border-current pl-0 before:mr-1.5 before:h-full before:w-2 before:border-r before:border-current before:hatch before:content-['']"
   },
-  prod: { label: "Prod", tagClass: "border border-safelight bg-safelight text-white" }
+  prod: {
+    label: "Prod",
+    tagClass: "border border-safelight bg-safelight text-safelight-foreground"
+  }
 };
 
 /** Two-letter engine code, set in the legend face on connections and tabs. */

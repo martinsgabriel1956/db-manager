@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChevronRight, FolderOpen } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, FolderOpen } from "lucide-react";
 import type { Engine } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -308,10 +308,8 @@ export function ConnectionFields({
       ) : isUri ? (
         <>
           <Field id="uri" label="URI de conexão" error={errors.uri}>
-            <Input
+            <SecretInput
               id="uri"
-              type="password"
-              autoComplete="off"
               value={values.uri}
               aria-invalid={errors.uri ? true : undefined}
               aria-describedby={errors.uri ? "uri-error" : undefined}
@@ -627,11 +625,8 @@ function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor="connection-url">Colar URL de conexão (opcional)</Label>
-      <Input
+      <SecretInput
         id="connection-url"
-        type="password"
-        autoComplete="off"
-        spellCheck={false}
         value={text}
         placeholder="postgres://usuário:senha@host:5432/banco"
         aria-describedby="connection-url-status"
@@ -667,6 +662,28 @@ function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
             ? "Não reconheci a URL. Use postgres://, mysql:// ou redis://."
             : "Preenche tipo, host, porta, banco, usuário, senha e TLS de uma vez."}
       </p>
+    </div>
+  );
+}
+
+/**
+ * A secret that is pasted whole (a URL with its password): masked by default, in every
+ * environment, with a button to check what was pasted before it is used.
+ */
+function SecretInput(props: Omit<ComponentProps<typeof Input>, "type">) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="flex gap-2">
+      <Input {...props} type={shown ? "text" : "password"} autoComplete="off" spellCheck={false} />
+      <Button
+        type="button"
+        variant="outline"
+        aria-controls={props.id}
+        className="w-24 shrink-0"
+        onClick={() => setShown(value => !value)}
+      >
+        {shown ? <EyeOff /> : <Eye />} {shown ? "Ocultar" : "Mostrar"}
+      </Button>
     </div>
   );
 }

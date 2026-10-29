@@ -22,9 +22,13 @@ type RowsViewProps = {
   loadError: string | null;
   onLoadMore: () => void;
   /** said above the grid, e.g. that an earlier result kept only its first batch */
-  notice: string | null;
+  notice: ReactNode;
   /** the statement the export re-runs up to; null for the last one */
   exportStatement: number | null;
+  /** why the export would be refused, said before asking for a file */
+  exportBlocked?: string | null;
+  /** what the export does, on hover */
+  exportTitle?: string;
   /** the run's receipt, at the start of the bar */
   receipt: ReactNode;
   /** dims the receipt: it does not belong to a confirmed run */
@@ -43,6 +47,8 @@ export function RowsView({
   onLoadMore,
   notice,
   exportStatement,
+  exportBlocked = null,
+  exportTitle,
   receipt,
   muted
 }: RowsViewProps) {
@@ -55,7 +61,8 @@ export function RowsView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="@container flex items-center gap-2 border-b bg-muted px-3 py-1">
+      {/* wraps rather than overlaps: a long receipt sends the tools to a second line */}
+      <div className="@container flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted px-3 py-1">
         <div
           role="status"
           className={`flex min-w-0 items-center gap-2 text-xs ${muted ? "text-muted-foreground" : ""}`}
@@ -67,6 +74,8 @@ export function RowsView({
           <CopyRowsMenu columns={columns} rows={rows} selectedRow={selected?.row ?? null} />
           <ExportButton
             baseName="resultado"
+            blocked={exportBlocked}
+            title={exportTitle}
             formats={[
               {
                 id: "csv",
@@ -81,7 +90,7 @@ export function RowsView({
           />
         </div>
       </div>
-      {notice && <p className="border-b px-3 py-1 text-sm text-muted-foreground">{notice}</p>}
+      {notice}
       {loadError && (
         <p role="alert" className="border-b px-3 py-1 text-sm text-destructive">
           {loadError}

@@ -19,6 +19,10 @@ type ExportButtonProps = {
   /** suggested file name, without extension */
   baseName: string;
   formats: ExportFormat[];
+  /** why the export would be refused: said on click, before asking for a file */
+  blocked?: string | null;
+  /** what the export does, on hover */
+  title?: string;
 };
 
 type ExportState =
@@ -32,13 +36,17 @@ function fileName(path: string): string {
 }
 
 /** Asks where to save, streams the export there, and can cancel it midway. */
-export function ExportButton({ baseName, formats }: ExportButtonProps) {
+export function ExportButton({ baseName, formats, blocked = null, title }: ExportButtonProps) {
   const queryClient = useQueryClient();
   const [formatId, setFormatId] = useState(formats[0].id);
   const [state, setState] = useState<ExportState>({ status: "idle" });
   const format = formats.find(option => option.id === formatId) ?? formats[0];
 
   async function start() {
+    if (blocked) {
+      setState({ status: "error", message: blocked });
+      return;
+    }
     const path = await save({
       defaultPath: `${baseName}.${format.extension}`,
       filters: [{ name: format.label, extensions: [format.extension] }]
@@ -99,7 +107,15 @@ export function ExportButton({ baseName, formats }: ExportButtonProps) {
           ))}
         </NativeSelect>
       )}
-      <Button size="xs" variant="outline" onClick={start}>
+      {/* aria-disabled, not disabled: the click still says why */}
+      <Button
+        size="xs"
+        variant="outline"
+        aria-disabled={blocked ? true : undefined}
+        title={blocked ?? title}
+        className={blocked ? "opacity-50" : undefined}
+        onClick={start}
+      >
         <Download /> Exportar {formats.length === 1 ? format.label : ""}
       </Button>
     </span>

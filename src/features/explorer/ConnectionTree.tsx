@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useRef,
   useState,
@@ -85,7 +86,8 @@ type SchemaNodeProps = Pick<TreeActions, "activeTable" | "onOpenTable"> & {
   canCreateTable: boolean;
 };
 
-type RowAction = { label: string; icon: ReactNode; onSelect: () => void };
+/** `apart`: ruled off from the items above, so it is not hit on the way to them */
+type RowAction = { label: string; icon: ReactNode; onSelect: () => void; apart?: boolean };
 
 type RowMenuProps = {
   /** names the row: "Ações de Postgres prod" */
@@ -332,10 +334,13 @@ function RowMenu({ label, actions, open, onOpenChange, rowRef, className }: RowM
         }}
       >
         {actions.map(action => (
-          <DropdownMenuItem key={action.label} onSelect={action.onSelect}>
-            {action.icon}
-            {action.label}
-          </DropdownMenuItem>
+          <Fragment key={action.label}>
+            {action.apart && <div role="separator" className="my-1 h-px bg-foreground" />}
+            <DropdownMenuItem onSelect={action.onSelect}>
+              {action.icon}
+              {action.label}
+            </DropdownMenuItem>
+          </Fragment>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -403,6 +408,7 @@ function ConnectionNode({
           {
             label: "Desconectar",
             icon: <Unplug />,
+            apart: true,
             onSelect: () => {
               disconnect.mutate(connection.id);
               setExpanded(connection.id, false);

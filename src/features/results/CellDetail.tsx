@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { PanelRight, X } from "lucide-react";
 import type { Cell, ResultColumn } from "@/bindings";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,7 @@ type DetailSplitProps = { children: ReactNode; detail: ReactNode };
 
 /** The grid, and beside it the value panel, resizable by mouse or keyboard (arrows on the bar). */
 export function DetailSplit({ children, detail }: DetailSplitProps) {
+  const detailPanel = usePanelRef();
   return (
     <Group orientation="horizontal" className="min-h-0 flex-1">
       <Panel id="grid" minSize={200} className="min-w-0">
@@ -74,11 +75,17 @@ export function DetailSplit({ children, detail }: DetailSplitProps) {
       </Panel>
       {detail && (
         <>
+          {/* a 25px grab area around the 1px line; a double click widens or narrows, without dragging */}
           <Separator
             aria-label="Largura do painel do valor"
-            className="relative w-px bg-border outline-none after:absolute after:inset-y-0 after:-inset-x-1 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40"
+            title="Arraste, use as setas ou dê duplo clique para alternar a largura"
+            onDoubleClick={() => {
+              const panel = detailPanel.current;
+              panel?.resize(panel.getSize().asPercentage > 45 ? "32" : "60");
+            }}
+            className="relative w-px bg-border outline-none after:absolute after:inset-y-0 after:-inset-x-3 hover:bg-primary/40 focus-visible:bg-ring focus-visible:shadow-[0_0_0_1px_var(--ring)] data-[separator=active]:bg-primary/40"
           />
-          <Panel id="detail" defaultSize="32" minSize={240} maxSize="75">
+          <Panel id="detail" defaultSize="32" minSize={240} maxSize="75" panelRef={detailPanel}>
             {detail}
           </Panel>
         </>
