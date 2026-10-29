@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emit } from "@tauri-apps/api/event";
 import { expect, test } from "vitest";
@@ -226,6 +226,22 @@ test("a pasted connection URL fills the fields and leaves the input empty", asyn
   expect(screen.getByLabelText("Tipo de banco")).toHaveValue("postgres");
   expect(screen.getByLabelText("Host")).toHaveValue("dbhost");
   expect(screen.getByLabelText("Banco de dados")).toHaveValue("app");
+});
+
+test("the connection URL is masked until asked to show it, and masked again on request", async () => {
+  fakeBackend([]);
+  const user = userEvent.setup();
+  renderApp();
+
+  await user.click((await screen.findAllByRole("button", { name: "Nova conexão" }))[0]);
+  const url = screen.getByLabelText("Colar URL de conexão (opcional)");
+  expect(url).toHaveAttribute("type", "password");
+
+  const toggle = within(url.parentElement!).getByRole("button", { name: "Mostrar" });
+  await user.click(toggle);
+  expect(url).toHaveAttribute("type", "text");
+  await user.click(within(url.parentElement!).getByRole("button", { name: "Ocultar" }));
+  expect(url).toHaveAttribute("type", "password");
 });
 
 test("editing a prod connection marks the window and fills the form", async () => {
