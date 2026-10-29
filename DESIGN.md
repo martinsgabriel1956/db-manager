@@ -32,6 +32,7 @@ colors:
   filter: "#c8137a"
   night-filter: "#ff5fae"
   safelight: "#c4291c"
+  safelight-foreground: "#ffffff"
   night-destructive-text: "#ff6a4d"
   success: "#0f7446"
   night-success: "#4cc98a"
@@ -114,13 +115,13 @@ components:
     padding: "0 10px"
   button-safelight:
     backgroundColor: "{colors.safelight}"
-    textColor: "#ffffff"
+    textColor: "{colors.safelight-foreground}"
     rounded: "{rounded.none}"
     height: "32px"
     padding: "0 10px"
   env-tag-prod:
     backgroundColor: "{colors.safelight}"
-    textColor: "#ffffff"
+    textColor: "{colors.safelight-foreground}"
     typography: "{typography.legend}"
     rounded: "{rounded.none}"
     height: "18px"
@@ -194,7 +195,7 @@ Uma escala de zonas quase acromática, uma grade azul-acinzentada e três sinais
 
 ### Tertiary
 
-- **Luz de Segurança** (`safelight`): produção e destrutivo. Faixa de produção de 28px no topo da janela, anel interno de 4px em volta da janela, etiqueta PROD cheia, faixa da ficha de exposição em produção, botão destrutivo. Preenchimentos usam `--safelight` (igual nos dois temas); texto de erro usa `--destructive`, que no escuro sobe para `night-destructive-text`.
+- **Luz de Segurança** (`safelight`): produção e destrutivo. Faixa de produção de 28px no topo da janela, anel interno de 4px em volta da janela, etiqueta PROD cheia, faixa da ficha de exposição em produção, botão destrutivo. Preenchimentos usam `--safelight` (igual nos dois temas), e o que vai sobre eles usa `--safelight-foreground` (papel branco, 5,7:1, também igual nos dois temas; nunca `text-white` solto); texto de erro usa `--destructive`, que no escuro sobe para `night-destructive-text`.
 - **Estados** (`success`, `warning`, com versões `night-`): linha nova na grade (`success` a 10% + hachura), aviso salvo, ícones do histórico; também são as cores de string e número na sintaxe.
 
 ### Neutral
@@ -285,12 +286,12 @@ Tinta sobre papel, reto.
 - **Primary:** fundo Z0, texto Z10; hover desce para Z5 (Z4 no escuro). Desabilitado, a tinta sai: contorno `input` sem fundo, a 50% (um preenchimento esmaecido ainda se lia como botão no escuro).
 - **Outline:** contorno `input` (Z6), fundo papel (transparente no escuro); hover em Z9.
 - **Ghost:** sem fundo; hover em Z9.
-- **Destructive:** `--safelight` cheio, texto branco 600, hover a 90%. Reservado para confirmar escrita destrutiva ou em produção.
+- **Destructive:** `--safelight` cheio, texto `--safelight-foreground` 600, hover a 90%. Reservado para confirmar escrita destrutiva ou em produção.
 - **Focus:** contorno sólido de 2px em `--ring` com 2px de afastamento (no destrutivo, em `--safelight`). Active desce 1px.
 
 ### Chips
 
-- **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto branco.
+- **Etiquetas de ambiente:** 18px, `legend`, notação que se lê sem cor: LOCAL contorno pontilhado, DEV contorno sólido, STAGING contorno com uma casa hachurada de 8px antes da palavra, PROD `--safelight` cheio com texto `--safelight-foreground`.
 - **Badge retido:** contorno pontilhado `currentColor`, "Somente leitura". O mesmo badge com "Bin" marca um valor binário do Redis antes da prévia escapada (`\xff`), para que nunca se leia como texto.
 - **Chip de filtro:** `--filter` cheio com texto papel, só enquanto algo filtra ou ordena: um chip por condição, todas somadas com AND: o primeiro diz FILTRO e os seguintes E, em `legend`, seguidos da condição em mono 11px como se lê no SQL ("id >= 42", "id IN (1, 2)") e um × ("Remover filtro id >= 42"); aplicar de novo a mesma coluna e operador troca a condição; ORDENADO com a coluna, a seta e um × ("Remover ordenação"). No MongoDB, FILTRO e ORDENADO levam o JSON aplicado, truncado. Os chips ficam numa linha própria logo abaixo da barra de filtro, que quebra linha em vez de cortar: na janela mínima nenhuma condição se reduz a "FILTRO"; com duas ou mais, "Limpar" fecha a linha. Campos que não batem mais com o aplicado tornam o Aplicar primário; não há texto extra.
 - **Contagem Δ:** 18px, fundo Z0, texto Z10, mono 11px ("Δ 2").
