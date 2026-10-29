@@ -75,7 +75,8 @@ export function App() {
     reopenClosed,
     activate
   } = useTabs();
-  const anyConnectionOpen = useExplorer(state => state.expanded.length > 0);
+  const expandedConnections = useExplorer(state => state.expanded);
+  const anyConnectionOpen = expandedConnections.length > 0;
   const setExpanded = useExplorer(state => state.setExpanded);
   const setGroupOpen = useExplorer(state => state.setGroupOpen);
   // the open connection form: shown, or parked behind the tabs with its draft intact
@@ -128,6 +129,10 @@ export function App() {
     tab =>
       tab.kind !== "history" &&
       list.find(connection => connection.id === tab.connectionId)?.environment === "prod"
+  );
+  // with no tab on it, a production connection open in the sidebar is still in use
+  const prodConnected = list.some(
+    connection => connection.environment === "prod" && expandedConnections.includes(connection.id)
   );
   const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
 
@@ -332,7 +337,7 @@ export function App() {
           shifts the window under the pointer: it changes colour and words, not height.
           Production works under the safelight; the ring is a colour cue, the band says it in words */}
       {isProd && active ? (
-        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-white duration-[120ms] fade-in-0 motion-reduce:animate-none">
+        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-safelight-foreground duration-[120ms] fade-in-0 motion-reduce:animate-none">
           <TriangleAlert className="size-3.5" aria-hidden />
           <span className="legend text-[0.75rem]">Produção</span>
           <span className="truncate">
@@ -370,10 +375,14 @@ export function App() {
           ) : (
             <span>
               {activeTab ? "Nenhuma conexão nesta aba" : "Nenhuma conexão em uso"}
-              {prodOpenElsewhere && (
+              {(prodOpenElsewhere || prodConnected) && (
                 <>
                   {" · "}
-                  <span className="text-foreground">produção aberta em outra aba</span>
+                  <span className="text-foreground">
+                    {prodOpenElsewhere
+                      ? "produção aberta em outra aba"
+                      : "produção conectada na lateral"}
+                  </span>
                 </>
               )}
             </span>

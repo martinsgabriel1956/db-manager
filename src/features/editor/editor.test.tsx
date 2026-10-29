@@ -110,7 +110,8 @@ test("runs only the selected text", async () => {
   renderWorkspace("SELECT 1;\nSELECT 2;");
 
   act(() => editorView().dispatch({ selection: EditorSelection.range(10, 19) }));
-  await user.click(screen.getByRole("button", { name: "Executar" }));
+  // the button says it runs only the selection
+  await user.click(screen.getByRole("button", { name: "Executar seleção" }));
 
   await waitFor(() => expect(callsTo(calls, "run_script")).toHaveLength(1));
   expect(callsTo(calls, "run_script")[0]).toMatchObject({ sql: "SELECT 2;" });
@@ -175,7 +176,7 @@ test("streams more rows from the cursor and releases it on unmount", async () =>
   await waitFor(() => expect(callsTo(calls, "fetch_more").length).toBeGreaterThanOrEqual(1));
   expect(callsTo(calls, "fetch_more")[0]).toEqual({ cursorId: "run-cursor" });
   expect(await screen.findByText("2")).toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent("· 3 comandos");
+  expect(screen.getByRole("status")).toHaveTextContent("Comando 3 de 3 · 2+ linhas retornadas");
 
   unmount();
   expect(callsTo(calls, "close_cursor")).toContainEqual({ cursorId: "run-cursor" });

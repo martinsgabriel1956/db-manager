@@ -333,6 +333,10 @@ export function ResultGrid({
       setWidth(selected.column, (widths[selected.column] ?? MIN_COLUMN_WIDTH) + step);
       return;
     }
+    // Alt+PageDown/PageUp switch a script's results: the grid leaves them to its parent
+    if (event.altKey && (event.key === "PageDown" || event.key === "PageUp")) {
+      return;
+    }
     const pageRows = Math.max(
       1,
       Math.floor((scrollRef.current?.clientHeight ?? 0) / ROW_HEIGHT) - 1

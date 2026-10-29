@@ -53,25 +53,44 @@ test("each result gets its tab, the last one opens, Alt+PageUp walks back", asyn
 
   const results = await screen.findByRole("tablist", { name: "Resultados do script" });
   const tabs = within(results).getAllByRole("tab");
-  expect(tabs.map(tab => tab.textContent)).toEqual(["Execução", "1 · SELECT 1;", "3 · SELECT 3"]);
-  const last = screen.getByRole("tab", { name: "comando 3 de 3, concluído" });
+  // the accessible name holds what the tab shows
+  expect(tabs.map(tab => tab.textContent)).toEqual([
+    "Execução",
+    "comando 1 de 3 · SELECT 1;",
+    "comando 3 de 3 · SELECT 3"
+  ]);
+  const last = screen.getByRole("tab", { name: "comando 3 de 3 · SELECT 3" });
   expect(last).toHaveAttribute("aria-selected", "true");
   expect(within(screen.getByRole("grid")).getByText("3")).toBeInTheDocument();
 
-  // from anywhere inside the results
+  // each tab's receipt is its own statement's, not the last one's
+  expect(screen.getByRole("status")).toHaveTextContent("Comando 3 de 3 · 1 linha retornada");
+
+  // from anywhere inside the results, and again: the focus follows the tab
   await user.click(last);
   await user.keyboard("{Alt>}{PageUp}{/Alt}");
-  expect(screen.getByRole("tab", { name: "comando 1 de 3, concluído" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  const first = screen.getByRole("tab", { name: "comando 1 de 3 · SELECT 1;" });
+  expect(first).toHaveAttribute("aria-selected", "true");
+  await waitFor(() => expect(first).toHaveFocus());
+  await user.keyboard("{Alt>}{PageUp}{/Alt}");
+  expect(screen.getByRole("tab", { name: "Execução" })).toHaveAttribute("aria-selected", "true");
 
   // the summary lists every statement, the command with its affected rows
-  await user.click(screen.getByRole("tab", { name: "Execução" }));
   const list = screen.getByRole("list", { name: "Comandos do script" });
-  expect(within(list).getByRole("button", { name: "comando 2 de 3, concluído" })).toHaveTextContent(
-    "2 linhas afetadas"
-  );
+  expect(
+    within(list).getByRole("button", { name: /^comando 2 de 3,\s*UPDATE x;/ })
+  ).toHaveTextContent("2 linhas afetadas");
+});
+
+test("Alt+PageDown in the editor switches results without leaving the text", async () => {
+  const { user } = await run(scriptOutcome([rows(["1"]), rows(["2"])]));
+  await screen.findByRole("tablist", { name: "Resultados do script" });
+
+  await user.click(document.querySelector(".cm-content") as HTMLElement);
+  await user.keyboard("{Alt>}{PageDown}{/Alt}");
+
+  expect(screen.getByRole("tab", { name: "Execução" })).toHaveAttribute("aria-selected", "true");
+  expect(document.activeElement).toHaveClass("cm-content");
 });
 
 test("a script that stops opens on the summary, with the error and what did not run", async () => {
@@ -92,11 +111,16 @@ test("a script that stops opens on the summary, with the error and what did not 
     "true"
   );
   expect(screen.getByRole("alert")).toHaveTextContent(message);
-  expect(screen.getByRole("button", { name: "comando 2 de 3, erro" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "comando 3 de 3, não executado" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^comando 2 de 3,.*erro/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /^comando 3 de 3,.*não executado/ })
+  ).toBeInTheDocument();
   // the result that ran before the failure is still there
-  expect(screen.getByRole("tab", { name: "comando 1 de 3, concluído" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "comando 1 de 3 · SELECT 1;" })).toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("Parou no comando 2 de 3");
+  // where it stopped is marked in the editor, and the summary says so
+  expect(document.querySelector(".cm-step-failed")).toHaveTextContent("UPDATE x;");
+  expect(screen.getByText("Comando 2 de 3 marcado no editor.")).toBeInTheDocument();
 });
 
 test("an earlier result says it kept its first rows and exports up to its statement", async () => {
@@ -104,12 +128,9 @@ test("an earlier result says it kept its first rows and exports up to its statem
   outcome.steps[0].rowCount = 1500;
   const { calls, user } = await run(outcome);
 
-  await user.click(await screen.findByRole("tab", { name: "comando 1 de 2, concluído" }));
-  expect(
-    screen.getByText(
-      "Mostrando as primeiras 2 de 1500 linhas. Rode o comando sozinho para ver todas."
-    )
-  ).toBeInTheDocument();
+  await user.click(await screen.findByRole("tab", { name: "comando 1 de 2 · SELECT 1;" }));
+  expect(screen.getByText("Mostrando as primeiras 2 de 1500 linhas.")).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Comando 1 de 2 · 2 de 1500 linhas");
 
   await user.click(screen.getByRole("button", { name: /Exportar CSV/ }));
   await waitFor(() =>
@@ -119,24 +140,66 @@ test("an earlier result says it kept its first rows and exports up to its statem
   );
 });
 
-test("picking a statement in the summary selects it in the editor", async () => {
+test("an earlier result after a write cannot be exported, and says why before asking for a file", async () => {
+  const { calls, user } = await run(
+    scriptOutcome([{ kind: "command", rowsAffected: 2 }, rows(["1"]), rows(["3"])])
+  );
+
+  await user.click(await screen.findByRole("tab", { name: /^comando 2 de 3/ }));
+  await user.click(screen.getByRole("button", { name: /Exportar CSV/ }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("o script altera dados antes deste");
+  expect(callsTo(calls, "export_query")).toEqual([]);
+});
+
+test("picking a statement marks it in the editor without selecting it", async () => {
   const { user } = await run(scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }]));
 
   await user.click(await screen.findByRole("tab", { name: "Execução" }));
-  await user.click(screen.getByRole("button", { name: "comando 2 de 2, concluído" }));
+  await user.click(screen.getByRole("button", { name: /^comando 2 de 2/ }));
 
   const view = EditorView.findFromDOM(document.querySelector(".cm-content") as HTMLElement)!;
-  const { from, to } = view.state.selection.main;
-  expect(view.state.sliceDoc(from, to)).toBe("UPDATE x;");
+  // Run keeps running the whole script: the pick is a mark, not a selection
+  expect(view.state.selection.main.empty).toBe(true);
+  expect(document.querySelector(".cm-step-picked")).toHaveTextContent("UPDATE x;");
+  expect(screen.getByRole("button", { name: "Executar" })).toBeInTheDocument();
+  expect(screen.getByText("Comando 2 de 2 marcado no editor.")).toBeInTheDocument();
 });
 
-test("a statement is not selected once the editor no longer holds what ran", async () => {
+test("a picked statement runs alone on request", async () => {
+  const { calls, user } = await run(
+    scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }])
+  );
+
+  await user.click(await screen.findByRole("tab", { name: "Execução" }));
+  await user.click(screen.getByRole("button", { name: /^comando 2 de 2/ }));
+  await user.click(screen.getByRole("button", { name: "Rodar só este comando" }));
+
+  await waitFor(() => expect(callsTo(calls, "run_script")).toHaveLength(2));
+  expect(callsTo(calls, "run_script")[1]).toMatchObject({ sql: "UPDATE x;" });
+});
+
+test("the summary is one Tab stop, with arrows between statements", async () => {
+  const { user } = await run(scriptOutcome([rows(["1"]), rows(["2"]), rows(["3"])]));
+  await user.click(await screen.findByRole("tab", { name: "Execução" }));
+
+  const buttons = within(screen.getByRole("list", { name: "Comandos do script" })).getAllByRole(
+    "button"
+  );
+  expect(buttons.map(button => button.tabIndex)).toEqual([0, -1, -1]);
+  act(() => buttons[0].focus());
+  await user.keyboard("{End}");
+  await waitFor(() => expect(buttons[2]).toHaveFocus());
+});
+
+test("a statement is not marked once the editor no longer holds what ran", async () => {
   const { user } = await run(scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }]));
   const view = EditorView.findFromDOM(document.querySelector(".cm-content") as HTMLElement)!;
   act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "SELECT 9" } }));
 
   await user.click(await screen.findByRole("tab", { name: "Execução" }));
-  await user.click(screen.getByRole("button", { name: "comando 2 de 2, concluído" }));
+  await user.click(screen.getByRole("button", { name: /^comando 2 de 2/ }));
 
-  expect(view.state.selection.main.empty).toBe(true);
+  expect(document.querySelector(".cm-step-picked")).toBeNull();
+  expect(screen.getByText(/o editor mudou desde a execução/)).toBeInTheDocument();
 });

@@ -41,7 +41,7 @@ export function SheetConnection({ connection }: { connection: ConnectionConfig |
 /** Production only, always in words: what runs here runs on the production database. */
 export function ProdStrip({ children }: { children: ReactNode }) {
   return (
-    <p className="flex min-h-7 items-center gap-2 bg-safelight px-5 py-1 text-xs text-white">
+    <p className="flex min-h-7 items-center gap-2 bg-safelight px-5 py-1 text-xs text-safelight-foreground">
       <span className="legend text-[0.75rem]">Produção</span>
       <span>{children}</span>
     </p>

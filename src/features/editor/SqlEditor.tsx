@@ -14,8 +14,15 @@ import {
   type SQLNamespace
 } from "@codemirror/lang-sql";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { Compartment, EditorSelection, EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap, placeholder } from "@codemirror/view";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Prec,
+  StateEffect,
+  StateField
+} from "@codemirror/state";
+import { Decoration, EditorView, keymap, placeholder, type DecorationSet } from "@codemirror/view";
 import type { CompletionTable, Engine } from "@/bindings";
 import { formatChange } from "@/features/editor/format";
 import { editorLabel, editorTheme } from "@/lib/codemirror";
@@ -34,6 +41,8 @@ type SqlEditorProps = {
   completion: CompletionTable[] | undefined;
   engine: Engine;
   defaultSchema: string;
+  /** whether text is selected: the Run button then says it runs the selection */
+  onSelectionChange?: (selected: boolean) => void;
   /** lets the Run button apply the same selection-or-all rule as Ctrl+Enter */
   apiRef: RefObject<SqlEditorApi | null>;
   /** read once, at creation */
@@ -50,11 +59,36 @@ export type SqlEditorApi = {
   prepareExplain: () => string;
   format: () => void;
   /**
-   * Finds `text` (what ran) in the document and selects [from, to) of it; false when it
-   * is not there anymore (edited since, or the text had its `:name` values filled in).
+   * Finds `text` (what ran) in the document and marks [from, to) of it, without touching
+   * the selection (what Run runs); false when it is not there anymore (edited since, or
+   * the text had its `:name` values filled in). The mark goes with the next edit or click.
    */
-  select: (text: string, from: number, to: number) => boolean;
+  mark: (text: string, from: number, to: number, kind: StepMark) => boolean;
 };
+
+/** "picked": where a statement chosen in a script's summary is; "failed": where the script stopped. */
+export type StepMark = "picked" | "failed";
+
+const setStepMark = StateEffect.define<{ from: number; to: number; kind: StepMark } | null>();
+
+/** A script step shown in the editor: a mark, never the selection, so Run keeps its meaning. */
+const stepMark = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setStepMark)) {
+        const mark = effect.value;
+        return mark
+          ? Decoration.set(
+              Decoration.mark({ class: `cm-step-${mark.kind}` }).range(mark.from, mark.to)
+            )
+          : Decoration.none;
+      }
+    }
+    return tr.docChanged || tr.isUserEvent("select") ? Decoration.none : marks;
+  },
+  provide: field => EditorView.decorations.from(field)
+});
 
 /** `{ schema: { table: [columns] } }` for CodeMirror's schema-aware autocomplete. */
 export function toNamespace(tables: CompletionTable[]): SQLNamespace {
@@ -147,6 +181,7 @@ export function SqlEditor({
   onRun,
   onFormatted,
   onExplain,
+  onSelectionChange,
   completion,
   engine,
   defaultSchema,
@@ -162,31 +197,38 @@ export function SqlEditor({
   const onFormattedRef = useRef(onFormatted);
   const engineRef = useRef(engine);
   const onExplainRef = useRef(onExplain);
+  const onSelectionChangeRef = useRef(onSelectionChange);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     onRunRef.current = onRun;
     onExplainRef.current = onExplain;
     onFormattedRef.current = onFormatted;
+    onSelectionChangeRef.current = onSelectionChange;
     engineRef.current = engine;
-  }, [onChange, onRun, onExplain, onFormatted, engine]);
+  }, [onChange, onRun, onExplain, onFormatted, onSelectionChange, engine]);
 
   useEffect(() => {
     // one transaction, so Ctrl+Z brings the text back; a formatted selection stays selected
     const format = (editor: EditorView) => {
-      try {
-        const change = formatChange(editor.state, engineRef.current);
-        const selected = !editor.state.selection.main.empty;
-        editor.dispatch({
-          changes: change,
-          selection: selected
-            ? EditorSelection.range(change.from, change.from + change.insert.length)
-            : undefined
-        });
-        onFormattedRef.current(null);
-      } catch (error) {
-        onFormattedRef.current(errorMessage(error));
-      }
+      const before = editor.state;
+      formatChange(before, engineRef.current).then(
+        change => {
+          // typed over while the formatter loaded: the change would land on other text
+          if (editor.state.doc !== before.doc) {
+            return;
+          }
+          const selected = !before.selection.main.empty;
+          editor.dispatch({
+            changes: change,
+            selection: selected
+              ? EditorSelection.range(change.from, change.from + change.insert.length)
+              : undefined
+          });
+          onFormattedRef.current(null);
+        },
+        error => onFormattedRef.current(errorMessage(error))
+      );
       return true;
     };
     const view = new EditorView({
@@ -222,7 +264,11 @@ export function SqlEditor({
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
             }
+            if (update.selectionSet) {
+              onSelectionChangeRef.current?.(!update.state.selection.main.empty);
+            }
           }),
+          stepMark,
           editorTheme,
           editorLabel("Editor SQL"),
           // an empty editor says what goes there and how it runs, instead of a blank pane
@@ -244,16 +290,19 @@ export function SqlEditor({
         return statementAt(view.state);
       },
       format: () => format(view),
-      select: (text, from, to) => {
+      mark: (text, from, to, kind) => {
         // ponytail: first occurrence; a selection run whose text repeats earlier in the
-        // document highlights that earlier copy
+        // document marks that earlier copy
         const origin = view.state.doc.toString().indexOf(text);
         if (origin < 0) {
+          view.dispatch({ effects: setStepMark.of(null) });
           return false;
         }
         view.dispatch({
-          selection: EditorSelection.range(origin + from, origin + to),
-          scrollIntoView: true
+          effects: [
+            setStepMark.of({ from: origin + from, to: origin + to, kind }),
+            EditorView.scrollIntoView(origin + from, { y: "center" })
+          ]
         });
         return true;
       }

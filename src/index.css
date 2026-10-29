@@ -32,6 +32,7 @@
   --color-select-foreground: var(--select-foreground);
   --color-filter: var(--filter);
   --color-safelight: var(--safelight);
+  --color-safelight-foreground: var(--safelight-foreground);
   --color-syntax-keyword: var(--syntax-keyword);
   --color-syntax-string: var(--syntax-string);
   --color-syntax-number: var(--syntax-number);
@@ -113,6 +114,8 @@
   --filter: #c8137a;
   /* production and destructive fills; --destructive is the text tone */
   --safelight: #c4291c;
+  /* paper on the safelight, 5.7:1; the same in both themes, like the safelight */
+  --safelight-foreground: #ffffff;
   --destructive: #c4291c;
   --success: #0f7446;
   --warning: #8f5c00;
@@ -256,7 +259,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    scrollbar-color: var(--z7) transparent;
+    /* Z6: the thumb past 3:1 on paper in both themes */
+    scrollbar-color: var(--z6) transparent;
     caret-color: var(--select);
   }
   ::selection {
@@ -285,6 +289,14 @@
   /* the foreign key's columns on the edge: paper and ink, whatever React Flow's colorMode reads */
   --xy-edge-label-background-color: var(--z10);
   --xy-edge-label-color: var(--foreground);
+}
+
+/* the table nodes are a custom type: React Flow draws focus only on its built-in ones, and
+   its `.react-flow__node.selectable:focus-visible { outline: none }` loads later, so one more class */
+.react-flow .react-flow__node:focus-visible,
+.react-flow .react-flow__node.selectable:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .react-flow__minimap {

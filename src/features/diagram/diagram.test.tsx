@@ -15,7 +15,10 @@ test("foreign keys inside the schema become edges, the rest is listed on the tab
   const users = nodes.find(node => node.id === "users")!;
   const teams = nodes.find(node => node.id === "teams")!;
   expect(users.data.external).toEqual(["billing.tenants"]);
-  expect(users.data.foreignKeyColumns).toContain("team_id");
+  // the edges are only drawn: the node's name says where its keys point
+  expect(users.ariaLabel).toBe(
+    "Tabela users, team_id aponta para teams, team_id aponta para billing.tenants"
+  );
   // layered left to right: the referencing table comes first
   expect(users.position.x).toBeLessThan(teams.position.x);
   expect(nodeHeight(users.data)).toBeGreaterThan(nodeHeight(teams.data));
@@ -31,11 +34,11 @@ test("a SQL schema opens its ER diagram; double click opens a table", async () =
 
   expect(await screen.findByRole("tab", { name: "Postgres dev · ER public" })).toBeInTheDocument();
   expect(await screen.findByText(/2 tabelas · 1 chave estrangeira/)).toBeInTheDocument();
-  const users = screen.getByLabelText("Tabela users");
+  const users = screen.getByLabelText(/^Tabela users/);
   expect(within(users).getByText("team_id")).toBeInTheDocument();
   expect(within(users).getByText("→ billing.tenants")).toBeInTheDocument();
   expect(within(users).getByLabelText("chave primária")).toBeInTheDocument();
-  expect(within(users).getByLabelText("chave estrangeira")).toBeInTheDocument();
+  expect(within(users).getByLabelText(/^chave estrangeira para teams/)).toBeInTheDocument();
   expect(callsTo(calls, "schema_diagram")).toEqual([{ connectionId: "pg-dev", schema: "public" }]);
 
   // fireEvent: user-event's mousedown has no `view`, which React Flow's drag handler reads

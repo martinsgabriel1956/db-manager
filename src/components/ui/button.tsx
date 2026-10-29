@@ -21,7 +21,7 @@ const buttonVariants = cva(
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         // under the safelight: reserved for confirming a destructive or production write
         destructive:
-          "bg-safelight font-semibold text-white hover:bg-safelight/90 focus-visible:outline-safelight",
+          "bg-safelight font-semibold text-safelight-foreground hover:bg-safelight/90 focus-visible:outline-safelight",
         link: "text-primary underline-offset-4 hover:underline"
       },
       size: {

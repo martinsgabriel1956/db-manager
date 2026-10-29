@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "@/App";
 import "@/index.css";
+import type { ScriptOutcome, ScriptStep } from "@/bindings";
 import {
   devMongo,
   devPostgres,
@@ -13,6 +14,82 @@ import {
   prodPostgres,
   rowsOutcome
 } from "@/test/fakeBackend";
+
+/**
+ * A script answered statement by statement, with spans into the real text: a SELECT returns
+ * rows (one with FAIL in it fails, and what follows does not run), anything else is a command.
+ */
+function scriptOf(sql: string): ScriptOutcome {
+  const spans: [number, number][] = [];
+  let from = 0;
+  for (const match of sql.matchAll(/;/g)) {
+    spans.push([from, match.index + 1]);
+    from = match.index + 1;
+  }
+  if (sql.slice(from).trim()) {
+    spans.push([from, sql.length]);
+  }
+  const trimmed = spans.map(([start, end]): [number, number] => {
+    const text = sql.slice(start, end);
+    const lead = text.length - text.trimStart().length;
+    return [start + lead, start + text.trimEnd().length];
+  });
+  if (trimmed.length <= 1) {
+    return rowsOutcome;
+  }
+  const failAt = trimmed.findIndex(([start, end]) => /FAIL/i.test(sql.slice(start, end)));
+  const steps: ScriptStep[] = trimmed.map(([start, end], index) => {
+    const text = sql.slice(start, end);
+    if (failAt >= 0 && index > failAt) {
+      return { status: "notRun", durationMs: 0, span: [start, end], rowCount: null, result: null };
+    }
+    if (index === failAt) {
+      return { status: "failed", durationMs: 3, span: [start, end], rowCount: null, result: null };
+    }
+    const count = 4210 - index * 1000;
+    return /^\s*SELECT/i.test(text)
+      ? {
+          status: "done",
+          durationMs: 12 + index,
+          span: [start, end],
+          rowCount: count,
+          result: {
+            kind: "rows",
+            batch: {
+              columns: [
+                { name: "id", typeName: "int4", editable: false },
+                { name: "name", typeName: "text", editable: false }
+              ],
+              rows: Array.from({ length: 50 }, (_, row) => [
+                { t: "int", v: String(row + 1) },
+                { t: "text", v: `linha ${row + 1}` }
+              ]),
+              hasMore: true
+            },
+            cursorId: null
+          }
+        }
+      : {
+          status: "done",
+          durationMs: 3,
+          span: [start, end],
+          rowCount: 3,
+          result: { kind: "command", rowsAffected: 3 }
+        };
+  });
+  return {
+    statementCount: steps.length,
+    durationMs: steps.reduce((sum, step) => sum + step.durationMs, 0),
+    steps,
+    error:
+      failAt >= 0
+        ? {
+            kind: "database",
+            message: `comando ${failAt + 1} de ${steps.length}: syntax error at or near "FAIL" [42601]`
+          }
+        : null
+  };
+}
 
 fakeBackend([
   { ...prodPostgres, readOnly: false },
@@ -40,7 +117,7 @@ fakeBackend([
   run_script: args => {
     const { confirmed, sql } = args as { confirmed: boolean; sql: string };
     return confirmed
-      ? executed(rowsOutcome)
+      ? executed(scriptOf(sql))
       : {
           status: "needsConfirmation",
           confirmation: {
