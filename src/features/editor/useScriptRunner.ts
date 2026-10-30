@@ -30,8 +30,19 @@ export type RunState =
 
 /** A run that finished; `confirmed` when it went through the confirmation first. */
 export type SettledRun =
-  /** `outcome` when a statement of the script failed: the steps before it ran */
-  | { status: "error"; runId: string; message: string; outcome?: ScriptOutcome }
+  /**
+   * `outcome` when a statement of the script failed: the steps before it ran. `previous` is
+   * the result the failed run replaced, kept on screen under the error like under a cancel
+   */
+  | {
+      status: "error";
+      runId: string;
+      message: string;
+      outcome?: ScriptOutcome;
+      previous?: SettledRun | null;
+      /** a confirmed script that stopped midway: what ran before went through the sheet */
+      confirmed?: boolean;
+    }
   | { status: "plan"; runId: string; confirmed: boolean; plan: ExplainPlan }
   | {
       status: "command";
@@ -71,6 +82,24 @@ function settled(state: RunState, kept: SettledRun | null): SettledRun | null {
     default:
       return state;
   }
+}
+
+/**
+ * The result kept under a cancel or an error. Its cursor went at the start of the run: the
+ * rows on screen stay, the rest is gone. An error keeps what it replaced, not itself.
+ */
+function kept(previous: SettledRun | null): SettledRun | null {
+  if (previous?.status === "error" && !previous.outcome) {
+    return previous.previous ?? null;
+  }
+  return previous?.status === "rows" && previous.hasMore
+    ? {
+        ...previous,
+        cursorId: null,
+        hasMore: false,
+        loadError: "O restante deste resultado foi liberado; execute de novo para carregá-lo."
+      }
+    : previous;
 }
 
 export function useScriptRunner(connectionId: string) {
@@ -123,7 +152,14 @@ export function useScriptRunner(connectionId: string) {
         }
         const { outcome } = response;
         if (outcome.error) {
-          setState({ status: "error", runId, message: errorMessage(outcome.error), outcome });
+          setState({
+            status: "error",
+            runId,
+            message: errorMessage(outcome.error),
+            outcome,
+            confirmed,
+            previous: kept(previousRef.current)
+          });
           return;
         }
         // a script that ran to its end has the last statement's result
@@ -157,7 +193,12 @@ export function useScriptRunner(connectionId: string) {
         });
       } catch (error) {
         queryClient.invalidateQueries({ queryKey: ["history"] });
-        setState({ status: "error", runId, message: errorMessage(error) });
+        setState({
+          status: "error",
+          runId,
+          message: errorMessage(error),
+          previous: kept(previousRef.current)
+        });
       }
     },
     [connectionId, releaseCursor, queryClient]
@@ -173,21 +214,7 @@ export function useScriptRunner(connectionId: string) {
     if (state.status !== "confirm") {
       return;
     }
-    const previous = previousRef.current;
-    // its cursor went at the start of the run: the rows on screen stay, the rest is gone
-    setState({
-      status: "cancelled",
-      runId: state.runId,
-      previous:
-        previous?.status === "rows" && previous.hasMore
-          ? {
-              ...previous,
-              cursorId: null,
-              hasMore: false,
-              loadError: "O restante deste resultado foi liberado; execute de novo para carregá-lo."
-            }
-          : previous
-    });
+    setState({ status: "cancelled", runId: state.runId, previous: kept(previousRef.current) });
   }, [state]);
 
   const cancel = useCallback(() => {

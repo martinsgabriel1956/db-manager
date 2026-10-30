@@ -142,7 +142,7 @@ export function KeyTreeView({ nodes, selected, onSelect, scrollRef }: KeyTreeVie
                 KEY_ROW,
                 isFolder ? "gap-1" : "gap-2",
                 isSelected &&
-                  "bg-select font-semibold text-select-foreground hover:bg-select focus-visible:ring-select-foreground [&_.legend]:text-select-foreground"
+                  "bg-select font-semibold text-select-foreground hover:bg-select focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-4 focus-visible:outline-select-foreground [&_.legend]:text-select-foreground"
               )}
               style={{ paddingLeft: 6 + depth * INDENT }}
             >

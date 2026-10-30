@@ -140,7 +140,7 @@ function PaletteBody({
           aria-controls={listId}
           aria-activedescendant={results[current] ? optionId(current) : undefined}
           aria-autocomplete="list"
-          placeholder="Ir para tabela, coleção, db do Redis ou ação…"
+          placeholder="Ir para tabela, coleção, banco Redis ou ação…"
           value={query}
           onChange={event => {
             setQuery(event.target.value);

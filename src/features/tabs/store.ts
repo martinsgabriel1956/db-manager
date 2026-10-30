@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { useShallow } from "zustand/react/shallow";
 import type { Filter } from "@/bindings";
 import type { ParamInput } from "@/features/editor/params";
 import { tauriStorage } from "@/features/tabs/storage";
@@ -357,3 +358,39 @@ export const useTabs = create<TabsState>()(
     }
   )
 );
+
+// ponytail: one entry per editor ever opened in the session, a few bytes each; prune on close
+// if sessions ever open thousands of editors
+const shapes = new Map<string, EditorTab>();
+
+/**
+ * A tab as the shell sees it: an editor's text (sql, params) is left out of its identity, so
+ * typing keeps the same object and the shell, the strip and the dialogs do not re-render per
+ * keystroke. The text itself is read where it is edited (`useEditorText`), never from here.
+ */
+function tabShape(tab: Tab): Tab {
+  if (tab.kind !== "editor") {
+    return tab;
+  }
+  const kept = shapes.get(tab.id);
+  if (kept && kept.connectionId === tab.connectionId && kept.title === tab.title) {
+    return kept;
+  }
+  shapes.set(tab.id, tab);
+  return tab;
+}
+
+/** The open tabs, stable while only an editor's text changes. */
+export function useTabShapes(): Tab[] {
+  return useTabs(useShallow(state => state.tabs.map(tabShape)));
+}
+
+/** The live text of one editor tab. */
+export function useEditorText(id: string): Pick<EditorTab, "sql" | "params"> {
+  return useTabs(
+    useShallow(state => {
+      const tab = state.tabs.find(candidate => candidate.id === id);
+      return tab?.kind === "editor" ? { sql: tab.sql, params: tab.params } : { sql: "" };
+    })
+  );
+}

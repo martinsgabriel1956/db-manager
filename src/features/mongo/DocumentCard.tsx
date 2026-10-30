@@ -14,6 +14,11 @@ type DocumentCardProps = {
   /** absent for read-only results (aggregations, read-only connections) */
   onEdit?: () => void;
   onDelete?: () => void;
+  /**
+   * production: every write already stops at the confirmation sheet with the exact command,
+   * so the trigger goes straight there instead of arming a strip first (one confirmation)
+   */
+  confirmsInSheet?: boolean;
 };
 
 /**
@@ -25,7 +30,13 @@ export function documentName(document: string): string | null {
   return id === undefined ? null : `_id ${describeWrapper(id) ?? JSON.stringify(id)}`;
 }
 
-export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardProps) {
+export function DocumentCard({
+  document,
+  view,
+  onEdit,
+  onDelete,
+  confirmsInSheet = false
+}: DocumentCardProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const name = documentName(document);
@@ -65,9 +76,9 @@ export function DocumentCard({ document, view, onEdit, onDelete }: DocumentCardP
                 variant="ghost"
                 ref={deleteTriggerRef}
                 aria-label={name ? `Excluir documento ${name}` : "Excluir documento"}
-                aria-expanded={confirmingDelete}
+                aria-expanded={confirmsInSheet ? undefined : confirmingDelete}
                 onMouseDown={keepArmedFocus(confirmingDelete)}
-                onClick={() => setConfirmingDelete(armed => !armed)}
+                onClick={confirmsInSheet ? onDelete : () => setConfirmingDelete(armed => !armed)}
               >
                 <Trash2 />
               </Button>

@@ -2,7 +2,9 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ArrowUpRight } from "lucide-react";
 import type { Cell, ResultColumn, Sort } from "@/bindings";
+import { isJsonColumn } from "@/features/results/CellDetail";
 import { formatCell, gridText, isNumeric } from "@/features/results/format";
+import { jsonProblem } from "@/features/results/jsonCheck";
 import { cn } from "@/lib/utils";
 
 export type SelectedCell = { row: number; column: number };
@@ -213,6 +215,7 @@ export function ResultGrid({
     editing?.revert ? "Ctrl+Z desfaz a alteração da célula" : null,
     onToggleDetail ? "Espaço mostra o valor inteiro" : null,
     link ? "Alt+Enter abre a linha apontada pela chave estrangeira" : null,
+    onSortChange || sortLockedBy ? "Alt+O ordena pela coluna da célula" : null,
     "Alt+← → ajusta a largura da coluna"
   ].filter(Boolean);
 
@@ -257,6 +260,18 @@ export function ResultGrid({
     if (cancelEdit.current) {
       cancelEdit.current = false;
     } else if (editor && editing && editor.value !== editor.initial) {
+      // a json column never stages what the database would refuse: the text stays in the
+      // cell, and the refusal says where it stops being JSON
+      const problem =
+        editor.value !== null && isJsonColumn(columns[editor.column])
+          ? jsonProblem(editor.value)
+          : null;
+      if (problem) {
+        setRefusal(
+          `JSON inválido na linha ${problem.line}, coluna ${problem.column}: ${problem.message}. Nada foi alterado; Esc desfaz.`
+        );
+        return;
+      }
       // Enter on an untouched cell stages nothing: opening a NULL must not write ''
       editing.onCommit(editor.row, editor.column, editor.value);
     }
@@ -284,6 +299,13 @@ export function ResultGrid({
     } else if (left + columnWidth > element.scrollLeft + element.clientWidth) {
       element.scrollLeft = left + columnWidth - element.clientWidth;
     }
+    // zoomed in, the panel around the grid scrolls too (its 10rem floor): bring the cell into
+    // the window as well, once it is drawn
+    requestAnimationFrame(() =>
+      document
+        .getElementById(cellId({ row, column }))
+        ?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+    );
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -294,6 +316,19 @@ export function ResultGrid({
     if (selected && link && event.altKey && !event.shiftKey && event.key === "Enter") {
       event.preventDefault();
       followLink(selected.row, selected.column);
+      return;
+    }
+    // the headers are the mouse's way to sort, out of the Tab order (one stop for the grid, not
+    // one per column): from the keyboard, Alt+O sorts by the selected cell's column
+    if (selected && event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+      event.preventDefault();
+      if (onSortChange) {
+        onSortChange(columns[selected.column].name);
+      } else if (sortLockedBy) {
+        const reason =
+          document.getElementById(sortLockedBy)?.textContent ?? "A ordenação está travada";
+        setRefusal(prev => (prev === reason ? `${reason} ` : reason));
+      }
       return;
     }
     // Alt+Enter belongs to links (and Alt+Shift+Enter to the view around the grid), never to editing
@@ -490,6 +525,8 @@ export function ResultGrid({
                 {onSortChange ? (
                   <button
                     type="button"
+                    tabIndex={-1}
+                    aria-keyshortcuts="Alt+O"
                     className="flex h-full w-full items-center gap-1.5 px-2 text-left outline-none hover:bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                     // the cycle is otherwise invisible until tried
                     title="Ordenar: crescente → decrescente → sem ordenação"
@@ -501,6 +538,7 @@ export function ResultGrid({
                   // still reachable, so the reason is read where the sort was tried
                   <button
                     type="button"
+                    tabIndex={-1}
                     aria-disabled
                     aria-describedby={sortLockedBy}
                     className="flex h-full w-full cursor-not-allowed items-center gap-1.5 px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
@@ -514,7 +552,9 @@ export function ResultGrid({
                 <span
                   aria-hidden
                   title="Arraste para ajustar a largura; duplo clique reajusta ao conteúdo"
-                  className="absolute inset-y-0 -right-[3px] z-10 w-[5px] cursor-col-resize touch-none hover:bg-foreground active:bg-foreground"
+                  // a 5px rule to see, a 24px area to hit (WCAG 2.5.8); double click fits the
+                  // column without a drag, Alt+←/→ steps it from the keyboard
+                  className="absolute inset-y-0 -right-[3px] z-10 w-[5px] cursor-col-resize touch-none after:absolute after:inset-y-0 after:-inset-x-[10px] hover:bg-foreground active:bg-foreground"
                   onDoubleClick={() =>
                     setWidth(
                       index,

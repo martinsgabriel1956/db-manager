@@ -165,7 +165,7 @@ export function PubSubPanel({ connectionId, db, readOnly }: PubSubPanelProps) {
             <p aria-hidden className="display-caps text-3xl">
               Nenhuma mensagem
             </p>
-            <p className="max-w-[56ch] text-sm text-muted-foreground">
+            <p className="max-w-[52ch] text-sm text-muted-foreground">
               A assinatura usa uma conexão própria e termina ao parar, ao fechar a aba ou a conexão.
               Ficam na tela as últimas {LIVE_LIMIT} mensagens.
             </p>

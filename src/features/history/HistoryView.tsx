@@ -111,14 +111,14 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
           {starredOnly && search === "" && connectionId === ALL ? (
             <>
               <p className="display-caps text-4xl">Nenhuma favorita</p>
-              <p className="max-w-[46ch] text-sm text-muted-foreground">
+              <p className="max-w-[52ch] text-sm text-muted-foreground">
                 Marque a estrela de uma entrada para guardar a query aqui.
               </p>
             </>
           ) : search !== "" || connectionId !== ALL || starredOnly ? (
             <>
               <p className="display-caps text-4xl">Nenhum resultado</p>
-              <p className="max-w-[46ch] text-sm text-muted-foreground">
+              <p className="max-w-[52ch] text-sm text-muted-foreground">
                 Nada no histórico corresponde
                 {search !== "" ? ` a “${search}”` : ""}
                 {connectionId !== ALL ? " nesta conexão" : ""}
@@ -128,7 +128,7 @@ export function HistoryView({ connections, onOpenInEditor }: HistoryViewProps) {
           ) : (
             <>
               <p className="display-caps text-4xl">Nada no histórico</p>
-              <p className="max-w-[46ch] text-sm text-muted-foreground">
+              <p className="max-w-[52ch] text-sm text-muted-foreground">
                 Cada query, edição salva e comando executado aparece aqui.
               </p>
             </>

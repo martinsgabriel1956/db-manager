@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   Activity,
   Braces,
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EnvTag } from "@/features/connections/EnvTag";
 import { ENGINE_CODE, ENGINE_LABEL } from "@/features/connections/options";
-import { tableKey, useTabs, type Tab } from "@/features/tabs/store";
+import { tableKey, useTabs, useTabShapes, type Tab } from "@/features/tabs/store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -116,16 +117,19 @@ function leftFragment(strip: HTMLElement): number {
 }
 
 export function TabBar({ connections, form = null }: TabBarProps) {
-  const {
-    tabs,
-    activeId,
-    activate,
-    requestClose,
-    requestCloseTabs,
-    reopenClosed,
-    closed,
-    pending
-  } = useTabs();
+  const tabs = useTabShapes();
+  const { activeId, activate, requestClose, requestCloseTabs, reopenClosed, closed, pending } =
+    useTabs(
+      useShallow(state => ({
+        activeId: state.activeId,
+        activate: state.activate,
+        requestClose: state.requestClose,
+        requestCloseTabs: state.requestCloseTabs,
+        reopenClosed: state.reopenClosed,
+        closed: state.closed,
+        pending: state.pending
+      }))
+    );
   // one connection open: the view header names it, so the tabs drop the repeated prefix
   const connectionIds = new Set(
     tabs.flatMap(tab => (tab.kind === "history" ? [] : [tab.connectionId]))
@@ -187,8 +191,17 @@ export function TabBar({ connections, form = null }: TabBarProps) {
     0
   );
   const anyProd = tabs.some(tab => tabParts(tab, connections).connection?.environment === "prod");
+  // every connection tab on production (History has none, and does not count): the band and
+  // ring already say it in words, so the tabs keep only their 2px rule and the spoken name, and
+  // the sheet stays the loudest red on screen. One rule for one tab or many
+  const connectionTabs = tabs.filter(tab => tab.kind !== "history");
+  const allProd =
+    connectionTabs.length > 0 &&
+    connectionTabs.every(tab => tabParts(tab, connections).connection?.environment === "prod");
+  // the form is a tab on the strip: the menu lists and counts it too
+  const tabCount = tabs.length + (form ? 1 : 0);
   const overflowName = [
-    `Todas as abas (${tabs.length})`,
+    `Todas as abas (${tabCount})`,
     stagedTotal > 0
       ? `, ${stagedTotal} ${stagedTotal === 1 ? "alteração pendente" : "alterações pendentes"}`
       : "",
@@ -397,9 +410,15 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                     >
                       {title}
                     </span>
-                    {/* production is printed on every one of its tabs: the first of a run can
-                        scroll out of the strip, and the 2px rule alone is colour */}
-                    {isProd && <EnvTag environment="prod" />}
+                    {/* production is printed on every one of its tabs when the strip mixes
+                        environments: the first of a run can scroll out, and the 2px rule alone
+                        is colour. With every tab on production there is nothing to tell apart */}
+                    {isProd &&
+                      (allProd ? (
+                        <span className="sr-only">ambiente Prod</span>
+                      ) : (
+                        <EnvTag environment="prod" />
+                      ))}
                   </button>
                   {/* staged exposure on this table: the same Δ the save button carries */}
                   {staged > 0 && (
@@ -411,10 +430,12 @@ export function TabBar({ connections, form = null }: TabBarProps) {
                       Δ {staged}
                     </span>
                   )}
-                  {/* keyboard users close with Delete on the tab, so this stays out of the tab order */}
+                  {/* keyboard users close with Delete on the tab, so this stays out of the tab order;
+                      and out of the tablist's tree, which may own only tabs (the mouse's copy) */}
                   <button
                     type="button"
                     tabIndex={-1}
+                    aria-hidden
                     aria-label={`Fechar aba ${label}`}
                     onClick={() => requestClose(tab.id)}
                     className="mr-0.5 grid size-6 place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -473,7 +494,9 @@ export function TabBar({ connections, form = null }: TabBarProps) {
               aria-label={overflowName}
               className="flex shrink-0 items-center gap-1.5 border-l border-foreground px-2.5 text-xs text-muted-foreground outline-none hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
-              Todas as abas ({tabs.length}){anyProd && <EnvTag environment="prod" />}
+              {/* zoomed into a narrow window, the count alone leaves room for a tab */}
+              <span className="max-[767px]:sr-only">Todas as abas</span> ({tabCount})
+              {anyProd && <EnvTag environment="prod" />}
               {stagedTotal > 0 && (
                 <span className="h-[18px] bg-foreground px-1 font-mono text-[11px] leading-[18px] text-background">
                   Δ {stagedTotal}
@@ -483,6 +506,21 @@ export function TabBar({ connections, form = null }: TabBarProps) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-80 max-w-96 overflow-y-auto">
+            {form && (
+              <DropdownMenuItem
+                onSelect={form.onShow}
+                aria-current={form.shown ? "page" : undefined}
+                className={cn(form.shown && "font-semibold shadow-[inset_3px_0_0_var(--select)]")}
+              >
+                <Plug />
+                <span className="min-w-0 truncate">{form.label}</span>
+                {form.edited && (
+                  <span className="ml-auto h-[18px] shrink-0 border border-dotted border-foreground px-1 legend leading-4">
+                    rascunho
+                  </span>
+                )}
+              </DropdownMenuItem>
+            )}
             {tabs.map(tab => {
               const { connection, title } = tabParts(tab, connections);
               const Icon = tabIcon(tab, connection);

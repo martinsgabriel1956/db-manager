@@ -97,7 +97,7 @@ export function BrowseToolbar({
 
   return (
     <div className="border-b bg-muted">
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 px-3 py-2">
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 px-3 py-2">
         <span className="legend text-muted-foreground">Filtro</span>
         <NativeSelect
           aria-label="Coluna do filtro"

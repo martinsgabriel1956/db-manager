@@ -46,7 +46,7 @@ async function run(outcome: ScriptOutcome) {
   return { calls, user };
 }
 
-test("each result gets its tab, the last one opens, Alt+PageUp walks back", async () => {
+test("each result gets its tab, a script that changed rows opens on Execução, Alt+PageUp walks back", async () => {
   const { user } = await run(
     scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }, rows(["3"])])
   );
@@ -59,15 +59,17 @@ test("each result gets its tab, the last one opens, Alt+PageUp walks back", asyn
     "comando 1 de 3 · SELECT 1;",
     "comando 3 de 3 · SELECT 3"
   ]);
+  // it changed rows: what went through is what shows first, counted in the script's receipt
+  expect(screen.getByRole("tab", { name: "Execução" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("status")).toHaveTextContent("3 comandos · 2 linhas afetadas");
   const last = screen.getByRole("tab", { name: "comando 3 de 3 · SELECT 3" });
-  expect(last).toHaveAttribute("aria-selected", "true");
+  await user.click(last);
   expect(within(screen.getByRole("grid")).getByText("3")).toBeInTheDocument();
 
   // each tab's receipt is its own statement's, not the last one's
   expect(screen.getByRole("status")).toHaveTextContent("Comando 3 de 3 · 1 linha retornada");
 
   // from anywhere inside the results, and again: the focus follows the tab
-  await user.click(last);
   await user.keyboard("{Alt>}{PageUp}{/Alt}");
   const first = screen.getByRole("tab", { name: "comando 1 de 3 · SELECT 1;" });
   expect(first).toHaveAttribute("aria-selected", "true");
@@ -129,7 +131,9 @@ test("an earlier result says it kept its first rows and exports up to its statem
   const { calls, user } = await run(outcome);
 
   await user.click(await screen.findByRole("tab", { name: "comando 1 de 2 · SELECT 1;" }));
-  expect(screen.getByText("Mostrando as primeiras 2 de 1500 linhas.")).toBeInTheDocument();
+  // the receipt says how many it kept; the notice offers the way to all of them
+  expect(screen.getByRole("status")).toHaveTextContent("2 de 1500 linhas");
+  expect(screen.getByRole("button", { name: "Rodar só este comando" })).toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("Comando 1 de 2 · 2 de 1500 linhas");
 
   await user.click(screen.getByRole("button", { name: /Exportar CSV/ }));
@@ -177,6 +181,29 @@ test("a picked statement runs alone on request", async () => {
 
   await waitFor(() => expect(callsTo(calls, "run_script")).toHaveLength(2));
   expect(callsTo(calls, "run_script")[1]).toMatchObject({ sql: "UPDATE x;" });
+});
+
+test("after a failure the rest of the script runs from where it stopped, never after a success", async () => {
+  const done = scriptOutcome([rows(["1"]), { kind: "command", rowsAffected: 2 }, rows(["3"])]);
+  const { calls, user } = await run({
+    ...done,
+    steps: [
+      done.steps[0],
+      { ...done.steps[1], status: "failed", rowCount: null, result: null },
+      { ...done.steps[2], status: "notRun", rowCount: null, result: null }
+    ],
+    error: { kind: "database", message: "comando 2 de 3: deadlock" }
+  });
+
+  // what ran before the failure is not offered again
+  await user.click(screen.getByRole("button", { name: /^comando 1 de 3/ }));
+  expect(screen.queryByRole("button", { name: "Rodar daqui até o fim" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Execução" }));
+  await user.click(screen.getByRole("button", { name: /^comando 2 de 3/ }));
+  await user.click(screen.getByRole("button", { name: "Rodar daqui até o fim" }));
+
+  await waitFor(() => expect(callsTo(calls, "run_script")).toHaveLength(2));
+  expect(callsTo(calls, "run_script")[1]).toMatchObject({ sql: "UPDATE x; SELECT 3" });
 });
 
 test("the summary is one Tab stop, with arrows between statements", async () => {

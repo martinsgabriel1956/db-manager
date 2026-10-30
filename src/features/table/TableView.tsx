@@ -64,20 +64,23 @@ export function TableView({ initialFilters = [], ...props }: TableViewOwnProps) 
   const [filters, setFilters] = useState<Filter[]>(initialFilters);
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col">
+    // in a short window (the minimum at 200% zoom) the header and bars would leave the grid
+    // no height: below the data panel's floor the whole view scrolls instead
+    <Tabs value={tab} onValueChange={setTab} className="flex h-full flex-col overflow-y-auto">
       {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
           second line, whole; py-1 here and on the title keeps one line at 48px */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
         {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach;
-            up to half the header it keeps its width, so the connection name truncates first and
-            a short name never breaks mid-word */}
-        <h2 className="flex max-w-1/2 shrink-0 items-baseline py-1">
+            up to half the header it keeps its width, so the connection name truncates first; in a
+            narrow viewport (zoomed in) it may take the whole line, so a short name never breaks
+            mid-word */}
+        <h2 className="flex max-w-full shrink-0 items-baseline py-1 min-[800px]:max-w-1/2">
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{props.schema}.</span>
           <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
             {props.table}
           </span>
         </h2>
-        <TabsList aria-label="Seções da tabela" className="shrink-0">
+        <TabsList aria-label="Seções da tabela" className="min-w-0 flex-wrap">
           <TabsTrigger value="data">Dados</TabsTrigger>
           <TabsTrigger value="structure">Estrutura</TabsTrigger>
         </TabsList>
@@ -121,7 +124,9 @@ export function TableView({ initialFilters = [], ...props }: TableViewOwnProps) 
         </div>
       </div>
       {/* the data panel stays mounted: switching tabs must not drop staged edits */}
-      <TabsContent value="data" forceMount className="flex min-h-0 flex-1 flex-col">
+      {/* no min-h-0: the panel is as tall as its bars plus the grid's floor, and below that the
+          view scrolls; the bars wrap in a short window, so the floor sits on the grid itself */}
+      <TabsContent value="data" forceMount className="flex flex-1 flex-col">
         <TableData
           {...props}
           sort={sort}
@@ -321,10 +326,10 @@ function TableData({
     follow: (row, column) => void follow(row, column)
   };
 
-  function restart(update: () => void) {
+  function restart(update: () => void, keep: SelectedCell | null = null) {
     update();
     setPage(0);
-    setSelected(null);
+    setSelected(keep);
     edit.clearNotice();
   }
 
@@ -337,7 +342,7 @@ function TableData({
   return (
     <div
       ref={rootRef}
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex flex-1 flex-col"
       // Ctrl+S develops the staged edits from anywhere in this view (the grid, the detail)
       onKeyDown={event => {
         // Alt+Shift+Enter: the rows elsewhere that point at the selected one
@@ -379,6 +384,7 @@ function TableData({
         </p>
       )}
       <DetailSplit
+        className="min-h-40"
         detail={
           detailOpen &&
           batch && (
@@ -428,7 +434,13 @@ function TableData({
               onSortChange={
                 dirty
                   ? undefined
-                  : column => restart(() => onSortChange(prev => nextSort(prev, column)))
+                  : column =>
+                      // sorting keeps the column selected (on the first row): Alt+O again cycles
+                      // it, and the keyboard does not lose its place
+                      restart(
+                        () => onSortChange(prev => nextSort(prev, column)),
+                        selected && { row: 0, column: selected.column }
+                      )
               }
               sortLockedBy={dirty ? lockedId : undefined}
               selected={selected}

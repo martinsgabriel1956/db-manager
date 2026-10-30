@@ -4,6 +4,7 @@ import { commands } from "@/bindings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useConnections } from "@/features/connections/queries";
 import { connected } from "@/features/explorer/queries";
 import { ExportButton, type ExportFormat } from "@/features/export/ExportButton";
 import { ImportDocumentsButton } from "@/features/import/ImportDocumentsButton";
@@ -64,6 +65,9 @@ export function DocumentsPanel({
   const [editing, setEditing] = useState<Editing | null>(null);
   const invalid = invalidQueryFields(draft);
   const invalidMessageId = useId();
+  const prod =
+    useConnections().data?.find(connection => connection.id === connectionId)?.environment ===
+    "prod";
 
   const documents = useDocuments(connectionId, {
     database,
@@ -122,7 +126,9 @@ export function DocumentsPanel({
   return (
     <div className="flex h-full flex-col">
       <form onSubmit={apply} className="grid gap-2 border-b bg-muted px-3 py-2">
-        <div className="grid grid-cols-[2fr_1fr_1fr_auto] items-end gap-2">
+        {/* wraps rather than crushing the fields: zoomed into a narrow window, FILTRO takes
+            its own line first */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] items-end gap-2">
           {(Object.keys(FIELD_LABEL) as (keyof Query)[]).map(field => (
             // the legend styles only the label's words: the field inside holds a value, in ink
             <label key={field} className="grid gap-1.5">
@@ -226,7 +232,8 @@ export function DocumentsPanel({
         </p>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto bg-muted p-3">
+      {/* a floor for a document or two: zoomed into a short window, the view scrolls instead */}
+      <div className="min-h-28 flex-1 overflow-auto bg-muted p-3">
         {documents.data?.documents.length === 0 && (
           <p className="text-sm text-muted-foreground">Nenhum documento.</p>
         )}
@@ -237,6 +244,7 @@ export function DocumentsPanel({
               document={document}
               view={view}
               onEdit={readOnly ? undefined : () => setEditing({ mode: "edit", document })}
+              confirmsInSheet={prod}
               onDelete={
                 readOnly
                   ? undefined

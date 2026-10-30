@@ -456,9 +456,13 @@ export type ConnectionUrl = { engine: Engine; patch: Partial<ConnectionFormValue
 /**
  * A pasted `postgres://`, `mysql://` or `redis://` URL split into the form's fields;
  * null when it is not one. Only what the URL states is filled in: a URL without a port
- * keeps the engine's default.
+ * keeps the engine's default. A MongoDB connection string is kept whole, as the URI
+ * (`mongodb+srv` hosts and options have no field of their own).
  */
 export function parseConnectionUrl(text: string): ConnectionUrl | null {
+  if (CONNECTION_STRING.test(text.trim())) {
+    return { engine: "mongo", patch: { mongoMode: "uri", uri: text.trim() } };
+  }
   let url: URL;
   try {
     url = new URL(text.trim());

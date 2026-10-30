@@ -1,4 +1,12 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import {
+  memo,
+  useCallback,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject
+} from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { AlignLeft, ChevronDown, ListTree, Play, Square } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -187,6 +195,19 @@ export function SqlWorkspace({
     }
   }
 
+  // stable while the text is typed: the results (memoised) do not re-render per keystroke
+  const startRef = useRef(start);
+  startRef.current = start;
+  const markStatement = useCallback(
+    (from: number, to: number, kind: StepMark) =>
+      editorApi.current?.mark(lastSql, from, to, kind) ?? false,
+    [lastSql]
+  );
+  const runStatement = useCallback(
+    (from: number, to: number) => startRef.current(lastSql.slice(from, to), null),
+    [lastSql]
+  );
+
   return (
     <div className="flex h-full flex-col" onKeyDown={onKeyDown}>
       {/* the same view header as tables and collections: title left, connection and action right */}
@@ -312,10 +333,8 @@ export function SqlWorkspace({
             state={runner.state}
             engine={engine}
             onLoadMore={runner.loadMore}
-            onMarkStatement={(from, to, kind) =>
-              editorApi.current?.mark(lastSql, from, to, kind) ?? false
-            }
-            onRunStatement={(from, to) => start(lastSql.slice(from, to), null)}
+            onMarkStatement={markStatement}
+            onRunStatement={runStatement}
             cycleRef={cycleResults}
           />
         </Panel>
@@ -334,7 +353,7 @@ export function SqlWorkspace({
       <ConfirmDialog
         connectionId={connectionId}
         confirmation={runner.state.status === "confirm" ? runner.state.confirmation : null}
-        confirmLabel="Executar mesmo assim"
+        confirmLabel="Executar"
         onConfirm={runner.confirm}
         onCancel={runner.dismiss}
       />
@@ -350,12 +369,12 @@ function WaitingPane({ title, children }: WaitingPaneProps) {
       className="grid h-full content-center justify-items-start gap-2 px-8 grid-paper"
     >
       <p className="display-caps text-3xl">{title}</p>
-      <p className="max-w-[52ch] text-sm text-muted-foreground">{children}</p>
+      <p className="max-w-[52ch] text-sm text-pretty text-muted-foreground">{children}</p>
     </div>
   );
 }
 
-function ResultsPanel({
+const ResultsPanel = memo(function ResultsPanel({
   connectionId,
   sql,
   state,
@@ -369,7 +388,7 @@ function ResultsPanel({
   const result = summary(state);
   const text = superseded && result ? `Resultado anterior · ${result}` : result;
   // the receipt belongs to the run that just happened, never to the one kept under a cancel
-  const confirmed = "confirmed" in state && state.confirmed && !superseded;
+  const confirmed = "confirmed" in state && !!state.confirmed && !superseded;
 
   if (state.status === "idle") {
     return (
@@ -455,10 +474,35 @@ function ResultsPanel({
     );
   }
   if (state.status === "error") {
+    // the headline in our words, the driver's own (often English) below as data; what was on
+    // screen before stays under it, as under a cancelled confirmation
     return (
-      <p role="alert" className="p-3 font-mono text-sm whitespace-pre-wrap text-destructive">
-        {state.message}
-      </p>
+      <div className="flex h-full flex-col">
+        <div role="alert" className="grid gap-1 border-b border-foreground bg-background px-3 py-2">
+          <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="legend text-[0.75rem] text-destructive">Erro</span>
+            <span>
+              A execução falhou.{state.previous && " O resultado anterior continua abaixo."}
+            </span>
+          </p>
+          <p className="font-mono text-[11px] whitespace-pre-wrap break-words">{state.message}</p>
+        </div>
+        {state.previous && (
+          <div className="min-h-0 flex-1">
+            <ResultsPanel
+              connectionId={connectionId}
+              sql={sql}
+              state={state.previous}
+              engine={engine}
+              onLoadMore={onLoadMore}
+              onMarkStatement={onMarkStatement}
+              onRunStatement={onRunStatement}
+              cycleRef={cycleRef}
+              superseded
+            />
+          </div>
+        )}
+      </div>
     );
   }
   if (state.status === "plan") {
@@ -503,4 +547,4 @@ function ResultsPanel({
       muted={!confirmed}
     />
   );
-}
+});

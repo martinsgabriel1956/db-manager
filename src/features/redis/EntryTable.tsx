@@ -1,12 +1,14 @@
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { RedisText } from "@/bindings";
+import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   COLUMN_LABELS,
   isEditable,
+  removeCommand,
   type CollectionKind,
   type Entry,
   type EntryDraft
@@ -14,9 +16,12 @@ import {
 
 type EntryTableProps = {
   kind: CollectionKind;
+  /** the key the entries belong to, for the exact command in the delete strip */
+  keyName: string;
   entries: Entry[];
   readOnly: boolean;
   pending: boolean;
+  confirmsInSheet?: boolean;
   /** `done` closes the row editor once the backend applied the change */
   onSave: (original: Entry | null, draft: EntryDraft, done: () => void) => void;
   onRemove: (entry: Entry) => void;
@@ -46,14 +51,17 @@ type Editing = { id: string | "new"; draft: EntryDraft } | null;
 
 export function EntryTable({
   kind,
+  keyName,
   entries,
   readOnly,
+  confirmsInSheet = false,
   pending,
   onSave,
   onRemove
 }: EntryTableProps) {
   const [editing, setEditing] = useState<Editing>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const removeTriggerRef = useRef<HTMLButtonElement>(null);
   const [firstLabel, secondLabel] = COLUMN_LABELS[kind];
   const showIndex = kind === "list";
 
@@ -140,57 +148,73 @@ export function EntryTable({
             editing?.id === entry.id ? (
               <Fragment key={entry.id}>{draftInputs(entry)}</Fragment>
             ) : (
-              <tr key={entry.id} className="group h-7 border-b align-top">
-                {showIndex && <td className="px-2 py-1 text-muted-foreground">{entry.index}</td>}
-                <td className="px-2 py-1 break-all">
-                  <RedisTextView value={entry.first} />
-                </td>
-                {secondLabel && (
-                  <td className="px-2 py-1 break-all whitespace-pre-wrap">
-                    {entry.second && <RedisTextView value={entry.second} />}
+              <Fragment key={entry.id}>
+                <tr className="group h-7 border-b align-top">
+                  {showIndex && <td className="px-2 py-1 text-muted-foreground">{entry.index}</td>}
+                  <td className="px-2 py-1 break-all">
+                    <RedisTextView value={entry.first} />
                   </td>
-                )}
-                <td className="px-2 py-1 whitespace-nowrap">
-                  {!readOnly && isEditable(entry) && (
-                    <span className="flex justify-end gap-1 opacity-60 group-hover:opacity-100">
-                      <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        aria-label={`Editar ${entry.first.text}`}
-                        onClick={() => startEdit(entry)}
+                  {secondLabel && (
+                    <td className="px-2 py-1 break-all whitespace-pre-wrap">
+                      {entry.second && <RedisTextView value={entry.second} />}
+                    </td>
+                  )}
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    {!readOnly && isEditable(entry) && (
+                      <span
+                        className={`flex justify-end gap-1 group-focus-within:opacity-100 group-hover:opacity-100 ${
+                          removingId === entry.id ? "" : "opacity-60"
+                        }`}
                       >
-                        <Pencil />
-                      </Button>
-                      {removingId === entry.id ? (
-                        // focused so Enter confirms; leaving it or Escape disarms the removal
-                        <Button
-                          size="xs"
-                          variant="destructive"
-                          autoFocus
-                          disabled={pending}
-                          onClick={() => {
-                            setRemovingId(null);
-                            onRemove(entry);
-                          }}
-                          onBlur={() => setRemovingId(null)}
-                          onKeyDown={event => event.key === "Escape" && setRemovingId(null)}
-                        >
-                          Confirmar
-                        </Button>
-                      ) : (
                         <Button
                           size="icon-xs"
                           variant="ghost"
+                          aria-label={`Editar ${entry.first.text}`}
+                          onClick={() => startEdit(entry)}
+                        >
+                          <Pencil />
+                        </Button>
+                        {/* stays put while armed: a second click disarms instead of confirming */}
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          ref={removingId === entry.id ? removeTriggerRef : undefined}
                           aria-label={`Remover ${entry.first.text}`}
-                          onClick={() => setRemovingId(entry.id)}
+                          aria-expanded={confirmsInSheet ? undefined : removingId === entry.id}
+                          onMouseDown={keepArmedFocus(removingId === entry.id)}
+                          // on production the sheet confirms it, with the exact command
+                          onClick={() =>
+                            confirmsInSheet
+                              ? onRemove(entry)
+                              : setRemovingId(armed => (armed === entry.id ? null : entry.id))
+                          }
                         >
                           <Trash2 />
                         </Button>
-                      )}
-                    </span>
-                  )}
-                </td>
-              </tr>
+                      </span>
+                    )}
+                  </td>
+                </tr>
+                {removingId === entry.id && (
+                  <tr className="border-b">
+                    <td
+                      colSpan={(showIndex ? 1 : 0) + (secondLabel ? 3 : 2)}
+                      className="px-2 py-1 font-sans"
+                    >
+                      <DeleteStrip
+                        command={removeCommand(kind, keyName, entry)}
+                        pending={pending}
+                        onConfirm={() => {
+                          setRemovingId(null);
+                          onRemove(entry);
+                        }}
+                        onDisarm={() => setRemovingId(null)}
+                        triggerRef={removeTriggerRef}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             )
           )}
         </tbody>

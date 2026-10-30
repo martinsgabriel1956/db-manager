@@ -383,7 +383,11 @@ test("a pasted connection URL fills the fields it states", () => {
       tlsMode: "require"
     }
   });
-  expect(parseConnectionUrl("mongodb://x")).toBeNull();
+  expect(parseConnectionUrl(" mongodb+srv://ana:pw@c0.example.net/app ")).toEqual({
+    engine: "mongo",
+    patch: { mongoMode: "uri", uri: "mongodb+srv://ana:pw@c0.example.net/app" }
+  });
+  expect(parseConnectionUrl("ftp://x")).toBeNull();
   expect(parseConnectionUrl("not a url")).toBeNull();
 });
 

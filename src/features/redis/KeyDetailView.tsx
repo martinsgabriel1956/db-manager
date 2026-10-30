@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
 import { Input } from "@/components/ui/input";
+import { useConnections } from "@/features/connections/queries";
 import { JsonEditor } from "@/features/mongo/JsonEditor";
 import { isValidJson } from "@/features/mongo/ejson";
 import { EntryTable, RedisTextView } from "@/features/redis/EntryTable";
@@ -40,6 +41,9 @@ export function KeyDetailView({
   onDeleted
 }: KeyDetailViewProps) {
   const detail = useKey(connectionId, db, keyName);
+  const prod =
+    useConnections().data?.find(connection => connection.id === connectionId)?.environment ===
+    "prod";
 
   function submit(edits: KeyEdit[], onDone?: () => void) {
     editor.submit({ key: keyName, edits, onDone });
@@ -66,13 +70,15 @@ export function KeyDetailView({
         onSubmit={submit}
         onRenamed={onRenamed}
         onDeleted={onDeleted}
+        confirmsInSheet={prod}
       />
       {editor.error && (
         <p role="alert" className="border-b px-3 py-2 text-sm text-destructive">
           {editor.error}
         </p>
       )}
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      {/* a floor of four rows: zoomed into a short window, the view scrolls instead */}
+      <div className="min-h-28 flex-1 overflow-auto p-3">
         {detail.data.truncated && (
           <div className="mb-3 flex items-center gap-3 text-xs text-warning">
             {/* the budget on show: how much of the value fits the 1000-element / 1 MiB limit */}
@@ -84,7 +90,7 @@ export function KeyDetailView({
                 }}
               />
             </span>
-            <p>
+            <p className="text-pretty">
               {value.kind === "string" || value.kind === "json"
                 ? "Valor grande: mostrando só o primeiro 1 MiB, edição desativada."
                 : `Mostrando os primeiros ${ELEMENT_LIMIT} de ${detail.data.length} elementos.`}
@@ -109,6 +115,8 @@ export function KeyDetailView({
         {isCollection(value) && (
           <EntryTable
             kind={value.kind}
+            keyName={detail.data.key}
+            confirmsInSheet={prod}
             entries={entriesOf(value)}
             readOnly={readOnly}
             pending={editor.isPending}
@@ -144,9 +152,22 @@ type KeyHeaderProps = {
   onSubmit: (edits: KeyEdit[], onDone?: () => void) => void;
   onRenamed: (key: string) => void;
   onDeleted: () => void;
+  /**
+   * production: every write already stops at the confirmation sheet with the exact command,
+   * so the trigger goes straight there instead of arming a strip first (one confirmation)
+   */
+  confirmsInSheet?: boolean;
 };
 
-function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }: KeyHeaderProps) {
+function KeyHeader({
+  detail,
+  readOnly,
+  pending,
+  onSubmit,
+  onRenamed,
+  onDeleted,
+  confirmsInSheet = false
+}: KeyHeaderProps) {
   const [ttl, setTtl] = useState("");
   const [newName, setNewName] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -166,7 +187,8 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
   return (
     <div className="grid gap-2 border-b bg-muted px-3 py-2">
       {/* the key is printed whole: the tree truncates, so this is where it is read in full */}
-      <div className="flex items-baseline gap-2">
+      {/* wraps before the key name is squeezed to a letter per line */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <Badge variant="outline" className="self-center">
           {kind}
         </Badge>
@@ -239,9 +261,13 @@ function KeyHeader({ detail, readOnly, pending, onSubmit, onRenamed, onDeleted }
             variant="outline"
             ref={deleteTriggerRef}
             className="ml-auto text-destructive"
-            aria-expanded={confirmingDelete}
+            aria-expanded={confirmsInSheet ? undefined : confirmingDelete}
             onMouseDown={keepArmedFocus(confirmingDelete)}
-            onClick={() => setConfirmingDelete(armed => !armed)}
+            onClick={() =>
+              confirmsInSheet
+                ? onSubmit([{ op: "delete" }], onDeleted)
+                : setConfirmingDelete(armed => !armed)
+            }
           >
             <Trash2 /> Excluir chave
           </Button>

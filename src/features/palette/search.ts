@@ -287,8 +287,14 @@ export function browseSections(
     const members = shown.filter(entry => entry.group === group);
     // ranked per heading: a long table list never pushes the actions past the result cap
     const inGroup = searchEntries(members, "", activeConnectionId);
-    return inGroup.length === 0
-      ? []
-      : [{ group, entries: inGroup.slice(0, GROUP_LIMIT), total: members.length }];
+    // production ranks last but is never cut from the connections: it is listed, not hidden
+    const kept =
+      group === "Conexões"
+        ? [
+            ...inGroup.slice(0, GROUP_LIMIT),
+            ...inGroup.slice(GROUP_LIMIT).filter(entry => entry.connection?.environment === "prod")
+          ]
+        : inGroup.slice(0, GROUP_LIMIT);
+    return inGroup.length === 0 ? [] : [{ group, entries: kept, total: members.length }];
   });
 }

@@ -106,9 +106,12 @@ type RowMenuProps = {
 const TREE_ROW =
   "flex w-full items-center gap-1.5 px-1.5 min-h-7 py-1 text-left text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
-/** Where you are: the table open in the active tab, filled in Crouwel blue; focus inks it in paper. */
+/**
+ * Where you are: the table open in the active tab, filled in Crouwel blue. Focus draws a paper
+ * ring 2px inside the edge, blue on both sides of it: at the edge it read as the fill shrinking
+ */
 const ACTIVE_ROW =
-  "bg-select text-select-foreground font-semibold hover:bg-select focus-visible:ring-select-foreground";
+  "bg-select text-select-foreground font-semibold hover:bg-select focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-4 focus-visible:outline-select-foreground";
 
 /** Second line of the label: where the connection points, as stored. */
 export function targetSummary(connection: ConnectionConfig): string {
@@ -401,7 +404,13 @@ function ConnectionNode({
           }
         ]
       : []),
-    { label: "Editar conexão", icon: <Pencil />, onSelect: () => onEdit(connection.id) },
+    // three groups of at most three: work on the server, the saved connection, leaving it
+    {
+      label: "Editar conexão",
+      icon: <Pencil />,
+      apart: hasSqlEditor || connection.engine !== "sqlite",
+      onSelect: () => onEdit(connection.id)
+    },
     { label: "Duplicar conexão", icon: <Copy />, onSelect: () => onDuplicate(connection.id) },
     ...(listing.isSuccess
       ? [
@@ -753,7 +762,13 @@ function SchemaNode({
                   className={cn(TREE_ROW, isActive && ACTIVE_ROW)}
                 >
                   <Icon className="size-3.5 shrink-0 opacity-70" />
-                  <span className="min-w-0 [overflow-wrap:anywhere]">{relation.name}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
+                    {relation.name}
+                    {/* the eye is the only mark of a view: said aloud too (tables are the norm) */}
+                    {!isMongo && relation.kind !== "table" && (
+                      <span className="sr-only">, view</span>
+                    )}
+                  </span>
                 </button>
               </li>
             );

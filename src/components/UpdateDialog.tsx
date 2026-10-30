@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { tabLabel } from "@/features/tabs/TabBar";
 import { useFocusReturn } from "@/features/tabs/focus";
-import { heldEdits, tableKey, useTabs } from "@/features/tabs/store";
+import { heldEdits, tableKey, useTabs, useTabShapes } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 
 type Offer = { current: string; version: string; installable: boolean };
@@ -35,7 +35,8 @@ type UpdateDialogProps = { connections: ConnectionConfig[] };
  */
 export function UpdateDialog({ connections }: UpdateDialogProps) {
   const [step, setStep] = useState<Step | null>(null);
-  const { tabs, pending } = useTabs();
+  const tabs = useTabShapes();
+  const pending = useTabs(state => state.pending);
   const focusReturn = useFocusReturn();
   const holders = heldEdits(tabs, pending);
 
@@ -133,8 +134,8 @@ export function UpdateDialog({ connections }: UpdateDialogProps) {
             <>
               <DialogTitle>Instalando o Ordo {step.version}</DialogTitle>
               <DialogDescription>
-                Baixando e instalando; o Ordo reinicia sozinho ao terminar. Instalado pelo .deb, o
-                sistema pede a senha de administrador.
+                Baixando e instalando; o Ordo reinicia sozinho ao terminar. Instalado pelo .deb ou
+                .rpm, o sistema pede a senha de administrador.
               </DialogDescription>
             </>
           )}

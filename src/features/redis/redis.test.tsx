@@ -146,8 +146,15 @@ test("hash entries are edited, added and removed", async () => {
   await waitFor(() => expect(edits(calls)).toHaveLength(2));
   expect(edits(calls)[1].request.edits).toEqual([{ op: "hashSet", field: "age", value: "30" }]);
 
+  // the removal shows the exact command, away from the trigger: a double click disarms
   await user.click(screen.getByRole("button", { name: "Remover city" }));
-  await user.click(screen.getByRole("button", { name: "Confirmar" }));
+  expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toHaveAccessibleDescription(
+    /^HDEL .* city/
+  );
+  await user.click(screen.getByRole("button", { name: "Remover city" }));
+  expect(screen.queryByRole("button", { name: "Confirmar exclusão" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Remover city" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
   await waitFor(() => expect(edits(calls)).toHaveLength(3));
   expect(edits(calls)[2].request.edits).toEqual([{ op: "hashDelete", field: "city" }]);
 });

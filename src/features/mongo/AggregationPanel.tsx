@@ -162,7 +162,7 @@ export function AggregationPanel({ connectionId, database, collection }: Aggrega
       <ConfirmDialog
         connectionId={connectionId}
         confirmation={state.status === "confirm" ? state.confirmation : null}
-        confirmLabel="Executar mesmo assim"
+        confirmLabel="Executar"
         onConfirm={aggregation.confirm}
         onCancel={aggregation.dismiss}
       />

@@ -9,7 +9,7 @@ use sqlparser::ast::{AlterTableOperation, Query, SetExpr, Statement};
 use sqlparser::parser::Parser;
 
 use crate::adapters::dialect::Dialect;
-use crate::domain::{Confirmation, Environment};
+use crate::domain::{Confirmation, Environment, StatementMark};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Risk {
@@ -71,28 +71,59 @@ pub fn confirmation_for(
         .map(|s| (s, classify(s, dialect)))
         .collect();
 
-    let destructive: Vec<&(&String, Risk)> = risks
+    // in a script, each reason says which statement it is, numbered as the results list
+    // numbers them: among several writes the destructive one is named, not hunted for
+    let total = risks.len();
+    let reasons: Vec<String> = risks
         .iter()
-        .filter(|(_, risk)| risk.destructive.is_some())
+        .enumerate()
+        .filter_map(|(index, (_, risk))| {
+            risk.destructive.as_deref().map(|reason| {
+                if total > 1 {
+                    format!("{reason} (comando {} de {total})", index + 1)
+                } else {
+                    reason.to_string()
+                }
+            })
+        })
         .collect();
-    if !destructive.is_empty() {
-        let reasons: Vec<&str> = destructive
+    // the listed statements with their place in the script (only for a script: a single
+    // statement needs no number)
+    let listed = |keep: &dyn Fn(&Risk) -> bool| -> (Vec<String>, Vec<StatementMark>) {
+        risks
             .iter()
-            .filter_map(|(_, risk)| risk.destructive.as_deref())
-            .collect();
+            .enumerate()
+            .filter(|(_, (_, risk))| keep(risk))
+            .map(|(index, (statement, risk))| {
+                (
+                    (*statement).clone(),
+                    StatementMark {
+                        number: index as u32 + 1,
+                        of: total as u32,
+                        destructive: risk.destructive.is_some(),
+                    },
+                )
+            })
+            .unzip()
+    };
+    let numbered = |marks: Vec<StatementMark>| if total > 1 { marks } else { Vec::new() };
+    let prod = environment == Environment::Prod;
+    if !reasons.is_empty() {
+        // on prod every write is confirmed: the sheet shows them all, in script order, not
+        // only the destructive ones (the others would run unseen under the same click)
+        let (statements, marks) =
+            listed(&|risk| risk.destructive.is_some() || (prod && risk.writes));
         return Some(Confirmation {
+            marks: numbered(marks),
             reason: format!("Comando destrutivo: {}", reasons.join(", ")),
-            statements: destructive.iter().map(|(s, _)| (*s).clone()).collect(),
+            statements,
             destructive: true,
         });
     }
 
-    let writes: Vec<String> = risks
-        .iter()
-        .filter(|(_, risk)| risk.writes)
-        .map(|(s, _)| (*s).clone())
-        .collect();
-    (environment == Environment::Prod && !writes.is_empty()).then(|| Confirmation {
+    let (writes, marks) = listed(&|risk| risk.writes);
+    (prod && !writes.is_empty()).then(|| Confirmation {
+        marks: numbered(marks),
         reason: "Conexão de produção: confirme antes de escrever".to_string(),
         statements: writes,
         destructive: false,
@@ -412,6 +443,11 @@ mod tests {
         assert_eq!(
             confirmation_for(&writes, Dialect::Postgres, Environment::Prod, false),
             Some(Confirmation {
+                marks: vec![StatementMark {
+                    number: 2,
+                    of: 2,
+                    destructive: false
+                }],
                 reason: "Conexão de produção: confirme antes de escrever".into(),
                 statements: script(&["UPDATE t SET a = 1 WHERE id = 1"]),
                 destructive: false,
@@ -420,8 +456,48 @@ mod tests {
         assert_eq!(
             confirmation_for(&destructive, Dialect::Postgres, Environment::Local, false),
             Some(Confirmation {
-                reason: "Comando destrutivo: DELETE sem WHERE, DROP".into(),
+                marks: vec![
+                    StatementMark {
+                        number: 2,
+                        of: 3,
+                        destructive: true
+                    },
+                    StatementMark {
+                        number: 3,
+                        of: 3,
+                        destructive: true
+                    }
+                ],
+                reason:
+                    "Comando destrutivo: DELETE sem WHERE (comando 2 de 3), DROP (comando 3 de 3)"
+                        .into(),
                 statements: script(&["DELETE FROM t", "DROP TABLE x"]),
+                destructive: true,
+            })
+        );
+        // a destructive script on prod lists every write it makes, not only the destructive one
+        let mixed = script(&[
+            "UPDATE t SET a = 1 WHERE id = 1",
+            "SELECT 1",
+            "DELETE FROM t",
+        ]);
+        assert_eq!(
+            confirmation_for(&mixed, Dialect::Postgres, Environment::Prod, false),
+            Some(Confirmation {
+                marks: vec![
+                    StatementMark {
+                        number: 1,
+                        of: 3,
+                        destructive: false
+                    },
+                    StatementMark {
+                        number: 3,
+                        of: 3,
+                        destructive: true
+                    }
+                ],
+                reason: "Comando destrutivo: DELETE sem WHERE (comando 3 de 3)".into(),
+                statements: script(&["UPDATE t SET a = 1 WHERE id = 1", "DELETE FROM t"]),
                 destructive: true,
             })
         );

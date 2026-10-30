@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ChevronRight, Eye, EyeOff, FolderOpen } from "lucide-react";
 import type { Engine } from "@/bindings";
@@ -156,6 +156,9 @@ export function ConnectionFields({
 
   return (
     <div className="grid gap-4">
+      {/* a pasted URL sets the engine too, so it comes before it: most connections arrive
+          as a URL from a .env. Cluster and Sentinel list nodes no URL carries */}
+      {!hasNodes && <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />}
       {/* the engine reshapes every field below it, so it comes first */}
       <div className="grid grid-cols-2 gap-4">
         <Field id="engine" label="Tipo de banco">
@@ -236,7 +239,7 @@ export function ConnectionFields({
             </NativeSelect>
           </Field>
           <div className="grid gap-1 pt-6">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-6 items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={values.readOnly}
@@ -251,10 +254,6 @@ export function ConnectionFields({
           </div>
         </div>
       </div>
-
-      {!isSqlite && !isMongo && !hasNodes && (
-        <UrlPaste onEngineChange={onEngineChange} onChange={onChange} />
-      )}
 
       {isRedis && (
         <fieldset className="flex gap-4 text-sm">
@@ -407,7 +406,7 @@ export function ConnectionFields({
             />
           </Field>
           {storedSecret && (
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex min-h-6 items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={values.clearPassword}
@@ -440,7 +439,7 @@ export function ConnectionFields({
                 />
               </Field>
               {storedSecret && (
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex min-h-6 items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={values.clearSentinelPassword}
@@ -466,7 +465,7 @@ export function ConnectionFields({
             </p>
           ) : (
             <div className="grid gap-1">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex min-h-6 items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={values.sshEnabled}
@@ -522,7 +521,7 @@ export function ConnectionFields({
                 />
               </Field>
               {storedSecret && (
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex min-h-6 items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={values.clearSshPassword}
@@ -548,7 +547,7 @@ export function ConnectionFields({
 
       {/* rarely changed: folded, but opened by itself when one of its fields has an error */}
       <details open={advancedError || undefined} className="group border-t border-foreground pt-4">
-        <summary className="flex cursor-default items-center gap-1.5 legend text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <summary className="flex min-h-6 cursor-default items-center gap-1.5 legend text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden className="size-3.5 group-open:rotate-90" />
           Avançado
           <span className="font-sans text-xs font-normal tracking-normal normal-case">
@@ -557,28 +556,32 @@ export function ConnectionFields({
         </summary>
         <div className="mt-4 grid gap-4">
           {hasTls && (
-            <div className="grid grid-cols-2 gap-4">
-              <Field id="tlsMode" label="TLS" error={errors.tlsMode}>
-                <NativeSelect
-                  id="tlsMode"
-                  className="w-full px-2.5"
-                  aria-invalid={errors.tlsMode ? true : undefined}
-                  aria-describedby={describedBy("tlsMode", errors.tlsMode, false)}
-                  value={values.tlsMode}
-                  onChange={event =>
-                    onChange({ tlsMode: event.target.value as ConnectionFormValues["tlsMode"] })
-                  }
-                >
-                  {TLS_MODES.map(mode => (
-                    <option key={mode} value={mode}>
-                      {TLS_LABEL[mode]}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field id="caCertPath" label="Certificado CA (opcional)">
-                {pathInput("caCertPath", "/caminho/para/ca.pem", "o certificado CA")}
-              </Field>
+            // one column when the form is narrow (zoomed in): the CA path and its button need
+            // the width; measured on the form, not the window, which also holds the sidebar
+            <div className="@container">
+              <div className="grid gap-4 @lg:grid-cols-2">
+                <Field id="tlsMode" label="TLS" error={errors.tlsMode}>
+                  <NativeSelect
+                    id="tlsMode"
+                    className="w-full px-2.5"
+                    aria-invalid={errors.tlsMode ? true : undefined}
+                    aria-describedby={describedBy("tlsMode", errors.tlsMode, false)}
+                    value={values.tlsMode}
+                    onChange={event =>
+                      onChange({ tlsMode: event.target.value as ConnectionFormValues["tlsMode"] })
+                    }
+                  >
+                    {TLS_MODES.map(mode => (
+                      <option key={mode} value={mode}>
+                        {TLS_LABEL[mode]}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Field id="caCertPath" label="Certificado CA (opcional)">
+                  {pathInput("caCertPath", "/caminho/para/ca.pem", "o certificado CA")}
+                </Field>
+              </div>
             </div>
           )}
           <div className="grid grid-cols-2 gap-4">
@@ -594,18 +597,28 @@ export function ConnectionFields({
 
 type UrlPasteProps = Pick<ConnectionFieldsProps, "onChange" | "onEngineChange">;
 
+/** what the refused URL starts with, never the rest: it may carry a password */
+function scheme(text: string): string {
+  const match = /^\s*([a-z][a-z0-9+.-]*):\/\//i.exec(text);
+  return match ? ` (começa com ${match[1]}://)` : "";
+}
+
 /**
  * Most connections arrive as a URL from a .env or a dashboard: pasted here, it fills the
- * fields below and leaves the input empty, so the password is kept only where the form
- * keeps it (the keychain, on save).
+ * fields below. The URL stays in the field, masked, for Mostrar to check; it is never saved:
+ * the password goes only where the form keeps it (the keychain, on save).
  */
 function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
   const [text, setText] = useState("");
   const [status, setStatus] = useState<"filled" | "invalid" | null>(null);
+  const applied = useRef<string | null>(null);
 
   // applied whole: on paste, on Enter or on leaving the field, never on a typed prefix
   // ("postgres://a" already parses)
   function apply(candidate: string) {
+    if (candidate === applied.current) {
+      return;
+    }
     if (candidate.trim() === "") {
       setStatus(null);
       return;
@@ -618,7 +631,10 @@ function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
     }
     onEngineChange(parsed.engine);
     onChange(parsed.patch);
-    setText("");
+    // kept, masked, so Mostrar can check what was pasted; applied once (leaving the field
+    // again does not undo edits made below since)
+    applied.current = candidate;
+    setText(candidate);
     setStatus("filled");
   }
 
@@ -628,7 +644,7 @@ function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
       <SecretInput
         id="connection-url"
         value={text}
-        placeholder="postgres://usuário:senha@host:5432/banco"
+        placeholder="postgres://usuário:senha@host:5432/banco ou mongodb+srv://…"
         aria-describedby="connection-url-status"
         aria-invalid={status === "invalid" ? true : undefined}
         onChange={event => {
@@ -659,7 +675,7 @@ function UrlPaste({ onChange, onEngineChange }: UrlPasteProps) {
         {status === "filled"
           ? "Campos preenchidos a partir da URL. Confira abaixo; a senha vai para o keychain ao salvar."
           : status === "invalid"
-            ? "Não reconheci a URL. Use postgres://, mysql:// ou redis://."
+            ? `Não reconheci a URL${scheme(text)}. Use postgres://, mysql://, mongodb:// ou redis://.`
             : "Preenche tipo, host, porta, banco, usuário, senha e TLS de uma vez."}
       </p>
     </div>

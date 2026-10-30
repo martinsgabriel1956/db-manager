@@ -45,8 +45,8 @@ const SHORTCUT_GROUPS = [
       ["Ctrl+W", "Fechar a aba ativa"],
       ["Ctrl+Shift+T", "Reabrir a última aba fechada, com o texto do editor"],
       ["Ctrl+Tab", "Próxima aba (com Shift, a anterior)"],
-      ["Delete", "Fechar a aba focada"],
-      ["F6", "Pular entre lateral, abas e área de trabalho"],
+      ["Delete", "Fechar a aba focada (com alterações, pergunta antes)"],
+      ["F6", "Pular entre lateral, abas e área de trabalho (com Shift, para trás)"],
       [SIDEBAR_SHORTCUT, "Recolher ou expandir a lateral"],
       ["Shift+F10", "Ações da linha na lateral"],
       [
@@ -65,6 +65,7 @@ const SHORTCUT_GROUPS = [
       ["Ctrl+S", "Salvar as alterações da tabela"],
       ["Espaço", "Mostrar o valor inteiro da célula"],
       ["Alt+← →", "Estreitar ou alargar a coluna"],
+      ["Alt+O", "Ordenar pela coluna da célula (de novo: decrescente, depois sem ordem)"],
       ["Alt+Enter", "Abrir a linha apontada pela chave estrangeira da célula"],
       ["Alt+Shift+Enter", "Tabelas com linhas que apontam para a linha selecionada"]
     ]

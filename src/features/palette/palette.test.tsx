@@ -160,7 +160,7 @@ test("F6 cycles tree, tabs and view; Ctrl+Tab moves between tabs; Ctrl+S saves s
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres dev/ }));
   await user.click(await screen.findByRole("treeitem", { name: "users" }));
-  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users, view" }));
   const usersRow = screen.getByRole("treeitem", { name: "users" });
   usersRow.focus();
 
