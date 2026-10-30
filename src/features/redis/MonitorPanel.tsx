@@ -107,7 +107,7 @@ export function MonitorPanel({ connectionId }: { connectionId: string }) {
             <p aria-hidden className="display-caps text-3xl">
               Nada monitorado
             </p>
-            <p className="max-w-[56ch] text-sm text-muted-foreground">
+            <p className="max-w-[52ch] text-sm text-muted-foreground">
               Inicie o MONITOR para ver os comandos de todos os clientes deste servidor. Ficam na
               tela as últimas {LIVE_LIMIT} linhas.
             </p>

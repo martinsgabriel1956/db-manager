@@ -41,7 +41,7 @@ test("expanding a connection connects and lists schemas with public open", async
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
 
   expect(await screen.findByRole("treeitem", { name: "users" })).toBeInTheDocument();
-  expect(screen.getByRole("treeitem", { name: "active_users" })).toBeInTheDocument();
+  expect(screen.getByRole("treeitem", { name: "active_users, view" })).toBeInTheDocument();
   expect(screen.getByRole("treeitem", { name: /^audit/ })).toBeInTheDocument();
   expect(callsTo(calls, "connect_database")).toEqual([{ connectionId: "pg-1" }]);
 

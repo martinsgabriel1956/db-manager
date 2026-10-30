@@ -110,6 +110,21 @@ export function removeEdit(kind: CollectionKind, entry: Entry): KeyEdit {
   }
 }
 
+/** The command `removeEdit` runs, as the backend sends it (redis.rs), for the delete strip. */
+export function removeCommand(kind: CollectionKind, key: string, entry: Entry): string {
+  const member = entry.first.text;
+  switch (kind) {
+    case "hash":
+      return `HDEL ${key} ${member}`;
+    case "zset":
+      return `ZREM ${key} ${member}`;
+    case "set":
+      return `SREM ${key} ${member}`;
+    case "list":
+      return `LREM ${key} 1 ${member}`;
+  }
+}
+
 export type NewKeyKind = "string" | CollectionKind;
 
 /** The edits that create a key with its first value (and optional TTL). */

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { PostgreSQL, schemaCompletionSource, sql } from "@codemirror/lang-sql";
@@ -237,6 +237,30 @@ test("errors from the database are shown", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("read-only transaction");
 });
 
+test("a failed run says so in words and keeps the previous result under the error", async () => {
+  let runs = 0;
+  fakeBackend([prodPostgres], {
+    run_script: () =>
+      ++runs === 1
+        ? executed(rowsOutcome)
+        : Promise.reject({ kind: "database", message: "syntax error [42601]" })
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+
+  await user.click(screen.getByRole("button", { name: "Executar" }));
+  expect(await screen.findByRole("grid")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Executar" }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    /^ErroA execução falhou\. O resultado anterior continua abaixo\./
+  );
+  expect(alert).toHaveTextContent("syntax error [42601]");
+  expect(screen.getByRole("grid")).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent(/^Resultado anterior · /);
+});
+
 test("a statement failing mid-script shows the error and where it stopped", async () => {
   const outcome = scriptOutcome([
     { kind: "command", rowsAffected: 1 },
@@ -281,6 +305,33 @@ test("cancel stops a running query", async () => {
   pending.reject(cancelled);
   expect(await screen.findByRole("alert")).toHaveTextContent("query cancelada");
   expect(screen.getByRole("button", { name: "Executar" })).toBeInTheDocument();
+});
+
+test("a script's sheet numbers each write and names the destructive one", async () => {
+  fakeBackend([prodPostgres], {
+    run_script: () => ({
+      status: "needsConfirmation",
+      confirmation: {
+        destructive: true,
+        reason: "Comando destrutivo: DELETE sem WHERE (comando 3 de 3)",
+        statements: ["UPDATE t SET a = 1 WHERE id = 1", "DELETE FROM t"],
+        marks: [
+          { number: 1, of: 3, destructive: false },
+          { number: 3, of: 3, destructive: true }
+        ]
+      }
+    })
+  });
+  const user = userEvent.setup();
+  renderWorkspace("UPDATE t SET a = 1 WHERE id = 1; SELECT 1; DELETE FROM t");
+
+  await user.click(screen.getByRole("button", { name: "Executar" }));
+  const command = within(await screen.findByRole("alertdialog")).getByRole("region", {
+    name: "Comando que será executado"
+  });
+  expect(command).toHaveTextContent(
+    "1 de 3, UPDATE t SET a = 1 WHERE id = 1;3 de 3, Destrutivo, DELETE FROM t;"
+  );
 });
 
 test("destructive scripts wait for confirmation and run only after it", async () => {

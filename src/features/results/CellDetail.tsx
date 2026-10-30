@@ -63,13 +63,18 @@ export function useCellDetail() {
   };
 }
 
-type DetailSplitProps = { children: ReactNode; detail: ReactNode };
+type DetailSplitProps = {
+  children: ReactNode;
+  detail: ReactNode;
+  /** the grid's own height floor, where the view around it scrolls instead (the table) */
+  className?: string;
+};
 
 /** The grid, and beside it the value panel, resizable by mouse or keyboard (arrows on the bar). */
-export function DetailSplit({ children, detail }: DetailSplitProps) {
+export function DetailSplit({ children, detail, className }: DetailSplitProps) {
   const detailPanel = usePanelRef();
   return (
-    <Group orientation="horizontal" className="min-h-0 flex-1">
+    <Group orientation="horizontal" className={cn("min-h-0 flex-1", className)}>
       <Panel id="grid" minSize={200} className="min-w-0">
         {children}
       </Panel>
@@ -346,7 +351,8 @@ function JsonValueEditor({ label, initial, onCommit }: ValueEditorProps) {
     // and a long JSON scrolls inside the editor instead of stretching the panel
     <div
       className={cn(
-        "grid flex-1 gap-1.5 p-2",
+        // one column that never grows past the panel: CodeMirror's min-content is its longest line
+        "grid flex-1 grid-cols-[minmax(0,1fr)] gap-1.5 p-2",
         draft === null
           ? "grid-rows-[auto_minmax(6rem,1fr)_auto]"
           : "grid-rows-[minmax(6rem,1fr)_auto]"
@@ -360,7 +366,7 @@ function JsonValueEditor({ label, initial, onCommit }: ValueEditorProps) {
       <div className="min-h-0">
         <JsonEditor value={draft ?? ""} onChange={setDraft} onRun={apply} label={label} />
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid min-w-0 gap-1.5">
         {problem && (
           // polite: it changes with every keystroke while the JSON is half typed
           <p role="status" className="text-xs text-destructive">

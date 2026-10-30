@@ -15,13 +15,11 @@ const buttonVariants = cva(
           "bg-primary text-primary-foreground hover:bg-z5 disabled:border-input disabled:bg-transparent disabled:text-foreground dark:hover:bg-z4",
         outline:
           "border-input bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-transparent dark:hover:bg-muted",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         // under the safelight: reserved for confirming a destructive or production write
         destructive:
-          "bg-safelight font-semibold text-safelight-foreground hover:bg-safelight/90 focus-visible:outline-safelight",
+          "bg-safelight font-semibold text-safelight-foreground hover:bg-safelight/90 focus-visible:outline-safelight disabled:border-destructive disabled:bg-transparent disabled:text-destructive",
         link: "text-primary underline-offset-4 hover:underline"
       },
       size: {

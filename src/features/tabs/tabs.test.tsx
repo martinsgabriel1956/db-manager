@@ -47,7 +47,7 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
   await user.click(await screen.findByRole("treeitem", { name: "users" }));
-  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users, view" }));
   await rowAction(user, "Postgres prod", "Nova query SQL");
   await user.click(screen.getByRole("treeitem", { name: /^Nova query SQL/ }));
   await user.click(screen.getByRole("treeitem", { name: "users" }));
@@ -66,7 +66,7 @@ test("tables and editors open as tabs; reopening a table focuses its tab", async
     })
   ).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Fechar aba Postgres prod · users" }));
+  await user.click(screen.getByLabelText("Fechar aba Postgres prod · users"));
   expect(tabNames()).toEqual([
     "Postgres prod · active_users · produção · somente leitura",
     "Postgres prod · SQL 1 · produção · somente leitura",
@@ -81,7 +81,7 @@ test("tabs of one connection side by side name it once, on the first of the run"
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
   await user.click(await screen.findByRole("treeitem", { name: "users" }));
-  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users, view" }));
   await user.click(screen.getByRole("treeitem", { name: /^Postgres dev/ }));
   await user.click((await screen.findAllByRole("treeitem", { name: "users" }))[1]);
 
@@ -125,7 +125,7 @@ test("open tabs move with the arrow keys and close with Delete", async () => {
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
   await user.click(await screen.findByRole("treeitem", { name: "users" }));
-  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users, view" }));
   await user.click(screen.getByRole("tab", { name: /· users ·/ }));
 
   await user.keyboard("{ArrowRight}");
@@ -136,6 +136,26 @@ test("open tabs move with the arrow keys and close with Delete", async () => {
   await user.keyboard("{Delete}");
   expect(tabNames()).toEqual(["Postgres prod · users · produção · somente leitura"]);
   await waitFor(() => expect(screen.getByRole("tab", { name: /· users ·/ })).toHaveFocus());
+});
+
+test("Ctrl+W keeps the focus in the app: the next view, then the empty state's action", async () => {
+  fakeBackend([prodPostgres]);
+  const user = userEvent.setup();
+  renderWithClient(<App />);
+
+  await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
+  await user.click(await screen.findByRole("treeitem", { name: "users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users, view" }));
+
+  await user.keyboard("{Control>}w{/Control}");
+  await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+  expect(document.getElementById("workspace")).toContainElement(
+    document.activeElement as HTMLElement
+  );
+
+  await user.keyboard("{Control>}w{/Control}");
+  const workspace = within(document.getElementById("workspace")!);
+  await waitFor(() => expect(workspace.getByRole("button", { name: /^Ir para/ })).toHaveFocus());
 });
 
 test("the connection form opens as a tab over the open tabs and parks its draft", async () => {
@@ -301,7 +321,7 @@ test("right click on a tab closes it, the others or every tab, and Ctrl+Shift+T 
 
   await user.click(await screen.findByRole("treeitem", { name: /^Postgres prod/ }));
   await user.click(await screen.findByRole("treeitem", { name: "users" }));
-  await user.click(screen.getByRole("treeitem", { name: "active_users" }));
+  await user.click(screen.getByRole("treeitem", { name: "active_users, view" }));
   await user.click(screen.getByRole("button", { name: "Histórico" }));
   expect(tabNames()).toHaveLength(3);
 

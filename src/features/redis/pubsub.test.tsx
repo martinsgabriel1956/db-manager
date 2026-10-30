@@ -70,7 +70,7 @@ test("pub/sub lists messages live, pauses, and ends the session with the tab", a
   // switching sections keeps it; closing the tab ends it
   await user.click(screen.getByRole("tab", { name: "Chaves" }));
   expect(callsTo(calls, "stop_redis_session")).toHaveLength(0);
-  await user.click(screen.getByRole("button", { name: "Fechar aba Cache · db0" }));
+  await user.click(screen.getByLabelText("Fechar aba Cache · db0"));
   await waitFor(() =>
     expect(callsTo(calls, "stop_redis_session")).toEqual([
       { connectionId: "redis-1", sessionId: subscribe.sessionId }

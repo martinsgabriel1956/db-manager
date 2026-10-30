@@ -179,6 +179,7 @@ pub async fn create_index(
     if connection.environment == Environment::Prod && !confirmed {
         return Ok(IndexResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: PROD_REASON.to_string(),
                 statements: vec![statement],
                 destructive: false,
@@ -226,6 +227,7 @@ pub async fn drop_index(
     if !confirmed {
         return Ok(IndexResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: "Comando destrutivo: remove o índice".to_string(),
                 statements: vec![statement],
                 destructive: true,
@@ -304,6 +306,7 @@ pub async fn run_aggregation(
         if let Some(reason) = reason {
             return Ok(AggregateResponse::NeedsConfirmation {
                 confirmation: Confirmation {
+                    marks: Vec::new(),
                     reason: reason.to_string(),
                     statements: vec![statement],
                     destructive: risk.replaces,
@@ -414,6 +417,7 @@ pub async fn write_document(
     if connection.environment == Environment::Prod && !confirmed {
         return Ok(WriteResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: PROD_REASON.to_string(),
                 statements: vec![statement],
                 destructive: false,

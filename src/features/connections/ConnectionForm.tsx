@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { commands, type ConnectionConfig } from "@/bindings";
+import { DeleteStrip, keepArmedFocus } from "@/components/DeleteStrip";
 import { Button } from "@/components/ui/button";
 import { ConnectionFields } from "@/features/connections/ConnectionFields";
 import {
@@ -71,7 +72,13 @@ export function ConnectionForm({
   useEffect(() => onEditedChange?.(edited), [edited, onEditedChange]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const cancelTriggerRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  // opened from the sidebar, the palette or a menu: the focus follows to the form's title,
+  // which names what is being edited, and Tab goes on to the first field
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => titleRef.current?.focus(), []);
   const save = useSaveConnection();
   const connections = useConnections();
   const groups = byGroup(connections.data ?? []).groups.map(group => group.name);
@@ -137,19 +144,17 @@ export function ConnectionForm({
   }
 
   function handleCancel() {
-    if (edited && !confirmingCancel) {
-      setConfirmingCancel(true);
+    if (edited) {
+      setConfirmingDelete(false);
+      setConfirmingCancel(armed => !armed);
       return;
     }
     onCancel();
   }
 
   function handleDelete() {
-    if (!confirmingDelete) {
-      setConfirmingDelete(true);
-      return;
-    }
-    remove.mutate(id, { onSuccess: outcome => onDeleted(outcome.keychainWarning) });
+    setConfirmingCancel(false);
+    setConfirmingDelete(armed => !armed);
   }
 
   const serverError = save.error ?? remove.error;
@@ -157,7 +162,11 @@ export function ConnectionForm({
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="grid max-w-xl gap-6" noValidate>
       {/* editing names which connection: the identifier keeps its case, like a table name */}
-      <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-3 border-b-2 border-foreground pb-2">
+      <h2
+        ref={titleRef}
+        tabIndex={-1}
+        className="flex min-w-0 flex-wrap items-baseline gap-x-3 border-b-2 border-foreground pb-2 outline-none"
+      >
         <span className="display-caps text-[1.75rem]">
           {isEditing ? "Editar conexão" : copyOf ? "Duplicar conexão" : "Nova conexão"}
         </span>
@@ -208,32 +217,56 @@ export function ConnectionForm({
         <Button type="submit" disabled={save.isPending}>
           Salvar
         </Button>
-        {/* like Excluir: a second press drops what was typed; leaving the button or Esc keeps it */}
+        {/* both arm a strip below, away from the trigger: a second press disarms, so a double
+            click never drops what was typed or deletes the connection */}
         <Button
           type="button"
-          variant={confirmingCancel ? "outline" : "ghost"}
-          className={confirmingCancel ? "text-destructive" : undefined}
+          variant="ghost"
+          ref={cancelTriggerRef}
+          aria-expanded={edited ? confirmingCancel : undefined}
+          onMouseDown={keepArmedFocus(confirmingCancel)}
           onClick={handleCancel}
-          onBlur={() => setConfirmingCancel(false)}
-          onKeyDown={event => event.key === "Escape" && setConfirmingCancel(false)}
         >
-          {confirmingCancel ? "Descartar o que foi digitado" : "Cancelar"}
+          Cancelar
         </Button>
         {isEditing && (
           <Button
             type="button"
-            variant={confirmingDelete ? "destructive" : "outline"}
+            variant="outline"
+            ref={deleteTriggerRef}
             // kept apart from save and test: a different kind of action
-            className={confirmingDelete ? "ml-auto" : "ml-auto text-destructive"}
+            className="ml-auto text-destructive"
+            aria-expanded={confirmingDelete}
             disabled={remove.isPending}
+            onMouseDown={keepArmedFocus(confirmingDelete)}
             onClick={handleDelete}
-            onBlur={() => setConfirmingDelete(false)}
-            onKeyDown={event => event.key === "Escape" && setConfirmingDelete(false)}
           >
-            {confirmingDelete ? "Confirmar exclusão" : "Excluir"}
+            Excluir
           </Button>
         )}
       </div>
+      {confirmingCancel && (
+        <DeleteStrip
+          message="O que foi digitado aqui some; a conexão salva não muda."
+          confirmLabel="Descartar o que foi digitado"
+          keepLabel="Continuar editando"
+          variant="outline"
+          onConfirm={onCancel}
+          onDisarm={() => setConfirmingCancel(false)}
+          triggerRef={cancelTriggerRef}
+        />
+      )}
+      {confirmingDelete && (
+        <DeleteStrip
+          message={`Exclui a conexão ${connection?.name ?? ""} e as senhas dela no keychain. Não dá para desfazer.`}
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate(id, { onSuccess: outcome => onDeleted(outcome.keychainWarning) })
+          }
+          onDisarm={() => setConfirmingDelete(false)}
+          triggerRef={deleteTriggerRef}
+        />
+      )}
     </form>
   );
 }

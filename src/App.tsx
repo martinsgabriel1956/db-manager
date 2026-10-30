@@ -1,5 +1,15 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useShallow } from "zustand/react/shallow";
 import {
   BookOpen,
   History,
@@ -36,7 +46,7 @@ import { TableView } from "@/features/table/TableView";
 import { CloseTabDialog } from "@/features/tabs/CloseTabDialog";
 import { TabBar, tabElementId, tabPanelId } from "@/features/tabs/TabBar";
 import { focusActiveTab } from "@/features/tabs/focus";
-import { useTabs, type Tab } from "@/features/tabs/store";
+import { useEditorText, useTabs, useTabShapes, type Tab } from "@/features/tabs/store";
 import { errorMessage } from "@/lib/errors";
 import { SIDEBAR_SHORTCUT } from "@/lib/platform";
 import { applyTheme, NEXT_THEME, storedTheme, THEME_LABEL, type Theme } from "@/lib/theme";
@@ -56,11 +66,45 @@ type TabContentProps = {
   onOpenInEditor: (connectionId: string, sql: string) => void;
 };
 
+const NO_CONNECTIONS: ConnectionConfig[] = [];
+
+/** The connection whose row (or a row under it) has focus in the sidebar tree. */
+function focusedTreeConnection(): string | null {
+  const prefix = connectionRowId("");
+  let item = document.activeElement?.closest('[role="tree"] li') ?? null;
+  while (item) {
+    // the row must be this item's own: a group folder holds other connections' rows
+    const row = item.querySelector(`[id^="${prefix}"]`);
+    if (row?.closest("li") === item) {
+      return row.id.slice(prefix.length);
+    }
+    item = item.parentElement?.closest("li") ?? null;
+  }
+  return null;
+}
+
+const NARROW = "(max-width: 639px)";
+// resize too: not every zoom or window change reaches the query's own event.
+// matchMedia is optional: the test DOM has none
+function subscribeNarrow(onChange: () => void) {
+  const query = window.matchMedia?.(NARROW);
+  query?.addEventListener("change", onChange);
+  window.addEventListener("resize", onChange);
+  return () => {
+    query?.removeEventListener("change", onChange);
+    window.removeEventListener("resize", onChange);
+  };
+}
+function isNarrow() {
+  return window.matchMedia?.(NARROW).matches ?? false;
+}
+
 export function App() {
   const connections = useConnections();
   const queryClient = useQueryClient();
+  // shapes, not the store: a keystroke in an editor must not re-render the shell
+  const tabs = useTabShapes();
   const {
-    tabs,
     activeId,
     openTable,
     openEditor,
@@ -74,7 +118,23 @@ export function App() {
     requestQuit,
     reopenClosed,
     activate
-  } = useTabs();
+  } = useTabs(
+    useShallow(state => ({
+      activeId: state.activeId,
+      openTable: state.openTable,
+      openEditor: state.openEditor,
+      openRedis: state.openRedis,
+      openDiagram: state.openDiagram,
+      openSessions: state.openSessions,
+      openSchemaDiff: state.openSchemaDiff,
+      openHistory: state.openHistory,
+      keepConnections: state.keepConnections,
+      requestClose: state.requestClose,
+      requestQuit: state.requestQuit,
+      reopenClosed: state.reopenClosed,
+      activate: state.activate
+    }))
+  );
   const expandedConnections = useExplorer(state => state.expanded);
   const anyConnectionOpen = expandedConnections.length > 0;
   const setExpanded = useExplorer(state => state.setExpanded);
@@ -83,15 +143,26 @@ export function App() {
   const [form, setForm] = useState<FormState | null>(null);
   const [formShown, setFormShown] = useState(false);
   const [formEdited, setFormEdited] = useState(false);
+  // the last tab closed with the form parked: the form is all that is open, so it shows,
+  // instead of "Nenhuma aba aberta" under a strip that still holds its tab
+  const noTabs = tabs.length === 0;
+  useEffect(() => {
+    if (noTabs && form && !formShown) {
+      setFormShown(true);
+    }
+  }, [noTabs, form, formShown]);
   const [notice, setNotice] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [legendOpen, setLegendOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem("sidebar-collapsed") === "1"
-  );
-
-  const toggleSidebar = () => setCollapsed(value => !value);
+  // the stored choice; a window zoomed past 640 CSS px (the minimum at 200%) starts on the
+  // rail without overwriting it, and Ctrl+B still opens the sidebar there
+  const [stored, setStored] = useState(() => localStorage.getItem("sidebar-collapsed") === "1");
+  const narrow = useSyncExternalStore(subscribeNarrow, isNarrow);
+  const [openWhileNarrow, setOpenWhileNarrow] = useState(false);
+  const collapsed = narrow ? !openWhileNarrow : stored;
+  const toggleSidebar = () =>
+    narrow ? setOpenWhileNarrow(value => !value) : setStored(value => !value);
 
   const [theme, setTheme] = useState(storedTheme);
   const themeLabel = `Tema: ${THEME_LABEL[theme]} (mudar para ${THEME_LABEL[NEXT_THEME[theme]].toLowerCase()})`;
@@ -101,8 +172,8 @@ export function App() {
   };
 
   useEffect(() => {
-    localStorage.setItem("sidebar-collapsed", collapsed ? "1" : "0");
-  }, [collapsed]);
+    localStorage.setItem("sidebar-collapsed", stored ? "1" : "0");
+  }, [stored]);
 
   useEffect(() => {
     if (connections.data) {
@@ -110,7 +181,7 @@ export function App() {
     }
   }, [connections.data, keepConnections]);
 
-  const list = connections.data ?? [];
+  const list = connections.data ?? NO_CONNECTIONS;
   const activeTab = tabs.find(tab => tab.id === activeId) ?? null;
   const tabConnectionId = activeTab && activeTab.kind !== "history" ? activeTab.connectionId : null;
   const formConnection = list.find(connection => connection.id === form?.connectionId) ?? null;
@@ -135,6 +206,15 @@ export function App() {
     connection => connection.environment === "prod" && expandedConnections.includes(connection.id)
   );
   const editorConnectionId = active && isSqlEngine(active.engine) ? active.id : null;
+  /** Ctrl+T's connection; a focused non-SQL connection opens none (never another's) */
+  function newEditorTarget(): string | null {
+    const focused = focusedTreeConnection();
+    if (!focused) {
+      return editorConnectionId;
+    }
+    const connection = list.find(candidate => candidate.id === focused);
+    return connection && isSqlEngine(connection.engine) ? connection.id : null;
+  }
 
   // app-wide accelerators; each one is also reachable from a visible control
   useEffect(() => {
@@ -184,12 +264,17 @@ export function App() {
         openPalette();
       } else if (key === "b") {
         event.preventDefault();
-        setCollapsed(value => !value);
-      } else if (key === "t" && editorConnectionId) {
-        // an editor on the active SQL connection
+        if (narrow) {
+          setOpenWhileNarrow(value => !value);
+        } else {
+          setStored(value => !value);
+        }
+      } else if (key === "t" && newEditorTarget()) {
+        // an editor where the attention is: the connection focused in the sidebar (also
+        // the one just opened from the palette), else the active tab's
         event.preventDefault();
         showTabs();
-        openEditor(editorConnectionId);
+        openEditor(newEditorTarget()!);
       } else if (key === "w" && formShown) {
         // the form's tab closes like Cancelar: a typed draft is never dropped without asking
         event.preventDefault();
@@ -202,12 +287,19 @@ export function App() {
         }
       } else if (key === "w" && activeId) {
         event.preventDefault();
-        requestClose(activeId);
+        // closed at once: the focus goes on to the view now active (or the empty state's
+        // action), not to <body>. Asked first, the dialog hands it back itself
+        if (requestClose(activeId)) {
+          requestAnimationFrame(() =>
+            useTabs.getState().activeId ? focusOpenedView() : focusActiveTab()
+          );
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    narrow,
     formShown,
     formEdited,
     tabs,
@@ -217,6 +309,7 @@ export function App() {
     reopenClosed,
     activate,
     editorConnectionId,
+    list,
     openEditor
   ]);
 
@@ -257,10 +350,16 @@ export function App() {
     setFormShown(true);
   }
 
-  function openInEditor(connectionId: string, sql: string) {
-    showTabs();
-    openEditor(connectionId, sql);
-  }
+  // stable, like every prop of TabContent: a keystroke in one editor re-renders App, and
+  // must not re-render every other open tab with it
+  const openInEditor = useCallback(
+    (connectionId: string, sql: string) => {
+      setFormShown(false);
+      setNotice(null);
+      openEditor(connectionId, sql);
+    },
+    [openEditor]
+  );
 
   function openPalette(query = "") {
     setPaletteQuery(query);
@@ -336,59 +435,62 @@ export function App() {
       {/* the environment band is always there, so moving between production and the rest never
           shifts the window under the pointer: it changes colour and words, not height.
           Production works under the safelight; the ring is a colour cue, the band says it in words */}
-      {isProd && active ? (
-        <p className="flex h-7 shrink-0 animate-in items-center gap-3 bg-safelight px-4 text-xs text-safelight-foreground duration-[120ms] fade-in-0 motion-reduce:animate-none">
-          <TriangleAlert className="size-3.5" aria-hidden />
-          <span className="legend text-[0.75rem]">Produção</span>
-          <span className="truncate">
-            {active.name} ·{" "}
-            {active.readOnly
-              ? "somente leitura, imposta pelo banco"
-              : "toda escrita pede confirmação com o comando exato"}
-          </span>
-        </p>
-      ) : (
-        <p
-          className={cn(
-            "flex h-7 shrink-0 items-center gap-3 border-b bg-muted px-4 text-xs",
-            // in use, the band speaks in ink; with nothing in use it steps back
-            active ? "text-foreground" : "text-muted-foreground",
-            // staging is a copy of production: half a safelight, the hatch its tag already wears
-            active?.environment === "staging" && "border-b-foreground pl-0"
-          )}
-        >
-          {active?.environment === "staging" && (
-            <span aria-hidden className="h-full w-8 shrink-0 border-r border-foreground hatch" />
-          )}
-          {active ? (
-            <>
-              <EnvTag environment={active.environment} />
-              <span className="truncate">
-                {active.name} ·{" "}
-                {active.readOnly
-                  ? "somente leitura, imposta pelo banco"
-                  : active.environment === "staging"
-                    ? "cópia de produção; comandos destrutivos pedem confirmação"
-                    : "comandos destrutivos pedem confirmação; o resto vai direto ao banco"}
-              </span>
-            </>
-          ) : (
-            <span>
-              {activeTab ? "Nenhuma conexão nesta aba" : "Nenhuma conexão em uso"}
-              {(prodOpenElsewhere || prodConnected) && (
-                <>
-                  {" · "}
-                  <span className="text-foreground">
-                    {prodOpenElsewhere
-                      ? "produção aberta em outra aba"
-                      : "produção conectada na lateral"}
-                  </span>
-                </>
-              )}
+      {/* a landmark of its own: read when moving by regions, not only seen */}
+      <header aria-label="Faixa de ambiente" className="shrink-0">
+        {isProd && active ? (
+          <p className="flex h-7 shrink-0 items-center gap-3 bg-safelight px-4 text-xs text-safelight-foreground duration-[120ms] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1">
+            <TriangleAlert className="size-3.5" aria-hidden />
+            <span className="legend text-[0.75rem]">Produção</span>
+            <span className="truncate">
+              {active.name} ·{" "}
+              {active.readOnly
+                ? "somente leitura, imposta pelo banco"
+                : "toda escrita pede confirmação com o comando exato"}
             </span>
-          )}
-        </p>
-      )}
+          </p>
+        ) : (
+          <p
+            className={cn(
+              "flex h-7 shrink-0 items-center gap-3 border-b bg-muted px-4 text-xs",
+              // in use, the band speaks in ink; with nothing in use it steps back
+              active ? "text-foreground" : "text-muted-foreground",
+              // staging is a copy of production: half a safelight, the hatch its tag already wears
+              active?.environment === "staging" && "border-b-foreground pl-0"
+            )}
+          >
+            {active?.environment === "staging" && (
+              <span aria-hidden className="h-full w-8 shrink-0 border-r border-foreground hatch" />
+            )}
+            {active ? (
+              <>
+                <EnvTag environment={active.environment} />
+                <span className="truncate">
+                  {active.name} ·{" "}
+                  {active.readOnly
+                    ? "somente leitura, imposta pelo banco"
+                    : active.environment === "staging"
+                      ? "cópia de produção; comandos destrutivos pedem confirmação"
+                      : "comandos destrutivos pedem confirmação; o resto vai direto ao banco"}
+                </span>
+              </>
+            ) : (
+              <span>
+                {activeTab ? "Nenhuma conexão nesta aba" : "Nenhuma conexão em uso"}
+                {(prodOpenElsewhere || prodConnected) && (
+                  <>
+                    {" · "}
+                    <span className="text-foreground">
+                      {prodOpenElsewhere
+                        ? "produção aberta em outra aba"
+                        : "produção conectada na lateral"}
+                    </span>
+                  </>
+                )}
+              </span>
+            )}
+          </p>
+        )}
+      </header>
       <div className="flex min-h-0 flex-1">
         {/* 240px at the 960px minimum, 288px from 1100px: the grid keeps room for data */}
         <aside
@@ -848,11 +950,14 @@ function Wordmark() {
   );
 }
 
-function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
+/** Memoised: untouched tabs keep their object in the store, so only the edited one renders. */
+const TabContent = memo(function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
   const setSql = useTabs(state => state.setSql);
   const setParams = useTabs(state => state.setParams);
   const freshEditorId = useTabs(state => state.freshEditorId);
   const openTable = useTabs(state => state.openTable);
+  // the tab is a shape (see useTabShapes): an editor's text is read live, here only
+  const text = useEditorText(tab.id);
 
   if (tab.kind === "history") {
     return <HistoryView connections={connections} onOpenInEditor={onOpenInEditor} />;
@@ -914,10 +1019,10 @@ function TabContent({ tab, connections, onOpenInEditor }: TabContentProps) {
       connectionId={tab.connectionId}
       engine={connection.engine}
       defaultSchema={defaultSchemaFor(connection)}
-      sql={tab.sql}
+      sql={text.sql}
       onSqlChange={sql => setSql(tab.id, sql)}
-      params={tab.params ?? {}}
+      params={text.params ?? {}}
       onParamsChange={params => setParams(tab.id, params)}
     />
   );
-}
+});

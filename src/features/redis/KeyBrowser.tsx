@@ -44,8 +44,9 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
 
   return (
     <div className="flex h-full">
-      <div className="flex w-80 shrink-0 flex-col border-r">
-        <form onSubmit={search} className="flex gap-1 border-b p-2">
+      {/* at most 45% of the view: zoomed in, the open key's value keeps the larger share */}
+      <div className="flex w-80 max-w-[45%] shrink-0 flex-col border-r">
+        <form onSubmit={search} className="flex flex-wrap gap-1 border-b p-2">
           <Input
             aria-label="Padrão de chaves"
             placeholder="ex.: user:*"
@@ -67,7 +68,7 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
             <RefreshCw />
           </Button>
         </form>
-        <div className="flex items-center gap-2 border-b px-2 py-1 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 border-b px-2 py-1 text-xs text-muted-foreground">
           <span>
             {keys.length} {keys.length === 1 ? "chave" : "chaves"}
             {scan.hasNextPage && " (busca incompleta)"}
@@ -132,7 +133,7 @@ export function KeyBrowser({ connectionId, db, separator, readOnly }: KeyBrowser
             <p aria-hidden className="display-caps text-3xl">
               Nenhuma chave aberta
             </p>
-            <p className="max-w-[46ch] text-sm text-muted-foreground">
+            <p className="max-w-[52ch] text-sm text-muted-foreground">
               Selecione uma chave na lista para ver o tipo, o valor e o TTL.
             </p>
           </div>

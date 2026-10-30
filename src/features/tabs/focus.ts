@@ -2,11 +2,16 @@ import { useRef } from "react";
 import { tabElementId } from "@/features/tabs/TabBar";
 import { useTabs } from "@/features/tabs/store";
 
-/** The active tab is where focus lands when the element that had it is gone. */
+/**
+ * The active tab is where focus lands when the element that had it is gone; with no tab
+ * left, the empty workspace's first action ("Abrir uma conexão"), never <body>.
+ */
 export function focusActiveTab() {
   const { activeId } = useTabs.getState();
   if (activeId) {
     document.getElementById(tabElementId(activeId))?.focus();
+  } else {
+    document.querySelector<HTMLElement>("#workspace button")?.focus();
   }
 }
 

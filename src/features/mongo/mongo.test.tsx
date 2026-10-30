@@ -166,7 +166,7 @@ test("backend errors stay in the editor so the edit is not lost", async () => {
   );
 });
 
-test("delete asks first; on prod the statement is confirmed", async () => {
+test("on prod a delete is confirmed once, in the sheet, with the statement", async () => {
   const prodMongo = { ...devMongo, environment: "prod" as const };
   const calls = fakeBackend([prodMongo], {
     list_schemas: () => schemas,
@@ -190,10 +190,8 @@ test("delete asks first; on prod the statement is confirmed", async () => {
       name: 'Excluir documento _id ObjectId("65a1b2c3d4e5f60718293a4c")'
     })
   );
-  expect(
-    screen.getByText('deleteOne({"_id": {"$oid":"65a1b2c3d4e5f60718293a4c"}})')
-  ).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
+  // no strip first: the sheet already shows the exact statement
+  expect(screen.queryByRole("button", { name: "Confirmar exclusão" })).not.toBeInTheDocument();
   expect(await screen.findByRole("alertdialog")).toHaveTextContent("deleteOne");
   await user.click(screen.getByRole("button", { name: "Executar em produção" }));
 
@@ -259,7 +257,7 @@ test("aggregations run, confirm $out and can be cancelled", async () => {
   setPipeline('[{"$out": "copy"}]');
   await user.click(within(panel).getByRole("button", { name: "Executar" }));
   expect(await screen.findByRole("alertdialog")).toHaveTextContent("$out substitui a coleção");
-  await user.click(screen.getByRole("button", { name: "Executar mesmo assim" }));
+  await user.click(screen.getByRole("button", { name: "Executar" }));
   await waitFor(() =>
     expect(
       (callsTo(calls, "run_aggregation") as { confirmed: boolean }[]).map(c => c.confirmed)

@@ -67,4 +67,4 @@ export function SheetFooter({ hint, children, className }: SheetFooterProps) {
 
 /** The sheet itself: no padding, the record between header and footer scrolls. */
 export const SHEET_CLASS =
-  "flex flex-col gap-0 overflow-hidden p-0 duration-[160ms] ease-out data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 motion-reduce:animate-none sm:max-w-2xl";
+  "flex flex-col gap-0 overflow-hidden p-0 duration-[160ms] ease-out motion-safe:data-open:animate-in data-open:fade-in-0 data-open:slide-in-from-top-3 sm:max-w-2xl";

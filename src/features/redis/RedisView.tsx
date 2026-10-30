@@ -30,12 +30,17 @@ export function RedisView({ connection, db }: RedisViewProps) {
   const master = useRedisMaster(connection.id, sentinel !== null);
 
   return (
-    <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
+    <Tabs
+      value={section}
+      onValueChange={setSection}
+      // a short window (the minimum at 200% zoom) scrolls the view below its panels' floor
+      className="flex h-full flex-col overflow-y-auto"
+    >
       {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
           second line, whole; py-1 here and on the title keeps one line at 48px */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
         <h2 className="shrink-0 py-1 display text-[1.75rem] leading-[1.15]">db{db}</h2>
-        <TabsList aria-label="Seções do Redis" className="shrink-0">
+        <TabsList aria-label="Seções do Redis" className="min-w-0 flex-wrap">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
             <TabsTrigger
               key={id}
@@ -59,7 +64,7 @@ export function RedisView({ connection, db }: RedisViewProps) {
         <ConnectionContext connectionId={connection.id} className="ml-auto" />
       </div>
       {/* panels stay mounted so the selected key and the console scrollback survive switching */}
-      <TabsContent value="keys" forceMount className="min-h-0 flex-1">
+      <TabsContent value="keys" forceMount className="min-h-64 flex-1">
         <KeyBrowser
           connectionId={connection.id}
           db={db}
@@ -67,18 +72,18 @@ export function RedisView({ connection, db }: RedisViewProps) {
           readOnly={connection.readOnly}
         />
       </TabsContent>
-      <TabsContent value="console" forceMount className="min-h-0 flex-1">
+      <TabsContent value="console" forceMount className="min-h-64 flex-1">
         <ConsolePanel connectionId={connection.id} db={db} promptRef={promptRef} />
       </TabsContent>
       {/* mounted while the tab is open: the subscription survives switching sections */}
-      <TabsContent value="pubsub" forceMount className="min-h-0 flex-1">
+      <TabsContent value="pubsub" forceMount className="min-h-64 flex-1">
         <PubSubPanel connectionId={connection.id} db={db} readOnly={connection.readOnly} />
       </TabsContent>
       {/* not kept mounted: leaving the section stops MONITOR, which costs the server */}
-      <TabsContent value="monitor" className="min-h-0 flex-1">
+      <TabsContent value="monitor" className="min-h-64 flex-1">
         <MonitorPanel connectionId={connection.id} />
       </TabsContent>
-      <TabsContent value="info" className="min-h-0 flex-1">
+      <TabsContent value="info" className="min-h-64 flex-1">
         <InfoPanel connectionId={connection.id} />
       </TabsContent>
     </Tabs>

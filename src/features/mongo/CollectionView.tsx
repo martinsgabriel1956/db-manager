@@ -34,20 +34,26 @@ export function CollectionView({
   const [section, setSection] = useState("documents");
 
   return (
-    <Tabs value={section} onValueChange={setSection} className="flex h-full flex-col">
+    <Tabs
+      value={section}
+      onValueChange={setSection}
+      // a short window (the minimum at 200% zoom) scrolls the view below its panels' floor
+      className="flex h-full flex-col overflow-y-auto"
+    >
       {/* wraps rather than clips: zoomed in (Ctrl+=) the connection and the actions drop to a
           second line, whole; py-1 here and on the title keeps one line at 48px */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-foreground bg-background px-4 py-1">
         {/* a long identifier wraps: it is data, and a hover title is out of the keyboard's reach;
-            up to half the header it keeps its width, so the connection name truncates first and
-            a short name never breaks mid-word */}
-        <h2 className="flex max-w-1/2 shrink-0 items-baseline py-1">
+            up to half the header it keeps its width, so the connection name truncates first; in a
+            narrow viewport (zoomed in) it may take the whole line, so a short name never breaks
+            mid-word */}
+        <h2 className="flex max-w-full shrink-0 items-baseline py-1 min-[800px]:max-w-1/2">
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{database}.</span>
           <span className="min-w-0 display text-[1.75rem] leading-[1.15] [overflow-wrap:anywhere]">
             {collection}
           </span>
         </h2>
-        <TabsList aria-label="Seções da coleção" className="shrink-0">
+        <TabsList aria-label="Seções da coleção" className="min-w-0 flex-wrap">
           {(Object.keys(SECTION_LABEL) as Section[]).map(id => (
             <TabsTrigger key={id} value={id}>
               {SECTION_LABEL[id]}
@@ -58,7 +64,7 @@ export function CollectionView({
         <ConnectionContext connectionId={connectionId} className="ml-auto" />
       </div>
       {/* panels stay mounted so filters, results and editors survive switching */}
-      <TabsContent value="documents" forceMount className="min-h-0 flex-1">
+      <TabsContent value="documents" forceMount className="min-h-64 flex-1">
         <DocumentsPanel
           connectionId={connectionId}
           database={database}
@@ -66,17 +72,17 @@ export function CollectionView({
           readOnly={readOnly}
         />
       </TabsContent>
-      <TabsContent value="aggregation" forceMount className="min-h-0 flex-1">
+      <TabsContent value="aggregation" forceMount className="min-h-64 flex-1">
         <AggregationPanel connectionId={connectionId} database={database} collection={collection} />
       </TabsContent>
-      <TabsContent value="schema" forceMount className="min-h-0 flex-1">
+      <TabsContent value="schema" forceMount className="min-h-64 flex-1">
         <SchemaPanel connectionId={connectionId} database={database} collection={collection} />
       </TabsContent>
       {/* not kept mounted: leaving the section closes the change stream on the server */}
-      <TabsContent value="live" className="min-h-0 flex-1">
+      <TabsContent value="live" className="min-h-64 flex-1">
         <LivePanel connectionId={connectionId} database={database} collection={collection} />
       </TabsContent>
-      <TabsContent value="indexes" className="min-h-0 flex-1 overflow-auto">
+      <TabsContent value="indexes" className="min-h-64 flex-1 overflow-auto">
         <IndexesPanel
           connectionId={connectionId}
           database={database}

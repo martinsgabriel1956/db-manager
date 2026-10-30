@@ -1,8 +1,9 @@
+import { useShallow } from "zustand/react/shallow";
 import { commands, type ConnectionConfig } from "@/bindings";
 import { DiscardDialog } from "@/components/DiscardDialog";
 import { tabLabel } from "@/features/tabs/TabBar";
 import { focusActiveTab } from "@/features/tabs/focus";
-import { heldEdits, tableKey, useTabs } from "@/features/tabs/store";
+import { heldEdits, tableKey, useTabs, useTabShapes } from "@/features/tabs/store";
 
 type CloseTabDialogProps = { connections: ConnectionConfig[] };
 
@@ -11,8 +12,17 @@ type CloseTabDialogProps = { connections: ConnectionConfig[] };
  * to keeping them.
  */
 export function CloseTabDialog({ connections }: CloseTabDialogProps) {
-  const { tabs, pending, closeRequest, closeTabs, cancelClose, quitRequest, cancelQuit } =
-    useTabs();
+  const tabs = useTabShapes();
+  const { pending, closeRequest, closeTabs, cancelClose, quitRequest, cancelQuit } = useTabs(
+    useShallow(state => ({
+      pending: state.pending,
+      closeRequest: state.closeRequest,
+      closeTabs: state.closeTabs,
+      cancelClose: state.cancelClose,
+      quitRequest: state.quitRequest,
+      cancelQuit: state.cancelQuit
+    }))
+  );
   const requested = quitRequest ? tabs : tabs.filter(tab => closeRequest?.includes(tab.id));
   // only tables hold staged edits: the dialog names those, not every tab being closed
   const holders = heldEdits(requested, pending);

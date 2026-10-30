@@ -60,12 +60,14 @@ export function RowsView({
   const selectedCell = selected && rows[selected.row]?.[selected.column];
 
   return (
-    <div className="flex h-full flex-col">
+    // in a short panel (the minimum window at 200% zoom) the grid keeps a floor of 10rem, like
+    // the table view's, and the panel scrolls instead of leaving the rows no height
+    <div className="flex h-full flex-col overflow-y-auto">
       {/* wraps rather than overlaps: a long receipt sends the tools to a second line */}
       <div className="@container flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted px-3 py-1">
         <div
           role="status"
-          className={`flex min-w-0 items-center gap-2 text-xs ${muted ? "text-muted-foreground" : ""}`}
+          className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs ${muted ? "text-muted-foreground" : ""}`}
         >
           {receipt}
         </div>
@@ -96,7 +98,7 @@ export function RowsView({
           {loadError}
         </p>
       )}
-      <div ref={gridAreaRef} className="flex min-h-0 flex-1">
+      <div ref={gridAreaRef} className="flex min-h-40 flex-1">
         <DetailSplit
           detail={
             detailOpen && (

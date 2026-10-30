@@ -31,8 +31,9 @@ let engine: Promise<InstanceType<typeof ELK>> | null = null;
 
 /** One engine, so one worker, for every diagram opened. */
 function layoutEngine() {
+  // the in-place build is for the test DOM only: dropped from the app's bundle (1.4 MB)
   engine ??=
-    typeof Worker === "undefined"
+    import.meta.env.MODE === "test" && typeof Worker === "undefined"
       ? import("elkjs/lib/elk.bundled.js").then(({ default: InPlace }) => new InPlace())
       : Promise.resolve(new ELK({ workerUrl: elkWorkerUrl }));
   return engine;

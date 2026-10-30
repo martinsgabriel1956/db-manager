@@ -266,6 +266,18 @@ pub struct Confirmation {
     /// DROP, TRUNCATE, a DELETE without WHERE, `$out`, FLUSHDB…: on `prod` the UI
     /// asks for more than a click before these run
     pub destructive: bool,
+    /// in a script, one per statement listed: where it sits and whether it is the destructive
+    /// one, so the sheet numbers them as the results list does. Empty outside scripts
+    pub marks: Vec<StatementMark>,
+}
+
+/// A statement's place in its script, 1-based like the results list ("3 de 4").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct StatementMark {
+    pub number: u32,
+    pub of: u32,
+    pub destructive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]

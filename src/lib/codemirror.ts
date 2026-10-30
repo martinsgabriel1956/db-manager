@@ -41,17 +41,14 @@ const theme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "var(--accent)", color: "var(--foreground)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "color-mix(in oklch, var(--ring) 40%, transparent)" },
-  // a script step: blue is "where you are"; the one that stopped the script is crossed, as a conflict
+  // a script step: blue is "where you are"; the one that stopped the script is ruled in red,
+  // like its "erro" in the list (the crossed texture stays "excluída" in the grid)
   ".cm-step-picked": {
     backgroundColor: "color-mix(in oklch, var(--select) 14%, transparent)",
     boxShadow: "inset 0 -2px 0 var(--select)"
   },
   ".cm-step-failed": {
-    backgroundImage:
-      "repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px), repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 5px)",
-    backgroundRepeat: "no-repeat",
-    backgroundSize: "100% 5px",
-    backgroundPosition: "bottom",
+    backgroundColor: "color-mix(in oklch, var(--destructive) 10%, transparent)",
     boxShadow: "inset 0 -2px 0 var(--destructive)"
   },
   // under the dialog layer (z-50): a lingering completion never paints over a sheet

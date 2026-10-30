@@ -109,13 +109,19 @@ fakeBackend([
           confirmation: {
             destructive: false,
             reason: "Conexão de produção: confira as alterações antes de salvar",
-            statements: ["UPDATE \"public\".\"users\" SET … WHERE \"id\" = '2'"]
+            statements: ["UPDATE \"public\".\"users\" SET … WHERE \"id\" = '2'"],
+            marks: []
           }
         };
   },
   // the first unconfirmed run asks, so the confirmation can be reviewed
   run_script: args => {
     const { confirmed, sql } = args as { confirmed: boolean; sql: string };
+    // every statement listed, numbered as the backend numbers a script, DELETE/DROP marked
+    const parts = sql
+      .split(";")
+      .map(part => part.trim())
+      .filter(Boolean);
     return confirmed
       ? executed(scriptOf(sql))
       : {
@@ -123,7 +129,15 @@ fakeBackend([
           confirmation: {
             destructive: true,
             reason: "Comando destrutivo: DELETE sem WHERE",
-            statements: [sql.trim().replace(/;$/, "")]
+            statements: parts,
+            marks:
+              parts.length > 1
+                ? parts.map((part, index) => ({
+                    number: index + 1,
+                    of: parts.length,
+                    destructive: /^(DELETE|DROP|TRUNCATE)\b/i.test(part)
+                  }))
+                : []
           }
         };
   }

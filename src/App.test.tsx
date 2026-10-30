@@ -216,10 +216,12 @@ test("a pasted connection URL fills the fields and leaves the input empty", asyn
   expect(screen.getByLabelText("Banco de dados")).toHaveValue("shop");
   expect(screen.getByLabelText("Usuário")).toHaveValue("root");
   expect(screen.getByLabelText("Senha")).toHaveValue("s3nha");
-  expect(url).toHaveValue("");
+  // kept (masked) so Mostrar can check what was pasted
+  expect(url).toHaveValue("mysql://root:s3nha@db.local:3307/shop");
   expect(screen.getByText(/Campos preenchidos a partir da URL/)).toBeInTheDocument();
 
   // typed, it waits for Enter: "postgres://d" already parses and must not fill early
+  await user.clear(url);
   await user.type(url, "postgres://dbhost/app");
   expect(screen.getByLabelText("Host")).toHaveValue("db.local");
   await user.keyboard("{Enter}");

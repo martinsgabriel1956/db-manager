@@ -252,6 +252,11 @@ export type Confirmation = {
 	 *  asks for more than a click before these run
 	 */
 	destructive: boolean,
+	/**
+	 *  in a script, one per statement listed: where it sits and whether it is the destructive
+	 *  one, so the sheet numbers them as the results list does. Empty outside scripts
+	 */
+	marks: StatementMark[],
 };
 
 /**
@@ -784,6 +789,13 @@ export type SshConfig = {
 	port: number | null,
 	user: string | null,
 	identityFile: string | null,
+};
+
+/**  A statement's place in its script, 1-based like the results list ("3 de 4"). */
+export type StatementMark = {
+	number: number,
+	of: number,
+	destructive: boolean,
 };
 
 /**  Result of one statement of a script. */

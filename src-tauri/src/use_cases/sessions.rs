@@ -211,6 +211,7 @@ pub async fn kill(
     if !confirmed && (is_redis || connection.environment == Environment::Prod) {
         return Ok(KillResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: if is_redis {
                     "Comando destrutivo: derruba conexões de clientes".to_string()
                 } else {

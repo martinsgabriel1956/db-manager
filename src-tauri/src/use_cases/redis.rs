@@ -478,6 +478,7 @@ pub async fn edit_key(
     if connection.environment == Environment::Prod && !confirmed {
         return Ok(KeyEditResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: PROD_REASON.to_string(),
                 statements,
                 destructive: false,
@@ -576,6 +577,7 @@ async fn execute(
     {
         return Ok(CommandResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason,
                 statements: vec![statement],
                 destructive,
@@ -671,6 +673,7 @@ pub async fn monitor(
     if connection.environment == Environment::Prod && !confirmed {
         return Ok(LiveStart::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: "Conexão de produção: MONITOR envia a este app cada comando do \
                          servidor e pesa no desempenho dele enquanto roda"
                     .to_string(),

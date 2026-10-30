@@ -144,6 +144,7 @@ pub async fn restore(
     if !confirmed {
         return Ok(RestoreResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: format!(
                     "Restaurar {file} em {}: {effect}",
                     database(config).unwrap_or_default()

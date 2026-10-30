@@ -84,6 +84,7 @@ pub async fn import_csv(
         let rows = count(total, "linha", "linhas");
         return Ok(ImportResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: format!(
                     "Importar {rows} de {} em {}.{}, numa transação, em lotes de até \
                      {BATCH_ROWS} linhas: um erro em qualquer linha desfaz tudo. \
@@ -326,6 +327,7 @@ pub async fn import_documents(
         };
         return Ok(ImportResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: format!(
                     "Importar {} de {} em {target}, com insertMany em lotes de até \
                      {DOCUMENT_BATCH}. Sem transação: se um documento for recusado, os \

@@ -461,6 +461,7 @@ pub async fn explain(
         if let Some(confirmation) = confirmation {
             return Ok(ExplainResponse::NeedsConfirmation {
                 confirmation: Confirmation {
+                    marks: Vec::new(),
                     statements: vec![explain_sql],
                     ..confirmation
                 },
@@ -565,6 +566,7 @@ pub async fn apply_changes(
     if connection.environment == Environment::Prod && !confirmed {
         return Ok(ApplyResponse::NeedsConfirmation {
             confirmation: Confirmation {
+                marks: Vec::new(),
                 reason: "Conexão de produção: confira as alterações antes de salvar".to_string(),
                 statements,
                 destructive: false,
@@ -615,6 +617,7 @@ pub async fn alter_schema(
         let confirmation =
             guard::confirmation_for(&statements, dialect, connection.environment, false).unwrap_or(
                 Confirmation {
+                    marks: Vec::new(),
                     reason: "Alteração de estrutura: confira o comando antes de executar"
                         .to_string(),
                     statements,

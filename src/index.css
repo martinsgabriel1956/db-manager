@@ -23,7 +23,13 @@
   --font-sans: "Hanken Grotesk Variable", sans-serif;
   --font-mono: "Spline Sans Mono Variable", ui-monospace, monospace;
   --color-z0: var(--z0);
+  --color-z1: var(--z1);
+  --color-z2: var(--z2);
+  --color-z3: var(--z3);
+  --color-z4: var(--z4);
   --color-z5: var(--z5);
+  --color-z6: var(--z6);
+  --color-z7: var(--z7);
   --color-z8: var(--z8);
   --color-z9: var(--z9);
   --color-z10: var(--z10);
@@ -265,6 +271,41 @@
   }
   ::selection {
     background-color: color-mix(in oklch, var(--select) 28%, transparent);
+  }
+  /* the native checkbox is rounded and 13px: square, 16px, outlined like a field (Z6, 3:1),
+     filled in blue when checked like every other accent-color control */
+  input[type="checkbox"] {
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 1px solid var(--input);
+    background-color: var(--background);
+  }
+  input[type="checkbox"]::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    background-color: var(--select-foreground);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    visibility: hidden;
+  }
+  input[type="checkbox"]:checked {
+    border-color: var(--select);
+    background-color: var(--select);
+  }
+  input[type="checkbox"]:checked::before {
+    visibility: visible;
+  }
+  input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  input[type="checkbox"]:disabled {
+    opacity: 0.5;
   }
 }
 

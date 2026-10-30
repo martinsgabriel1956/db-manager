@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type FocusEvent } from "react";
 import type { Confirmation } from "@/bindings";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,6 +85,7 @@ export function ConfirmDialog({
               {/* focusable so a long list scrolls from the keyboard */}
               <table
                 tabIndex={0}
+                onFocus={reveal}
                 aria-label="Valores alterados"
                 className="mt-1.5 block max-h-36 w-full overflow-auto font-mono text-xs outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
               >
@@ -114,13 +115,36 @@ export function ConfirmDialog({
           {/* focusable so a long command scrolls from the keyboard: WebKitGTK never focuses scrollers */}
           <pre
             tabIndex={0}
+            onFocus={reveal}
             role="region"
             aria-label="Comando que será executado"
             className="mx-5 my-4 max-h-80 overflow-auto border border-foreground bg-background px-3.5 py-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--ring)] focus-visible:border-ring"
           >
-            {confirmation?.statements
-              .map(statement => `${statement}${statementSuffix}`)
-              .join("\n\n")}
+            {confirmation && confirmation.marks?.length === confirmation.statements.length
+              ? // a script: each command with its place, as the results list numbers it, and
+                // the destructive one named in words and ruled in red. The marks are not
+                // selectable, so what is copied is the command alone
+                confirmation.statements.map((statement, index) => {
+                  const mark = confirmation.marks[index];
+                  return (
+                    <span key={index} className="block not-first:mt-3">
+                      <span className="mr-2 legend text-muted-foreground select-none">
+                        {mark.number} de {mark.of}
+                        <span className="sr-only">, </span>
+                      </span>
+                      {mark.destructive && (
+                        <span className="mr-2 legend text-destructive shadow-[inset_0_-2px_0_var(--destructive)] select-none">
+                          Destrutivo
+                          <span className="sr-only">, </span>
+                        </span>
+                      )}
+                      {`${statement}${statementSuffix}`}
+                    </span>
+                  );
+                })
+              : confirmation?.statements
+                  .map(statement => `${statement}${statementSuffix}`)
+                  .join("\n\n")}
           </pre>
           {isProd && <ProdStrip>este comando roda no banco de produção</ProdStrip>}
           {mustType && (
@@ -146,7 +170,14 @@ export function ConfirmDialog({
             </div>
           )}
         </div>
-        <SheetFooter hint="Confira o comando exato antes de confirmar.">
+        {/* the footer says what the disabled button waits for, not the title again */}
+        <SheetFooter
+          hint={
+            mustType && !armed
+              ? "Digite o nome da conexão acima para liberar o botão."
+              : "Nada roda no banco antes de você confirmar."
+          }
+        >
           <Button variant="outline" onClick={onCancel}>
             Cancelar
           </Button>
@@ -157,6 +188,15 @@ export function ConfirmDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * Radix focuses without scrolling: in a short window (the minimum at 200% zoom) the command
+ * would hold the focus below the record's fold. Focused, it comes into view, also when Tab
+ * wraps back to it.
+ */
+function reveal(event: FocusEvent<HTMLElement>) {
+  event.currentTarget.scrollIntoView?.({ block: "nearest" });
 }
 
 /** NULL reads as the marker it is, never as the text "NULL" */

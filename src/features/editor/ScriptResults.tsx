@@ -63,6 +63,19 @@ function label(text: string, max: number): string {
   return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
 }
 
+/**
+ * The backend words a script failure "comando N de M: <driver>. <what ran before>": the
+ * position is said in the headline already, and what ran before (committed or not) belongs
+ * in it too, in our words, not at the end of the driver's English.
+ */
+export function splitFailure(message: string): { driver: string; before: string | null } {
+  const match =
+    /^comando \d+ de \d+: ([\s\S]*)\. ((?:Nada rodou|O comando anterior|Os \d+ comandos anteriores)[\s\S]*)$/.exec(
+      message
+    );
+  return match ? { driver: match[1], before: match[2] } : { driver: message, before: null };
+}
+
 function lines(count: number): string {
   return `${count} ${count === 1 ? "linha" : "linhas"}`;
 }
@@ -106,8 +119,14 @@ export function ScriptResults({
     .filter(({ step }) => step.result?.kind === "rows");
   const lastTab = tabs[tabs.length - 1];
   const failedAt = steps.findIndex(step => step.status === "failed" || step.status === "cancelled");
+  // rows the script changed: a SET or a BEGIN changes none and is not called a write
+  const affected = steps.reduce(
+    (sum, step) => sum + (step.result?.kind === "command" ? step.result.rowsAffected : 0),
+    0
+  );
+  // a script that changed rows opens on them, the part that went through the confirmation
   const [tab, setTab] = useState(() =>
-    outcome.error || !lastTab ? RUN_TAB : String(lastTab.index)
+    outcome.error || !lastTab || affected > 0 ? RUN_TAB : String(lastTab.index)
   );
   // the statement shown in the editor, and whether it was still there to mark
   const [picked, setPicked] = useState<{ index: number; marked: boolean } | null>(null);
@@ -169,10 +188,26 @@ export function ScriptResults({
     onRunStatement(from, to);
   }
 
+  /**
+   * Only after the script stopped, from where it stopped or later: after a run that went
+   * through, "the rest" would run again writes that already went to the database.
+   */
+  function canRunRest(index: number) {
+    return !!outcome.error && failedAt >= 0 && index >= failedAt && index < total - 1;
+  }
+
+  /** after a fix, the way on: this statement and everything after it, not the ones that ran */
+  function runRest(index: number) {
+    onRunStatement(steps[index].span[0], steps[total - 1].span[1]);
+  }
+
   const text = (step: ScriptStep) => sql.slice(step.span[0], step.span[1]);
+  const writesText =
+    affected > 0 ? ` · ${affected} ${affected === 1 ? "linha afetada" : "linhas afetadas"}` : "";
+  const failure = outcome.error ? splitFailure(errorMessage(outcome.error)) : null;
   const scriptText = outcome.error
-    ? `Parou no comando ${failedAt + 1} de ${total} · ${outcome.durationMs} ms`
-    : `${total} comandos · ${outcome.durationMs} ms`;
+    ? `Parou no comando ${failedAt + 1} de ${total}${writesText} · ${outcome.durationMs} ms`
+    : `${total} comandos${writesText} · ${outcome.durationMs} ms`;
   const pickedHasTab = picked !== null && steps[picked.index].result?.kind === "rows";
 
   return (
@@ -196,30 +231,46 @@ export function ScriptResults({
               {/* spaces outside the sr-only spans: name computation trims inside them */}
               <span className="sr-only">comando</span>{" "}
               <span className="tabular-nums">{index + 1}</span>{" "}
-              <span className="sr-only">de {total}</span> · {label(text(step), 40)}
+              <span className="sr-only">de {total}</span> ·{" "}
+              {/* the statement is data: mono, like the list in Execução */}
+              <span className="font-mono text-xs">{label(text(step), 40)}</span>
             </TabsTrigger>
           ))}
         </TabsList>
         {/* the tabs come first: the hint gives way (the Legenda has it, and why numbers skip) */}
-        <span className="ml-auto hidden min-w-0 truncate text-xs text-muted-foreground min-[1100px]:inline">
-          Alt+PageDown/PageUp troca de resultado
+        <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground max-[767px]:hidden">
+          <span className="min-[1100px]:hidden">Alt+PgDn/PgUp</span>
+          <span className="hidden min-[1100px]:inline">Alt+PageDown/PageUp troca de resultado</span>
         </span>
       </div>
       <TabsContent value={RUN_TAB} className="min-h-0 flex-1">
-        <div className="flex h-full flex-col">
+        {/* in a short panel the error and the notice would leave the list no height: below
+            the list's floor of four rows, the whole tab scrolls */}
+        <div className="flex h-full flex-col overflow-y-auto">
           <div
             role="status"
-            className={`@container flex min-w-0 items-center gap-2 border-b bg-muted px-3 py-1 text-xs ${muted ? "text-muted-foreground" : ""}`}
+            className={`@container flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted px-3 py-1 text-xs ${muted ? "text-muted-foreground" : ""}`}
           >
             {receipt(scriptText)}
           </div>
           {outcome.error && (
-            <p
+            // the same error block as a single statement's: the headline in our words, the
+            // driver's own below as data
+            <div
               role="alert"
-              className="border-b px-3 py-1.5 font-mono text-sm whitespace-pre-wrap text-destructive"
+              className="grid gap-1 border-b border-foreground bg-background px-3 py-2"
             >
-              {errorMessage(outcome.error)}
-            </p>
+              <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="legend text-[0.75rem] text-destructive">Erro</span>
+                <span>
+                  O script parou no comando {failedAt + 1} de {total}.
+                  {failure?.before && ` ${failure.before}.`}
+                </span>
+              </p>
+              <p className="font-mono text-[11px] break-words whitespace-pre-wrap">
+                {failure?.driver}
+              </p>
+            </div>
           )}
           {picked && !pickedHasTab && (
             <StepNotice
@@ -227,6 +278,7 @@ export function ScriptResults({
               total={total}
               marked={picked.marked}
               onRun={() => runAlone(picked.index)}
+              onRunRest={canRunRest(picked.index) ? () => runRest(picked.index) : undefined}
             />
           )}
           <StepList steps={steps} text={text} picked={picked?.index ?? null} onPick={pick} />
@@ -266,12 +318,8 @@ export function ScriptResults({
                     index={index}
                     total={total}
                     marked={isPicked ? picked.marked : null}
-                    truncated={
-                      truncated
-                        ? `Mostrando as primeiras ${result.batch.rows.length} de ${step.rowCount ?? "?"} linhas.`
-                        : null
-                    }
                     onRun={() => runAlone(index)}
+                    onRunRest={canRunRest(index) ? () => runRest(index) : undefined}
                   />
                 ) : null
               }
@@ -299,12 +347,16 @@ type StepNoticeProps = {
   total: number;
   /** whether the editor shows it; null when it was not picked */
   marked: boolean | null;
-  truncated?: string | null;
   onRun: () => void;
+  /** absent on the last statement, where it would be the same as running it alone */
+  onRunRest?: () => void;
 };
 
-/** What a picked or cut-short statement has to say, and the one way to see all of it: run it alone. */
-function StepNotice({ index, total, marked, truncated = null, onRun }: StepNoticeProps) {
+/**
+ * What a picked or cut-short statement has to say, and the ways on from it: run it alone, or
+ * from it to the end (after a failure, without re-running what already went through).
+ */
+function StepNotice({ index, total, marked, onRun, onRunRest }: StepNoticeProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-1 text-sm text-muted-foreground">
       {marked !== null && (
@@ -315,10 +367,14 @@ function StepNotice({ index, total, marked, truncated = null, onRun }: StepNotic
             : ": o editor mudou desde a execução e não o mostra mais."}
         </span>
       )}
-      {truncated && <span>{truncated}</span>}
       <Button size="xs" variant="outline" onClick={onRun}>
         <Play /> Rodar só este comando
       </Button>
+      {onRunRest && (
+        <Button size="xs" variant="outline" onClick={onRunRest}>
+          <Play /> Rodar daqui até o fim
+        </Button>
+      )}
     </div>
   );
 }
@@ -341,7 +397,11 @@ function StepList({ steps, text, picked, onPick }: StepListProps) {
     count: steps.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
-    overscan: 10
+    overscan: 10,
+    // the ruled header sits in the same scroller (sticky), so the columns scroll sideways
+    // together in a narrow window; the rows start below it and never hide under it
+    paddingStart: ROW_HEIGHT,
+    scrollPaddingStart: ROW_HEIGHT
   });
   const total = steps.length;
   const items = virtualizer.getVirtualItems();
@@ -371,23 +431,23 @@ function StepList({ steps, text, picked, onPick }: StepListProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        aria-hidden
-        className={`grid ${COLUMNS} h-7 shrink-0 items-center gap-2 border-b border-foreground bg-muted px-3 legend text-muted-foreground`}
-      >
-        <span>Nº</span>
-        <span>Comando</span>
-        <span>Status</span>
-        <span className="text-right">Linhas</span>
-        <span className="text-right">Tempo</span>
-      </div>
+    <div className="flex min-h-36 flex-1 flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+        <div
+          aria-hidden
+          className={`sticky top-0 z-10 grid ${COLUMNS} h-7 min-w-[30rem] items-center gap-2 border-b border-foreground bg-muted px-3 legend text-muted-foreground`}
+        >
+          <span>Nº</span>
+          <span>Comando</span>
+          <span>Status</span>
+          <span className="text-right">Linhas</span>
+          <span className="text-right">Tempo</span>
+        </div>
         <ol
           aria-label="Comandos do script"
           onKeyDown={onKeyDown}
-          className="relative"
-          style={{ height: virtualizer.getTotalSize() }}
+          className="relative min-w-[30rem]"
+          style={{ height: virtualizer.getTotalSize() - ROW_HEIGHT }}
         >
           {items.map(item => {
             const step = steps[item.index];
@@ -397,7 +457,7 @@ function StepList({ steps, text, picked, onPick }: StepListProps) {
               <li
                 key={item.key}
                 className="absolute inset-x-0"
-                style={{ top: item.start, height: ROW_HEIGHT }}
+                style={{ top: item.start - ROW_HEIGHT, height: ROW_HEIGHT }}
               >
                 <button
                   type="button"
@@ -425,14 +485,18 @@ function StepList({ steps, text, picked, onPick }: StepListProps) {
                     {label(text(step), 200)}
                     <span className="sr-only">,</span>
                   </span>
-                  {/* texture before color: crossed band where it stopped, dotted outline for held back */}
+                  {/* the word first, then a rule: red under where it stopped, as in the editor;
+                      what never ran is just quieter. The textures keep their grid meanings */}
                   <span className="flex">
                     <span
                       className={cn(
-                        stopped && "cross-hatch-band pb-1 font-semibold text-destructive",
-                        step.status === "notRun" &&
-                          "border border-dotted border-current px-1 text-xs leading-4",
-                        step.status === "done" && "text-muted-foreground"
+                        stopped &&
+                          "font-semibold text-destructive shadow-[inset_0_-2px_0_var(--destructive)]",
+                        // a write that went through stays in ink: it changed the database
+                        step.status !== "failed" &&
+                          step.status !== "cancelled" &&
+                          step.result?.kind !== "command" &&
+                          "text-muted-foreground"
                       )}
                     >
                       {STATUS[step.status]}

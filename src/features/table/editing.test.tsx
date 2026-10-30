@@ -168,6 +168,24 @@ test("the value panel edits JSON as stored, formats only on request and blocks i
   ]);
 });
 
+test("typing invalid JSON in a json cell stages nothing and says where it breaks", async () => {
+  fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  await user.dblClick(cell("NULL"));
+  const input = screen.getByRole("textbox", { name: /^Editar / });
+  await user.type(input, '{{"a": }{Enter}');
+
+  // the text stays in the cell, nothing hatches, Salvar has no Δ
+  expect(input).toBeInTheDocument();
+  expect(screen.getByText(/^JSON inválido na linha 1, coluna 7/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Salvar \(/ })).not.toBeInTheDocument();
+
+  await user.clear(input);
+  await user.type(input, '{{"a": 1}{Enter}');
+  expect(cell('{"a": 1}')).toHaveAttribute("data-edited", "true");
+});
+
 test("undoing an edit of a NULL JSON cell puts the panel back on NULL, not on invalid JSON", async () => {
   fakeBackend([devPostgres]);
   const user = await openUsers(devPostgres);
@@ -431,7 +449,7 @@ test("closing a tab with staged edits asks first and keeps them on Voltar", asyn
   expect(cell("20")).toHaveAttribute("data-edited", "true");
   await waitFor(() => expect(screen.getByRole("tab", { name: /· users/ })).toHaveFocus());
 
-  await user.click(screen.getByRole("button", { name: "Fechar aba Postgres dev · users" }));
+  await user.click(screen.getByLabelText("Fechar aba Postgres dev · users"));
   await user.click(
     within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar e fechar" })
   );
@@ -466,6 +484,18 @@ test("the sort chip names the sorted column and clears it", async () => {
   expect(screen.queryByText("Ordenado")).not.toBeInTheDocument();
   const browses = callsTo(calls, "browse_table") as { request: { sort: unknown } }[];
   expect(browses.at(-1)?.request.sort).toBeNull();
+});
+
+test("Alt+O sorts by the selected cell's column; the headers are not Tab stops", async () => {
+  const calls = fakeBackend([devPostgres]);
+  const user = await openUsers(devPostgres);
+
+  expect(screen.getByRole("button", { name: /^id/ })).toHaveAttribute("tabindex", "-1");
+  await user.click(cell("2"));
+  await user.keyboard("{Alt>}o{/Alt}");
+  expect(screen.getByText("Ordenado")).toBeInTheDocument();
+  const browses = callsTo(calls, "browse_table") as { request: { sort: unknown } }[];
+  expect(browses.at(-1)?.request.sort).toMatchObject({ column: "id" });
 });
 
 test("opening the connection form keeps staged edits in the hidden tabs", async () => {
