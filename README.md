@@ -56,6 +56,8 @@ O comando pede uma senha e grava `~/.tauri/ordo.key` (privada) e `~/.tauri/ordo.
 
 Sem o secret, o workflow falha antes de compilar.
 
+Para testar os pacotes dos três sistemas sem publicar nada, rode o workflow à mão: `gh workflow run Release --ref <branch>` (ou "Run workflow" na aba Actions). Ele só compila, sem tag, assinatura ou `latest.json`, e os pacotes ficam 7 dias como artefatos da execução (`gh run download <id>`).
+
 Local, sem publicar e sem chave: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
 
 ### AUR

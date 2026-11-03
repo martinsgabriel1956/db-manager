@@ -2,9 +2,12 @@ name: Release
 
 # a version tag builds the bundles for Linux, Windows and macOS and publishes them on GitHub Releases:
 #   bump package.json + src-tauri/tauri.conf.json, then `git tag v0.2.0 && git push --tags`
+# a manual run only builds: the bundles stay as artifacts of the run, with no release,
+# tag, signature or latest.json (`gh workflow run Release --ref <branch>`)
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   # create the release and upload its files
@@ -19,6 +22,7 @@ jobs:
 
       # a v0.2.0 tag over a 0.1.0 build would publish files named after the wrong version
       - name: Tag matches the app version
+        if: github.event_name == 'push'
         run: |
           tag="${GITHUB_REF_NAME#v}"
           app=$(jq -r .version src-tauri/tauri.conf.json)
@@ -30,6 +34,7 @@ jobs:
 
       # unsigned bundles would publish a latest.json no install can verify: stop before compiling
       - name: Signing key is set
+        if: github.event_name == 'push'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
@@ -56,6 +61,10 @@ jobs:
             bundles: app,dmg
             args: --target universal-apple-darwin
     runs-on: ${{ matrix.os }}
+    env:
+      # the updater artifacts need the signing key: only the tagged release makes them
+      UPDATER_ARGS: >-
+        ${{ github.event_name == 'push' && '--config {"bundle":{"createUpdaterArtifacts":true}}' || '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -88,20 +97,36 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
+          # no tag on a manual run: the action builds and publishes nothing
+          tagName: ${{ github.event_name == 'push' && github.ref_name || '' }}
           # __VERSION__ is filled by the action from tauri.conf.json: "Ordo 0.2.0", like v0.1.0
           releaseName: Ordo __VERSION__
           generateReleaseNotes: true
           # Updater artifacts (the .sig files) only here, so a local `pnpm tauri build` needs no key
-          args: '${{ matrix.args }} --bundles ${{ matrix.bundles }} --config {"bundle":{"createUpdaterArtifacts":true}}'
+          args: ${{ matrix.args }} --bundles ${{ matrix.bundles }} ${{ env.UPDATER_ARGS }}
           # latest.json: what the app's updater reads (plugins.updater.endpoints in tauri.conf.json)
           uploadUpdaterJson: true
+
+      - name: Bundles of a manual run
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ordo-${{ runner.os }}
+          # macOS builds under target/universal-apple-darwin/; only the .dmg, the .app is inside it
+          path: |
+            src-tauri/target/**/release/bundle/**/*.deb
+            src-tauri/target/**/release/bundle/**/*.rpm
+            src-tauri/target/**/release/bundle/**/*.AppImage
+            src-tauri/target/**/release/bundle/**/*.exe
+            src-tauri/target/**/release/bundle/**/*.dmg
+          if-no-files-found: error
+          retention-days: 7
 
   # checksums of what people download by hand; the .sig files cover the updater
   checksums:
     needs: build
     # with one platform failed, the others still get their checksums
-    if: ${{ !cancelled() }}
+    if: ${{ github.event_name == 'push' && !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
       - name: SHA256SUMS
@@ -111,6 +136,6 @@ jobs:
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir pkgs \
             --pattern '*.deb' --pattern '*.rpm' --pattern '*.AppImage' --pattern '*.exe' --pattern '*.dmg'
           cd pkgs
-          sha256sum * > SHA256SUMS
+          sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
           gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
