@@ -1,6 +1,6 @@
 name: Release
 
-# a version tag builds the Linux bundles and publishes them on GitHub Releases:
+# a version tag builds the bundles for Linux, Windows and macOS and publishes them on GitHub Releases:
 #   bump package.json + src-tauri/tauri.conf.json, then `git tag v0.2.0 && git push --tags`
 on:
   push:
@@ -11,7 +11,8 @@ permissions:
   contents: write
 
 jobs:
-  linux:
+  # cheap checks once, before three platforms start compiling
+  check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -37,12 +38,36 @@ jobs:
             exit 1
           fi
 
+  build:
+    needs: check
+    strategy:
+      # one platform failing still publishes the others
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            bundles: deb,appimage,rpm
+            args: ""
+          - os: windows-latest
+            bundles: nsis
+            args: ""
+          # one .app for Apple Silicon and Intel
+          - os: macos-latest
+            bundles: app,dmg
+            args: --target universal-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
       - name: Tauri system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -55,6 +80,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      # each job adds its files and its platforms to the same release and latest.json
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,18 +92,25 @@ jobs:
           # __VERSION__ is filled by the action from tauri.conf.json: "Ordo 0.2.0", like v0.1.0
           releaseName: Ordo __VERSION__
           generateReleaseNotes: true
-          # only what docs/decisions.md ships: no rpm. Updater artifacts (the .sig files) only
-          # here, so a local `pnpm tauri build` needs no key
-          args: '--bundles deb,appimage --config {"bundle":{"createUpdaterArtifacts":true}}'
+          # Updater artifacts (the .sig files) only here, so a local `pnpm tauri build` needs no key
+          args: '${{ matrix.args }} --bundles ${{ matrix.bundles }} --config {"bundle":{"createUpdaterArtifacts":true}}'
           # latest.json: what the app's updater reads (plugins.updater.endpoints in tauri.conf.json)
           uploadUpdaterJson: true
 
-      # checksums of what people download by hand; the .sig files cover the updater
+  # checksums of what people download by hand; the .sig files cover the updater
+  checksums:
+    needs: build
+    # with one platform failed, the others still get their checksums
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
       - name: SHA256SUMS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd src-tauri/target/release/bundle
-          sha256sum deb/*.deb appimage/*.AppImage | sed 's#  .*/#  #' > SHA256SUMS
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir pkgs \
+            --pattern '*.deb' --pattern '*.rpm' --pattern '*.AppImage' --pattern '*.exe' --pattern '*.dmg'
+          cd pkgs
+          sha256sum * > SHA256SUMS
           cat SHA256SUMS
-          gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"

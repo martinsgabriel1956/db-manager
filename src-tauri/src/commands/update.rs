@@ -71,7 +71,17 @@ async fn find_update(app: &AppHandle) -> Result<Option<tauri_plugin_updater::Upd
 }
 
 fn installable(bundle: Option<BundleType>) -> bool {
-    matches!(bundle, Some(BundleType::AppImage | BundleType::Deb))
+    matches!(
+        bundle,
+        Some(
+            BundleType::AppImage
+                | BundleType::Deb
+                | BundleType::Rpm
+                | BundleType::Nsis
+                | BundleType::Msi
+                | BundleType::App
+        )
+    )
 }
 
 /// Offline at launch is not worth a dialog, but it is written down: stderr ends in the
@@ -86,11 +96,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_appimage_and_deb_install_themselves() {
+    fn only_released_bundles_install_themselves() {
         assert!(installable(Some(BundleType::AppImage)));
         assert!(installable(Some(BundleType::Deb)));
-        // rpm is not shipped (docs/decisions.md), and a bare binary has no bundle to replace
-        assert!(!installable(Some(BundleType::Rpm)));
+        assert!(installable(Some(BundleType::Rpm)));
+        assert!(installable(Some(BundleType::Nsis)));
+        assert!(installable(Some(BundleType::App)));
+        // a bare binary (the AUR package, cargo build) has no bundle to replace: pacman updates it
         assert!(!installable(None));
     }
 }

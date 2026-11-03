@@ -30,7 +30,7 @@ cargo llvm-cov --ignore-filename-regex '(main|lib)\.rs$' --fail-under-lines 70
 
 ## Release
 
-Uma tag `v*` dispara o workflow [Release](.github/workflows/release.yml), que gera o `.deb` e o AppImage e publica no GitHub Releases. A versão da tag precisa bater com a de `package.json` e `src-tauri/tauri.conf.json`; senão o workflow falha antes de compilar.
+Uma tag `v*` dispara o workflow [Release](.github/workflows/release.yml), que gera o `.deb`, o `.rpm` e o AppImage (Linux), o instalador `.exe` (Windows) e o `.dmg` (macOS, universal) e publica no GitHub Releases. Windows e macOS saem sem assinatura de código: o SmartScreen avisa no Windows, e no macOS é preciso abrir pela primeira vez com o botão direito → Abrir. A versão da tag precisa bater com a de `package.json` e `src-tauri/tauri.conf.json`; senão o workflow falha antes de compilar.
 
 ```bash
 # depois de subir a versão nos dois arquivos e fazer o merge na main
@@ -38,7 +38,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-O release leva, além do `.deb` e do AppImage, um `.sig` de cada (assinatura do updater), o `latest.json` que o app consulta ao abrir e em "Procurar atualizações" (bandeja), e um `SHA256SUMS` dos pacotes (`sha256sum -c SHA256SUMS --ignore-missing` confere o que você baixou). O app atualiza sozinho o AppImage e o `.deb` (este pede a senha de administrador pelo `pkexec`), sempre depois de você confirmar.
+O release leva, além dos pacotes, um `.sig` de cada (assinatura do updater), o `latest.json` que o app consulta ao abrir e em "Procurar atualizações" (bandeja), e um `SHA256SUMS` dos pacotes (`sha256sum -c SHA256SUMS --ignore-missing` confere o que você baixou). O app atualiza sozinho todos esses formatos (o `.deb` e o `.rpm` pedem a senha de administrador pelo `pkexec`), sempre depois de você confirmar.
 
 ### Chave de assinatura
 
@@ -57,6 +57,10 @@ O comando pede uma senha e grava `~/.tauri/ordo.key` (privada) e `~/.tauri/ordo.
 Sem o secret, o workflow falha antes de compilar.
 
 Local, sem publicar e sem chave: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
+
+### AUR
+
+O pacote `ordo-db` ([packaging/aur/PKGBUILD](packaging/aur/PKGBUILD)) compila do código da tag. A cada release, atualize `pkgver` e `sha256sums` (`updpkgsums`), gere o `.SRCINFO` com `makepkg --printsrcinfo > .SRCINFO` e faça o push dos dois arquivos no repositório `ssh://aur@aur.archlinux.org/ordo-db.git`.
 
 ## Bancos de demonstração
 
