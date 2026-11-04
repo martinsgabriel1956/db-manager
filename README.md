@@ -1,17 +1,109 @@
 # Ordo
 
-Cliente desktop (Tauri + React + Rust) para Postgres, MySQL, SQLite, MongoDB e Redis.
-Decisões de design e marcos: [docs/decisions.md](docs/decisions.md).
-O diagrama ER é desenhado com [React Flow](https://reactflow.dev) (licença MIT); o crédito fica aqui, não no canto do diagrama.
+Cliente desktop para Postgres, MySQL, SQLite, MongoDB e Redis, feito para não deixar você rodar sem querer um comando destrutivo em produção.
 
-## Pré-requisitos
+![Em uma conexão de produção, a janela fica marcada em vermelho e um DELETE sem WHERE só roda depois de conferir o comando e digitar o nome da conexão](docs/screenshot.png)
+
+<sub>Dados de demonstração. A interface é em português do Brasil.</sub>
+
+## Por que o Ordo
+
+- **O ambiente nunca é ambíguo.** Cada conexão tem uma etiqueta (`local`, `dev`, `staging`, `prod`), e uma conexão `prod` marca a janela inteira.
+- **O comando exato antes do clique.** Em `prod`, toda escrita pede confirmação mostrando o que vai rodar. Comandos destrutivos são detectados por um parser de SQL, não por regex, e também confirmam fora de `prod`.
+- **Somente leitura de verdade.** Quem impõe é o próprio banco (`default_transaction_read_only` no Postgres, `READ ONLY` no MySQL, `mode=ro` no SQLite); no MongoDB e no Redis, uma lista de comandos permitidos no backend.
+- **O valor gravado, não uma aproximação.** Inteiros de 64 bits e decimais não passam por conversão com perda, e um tipo que o app não conhece aparece sem edição, em vez de ser alterado.
+- **Cada modelo de dados com a sua interface.** Grade para SQL, documentos para MongoDB e editor por tipo para Redis, num só app em Tauri + Rust, sem JVM.
+
+## O que dá para fazer
+
+| Engine                      | Recursos                                                                                                                                                                                                                                                   |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Postgres, MySQL, SQLite** | Navegar tabelas com filtro e ordenação, editar células e salvar numa transação, seguir chaves estrangeiras, editor com autocomplete, parâmetros `:nome` e EXPLAIN visual, editar o schema vendo o DDL, diagrama ER, comparar schemas, importar CSV, backup |
+| **MongoDB**                 | CRUD de documentos, agregação em JSON ou em blocos de estágios, schema por amostra, índices, change streams, importar JSON e NDJSON                                                                                                                        |
+| **Redis**                   | Standalone, Cluster e Sentinel, navegação por `SCAN`, edição por tipo (RedisJSON incluso), TTL, console, pub/sub, `MONITOR`, exportar chaves                                                                                                               |
+
+Em todas: histórico pesquisável com favoritas, exportação em streaming (CSV, NDJSON ou JSON, conforme a engine) e paleta de busca (Ctrl+K). Túnel SSH, TLS e grupos de conexões valem onde a engine permite. Sessões ativas e encerramento de sessão valem para todas, menos o SQLite.
+
+## Instalação
+
+Baixe o pacote em [Releases](https://github.com/martinsgabriel1956/db-manager/releases/latest):
+
+```bash
+# Debian, Ubuntu e derivados
+sudo apt install ./Ordo_*_amd64.deb
+```
+
+```bash
+# Fedora, RHEL e derivados
+sudo dnf install ./Ordo-*.rpm
+```
+
+```bash
+# Outras distribuições Linux
+chmod +x Ordo_*_amd64.AppImage
+./Ordo_*_amd64.AppImage
+```
+
+No Windows, use o instalador `.exe`; no macOS, o `.dmg` (universal). Eles não têm assinatura de código: o SmartScreen avisa no Windows, e no macOS é preciso abrir pela primeira vez com o botão direito → Abrir. No Arch, o pacote `ordo-db` do AUR ainda não foi publicado.
+
+Para conferir o que baixou, use o `SHA256SUMS` do release:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+### O que mais o app usa
+
+- **Linux:** um Secret Service rodando (GNOME Keyring ou KWallet) para guardar senhas. Sem ele, a conexão é salva, mas a senha não; o app avisa e nunca grava a senha em texto puro.
+- **Túnel SSH:** o `ssh` do sistema.
+- **Backup e restauração:** `pg_dump`, `pg_restore` e `psql` para o Postgres; `mysqldump` e `mysql` para o MySQL. O backup do SQLite não precisa de nada externo.
+
+## Primeiros passos
+
+1. Clique em **Nova conexão**, escolha a engine e preencha os dados.
+2. Escolha o **ambiente**. É ele que define as confirmações, então marque como `prod` o que for produção.
+3. Use **Testar conexão**, que não salva nada, e salve.
+4. Abra a conexão na lateral. **Legenda** explica cada marca e lista os atalhos.
+
+Para experimentar sem apontar para um banco seu, use os [bancos de demonstração](#bancos-de-demonstração).
+
+Fechar a janela deixa o Ordo na bandeja, com conexões e abas intactas. Para sair, use **Sair** na bandeja ou **Ctrl+Q**.
+
+## Atualizações
+
+O app procura uma versão nova ao abrir e em **Procurar atualizações**, na bandeja, e só instala depois de você confirmar. O `.deb` e o `.rpm` pedem a senha de administrador. Quem instala pelo AUR atualiza pelo gerenciador de pacotes; o app só avisa e aponta para a página do release.
+
+## Onde ficam os dados
+
+Metadados das conexões, em `connections.json`:
+
+| Sistema | Pasta                                                      |
+| ------- | ---------------------------------------------------------- |
+| Linux   | `~/.local/share/dev.nemomartins.dbmanager/`                |
+| macOS   | `~/Library/Application Support/dev.nemomartins.dbmanager/` |
+| Windows | `%APPDATA%\dev.nemomartins.dbmanager\`                     |
+
+Senhas: keychain do sistema, serviço `db-manager`, usuário = id da conexão (`<id>:ssh` para a senha do túnel SSH e `<id>:sentinel` para a do Sentinel). O nome antigo do app continua nesses identificadores de propósito: trocá-los apagaria conexões e senhas salvas.
+
+## Problemas de conexão
+
+No formulário, **Testar conexão** conecta com o que está preenchido, sem salvar nada nem tocar no keychain. Os erros mais comuns:
+
+- **Recusou a conexão / timeout:** confira host e porta, e se o banco aceita conexões de fora (`listen_addresses` no Postgres, `bind-address` no MySQL, `bind` no Redis). Para um banco atrás de bastion, marque **Conectar por túnel SSH** e informe host e porta como o bastion os vê.
+- **Túnel SSH:** usa o `ssh` do sistema. Sem senha SSH no formulário, roda em modo não interativo: só chave sem passphrase ou agente (`ssh-add`). Com ela, a mesma senha responde à senha do usuário ou à passphrase da chave; fica no keychain (usuário `<id>:ssh`) e chega ao `ssh` pelo ambiente do processo (`SSH_ASKPASS`, OpenSSH 8.4 ou mais novo), nunca pela linha de comando. Vale o `~/.ssh/config` (aliases, `ProxyJump`, `User`, `IdentityFile`); um host desconhecido entra no `known_hosts` na primeira vez, e uma chave de host trocada é recusada. Se falhar, a mensagem do `ssh` aparece no erro; confira com `ssh -N -L 15432:host:porta bastion` no terminal.
+- **Senha ou usuário recusados:** a senha salva fica no keychain; ao editar, deixe o campo vazio para manter a salva ou digite outra.
+- **TLS:** "Exigir" recusa servidores sem TLS; "Exigir e verificar certificado" precisa do certificado CA quando ele não é público.
+- **MongoDB por URI:** a URI inteira (`mongodb://` ou `mongodb+srv://`) é o segredo; TLS e autenticação vêm dela.
+- **Keychain indisponível (Linux sem Secret Service):** a conexão é salva, mas a senha não; o app avisa e nunca grava a senha em texto puro.
+
+## Desenvolvimento
+
+Pré-requisitos:
 
 - Rust stable (`~/.cargo/bin` no PATH), Node 24, pnpm (`corepack enable`)
-- Linux: `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev` e um Secret Service rodando (GNOME Keyring / KWallet) para guardar senhas
-- Docker (testes de integração dos adapters, a partir do M1)
-- Opcional: `postgresql-client` e `mysql-client` (backup e restauração usam o `pg_dump`/`pg_restore`/`psql` e o `mysqldump`/`mysql` do sistema; sem eles, os testes desses comandos avisam "PULADO", exceto no CI)
-
-## Comandos
+- Linux: `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev`
+- Docker, para os testes de integração dos adapters
+- Opcional: `postgresql-client` e `mysql-client`. Sem eles, os testes de backup e restauração avisam "PULADO", exceto no CI
 
 ```bash
 pnpm install
@@ -26,45 +118,17 @@ cargo test -- --ignored   # toca o keychain real do SO
 cargo llvm-cov --ignore-filename-regex '(main|lib)\.rs$' --fail-under-lines 70
 ```
 
+Para gerar um pacote local, sem publicar e sem chave de assinatura:
+
+```bash
+pnpm tauri build --bundles deb    # sai em src-tauri/target/release/bundle/deb/
+```
+
 `src/bindings.ts` é gerado pelo `tauri-specta` a partir dos tipos Rust. Não edite à mão; o CI falha se estiver desatualizado.
 
-## Release
+Decisões de design e notas de implementação ficam em [docs/decisions.md](docs/decisions.md); como publicar uma versão, em [docs/release.md](docs/release.md).
 
-Uma tag `v*` dispara o workflow [Release](.github/workflows/release.yml), que gera o `.deb`, o `.rpm` e o AppImage (Linux), o instalador `.exe` (Windows) e o `.dmg` (macOS, universal) e publica no GitHub Releases. Windows e macOS saem sem assinatura de código: o SmartScreen avisa no Windows, e no macOS é preciso abrir pela primeira vez com o botão direito → Abrir. A versão da tag precisa bater com a de `package.json` e `src-tauri/tauri.conf.json`; senão o workflow falha antes de compilar.
-
-```bash
-# depois de subir a versão nos dois arquivos e fazer o merge na main
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-O release leva, além dos pacotes, um `.sig` de cada (assinatura do updater), o `latest.json` que o app consulta ao abrir e em "Procurar atualizações" (bandeja), e um `SHA256SUMS` dos pacotes (`sha256sum -c SHA256SUMS --ignore-missing` confere o que você baixou). O app atualiza sozinho todos esses formatos (o `.deb` e o `.rpm` pedem a senha de administrador pelo `pkexec`), sempre depois de você confirmar.
-
-### Chave de assinatura
-
-O updater só instala um pacote assinado pela chave cuja parte pública está em `plugins.updater.pubkey` do `src-tauri/tauri.conf.json`. A chave privada **nunca** entra no repositório: fica fora dele e nos secrets do GitHub.
-
-```bash
-pnpm tauri signer generate -w ~/.tauri/ordo.key
-```
-
-O comando pede uma senha e grava `~/.tauri/ordo.key` (privada) e `~/.tauri/ordo.key.pub` (pública). Depois:
-
-1. Em **Settings → Secrets and variables → Actions** do repositório, crie `TAURI_SIGNING_PRIVATE_KEY` com o conteúdo de `~/.tauri/ordo.key` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` com a senha.
-2. A pública atual (id `90B7C4B184F0ED9A`) já está no `tauri.conf.json`; com um par novo, cole ali o conteúdo de `~/.tauri/ordo.key.pub` e faça o commit.
-3. Guarde a chave privada e a senha num cofre: sem elas, as versões já instaladas não aceitam mais nenhuma atualização (trocar a chave obriga cada usuário a baixar a próxima versão à mão).
-
-Sem o secret, o workflow falha antes de compilar.
-
-Para testar os pacotes dos três sistemas sem publicar nada, rode o workflow à mão: `gh workflow run Release --ref <branch>` (ou "Run workflow" na aba Actions). Ele só compila, sem tag, assinatura ou `latest.json`, e os pacotes ficam 7 dias como artefatos da execução (`gh run download <id>`).
-
-Local, sem publicar e sem chave: `pnpm tauri build --bundles deb` (sai em `src-tauri/target/release/bundle/deb/`).
-
-### AUR
-
-O pacote `ordo-db` ([packaging/aur/PKGBUILD](packaging/aur/PKGBUILD)) compila do código da tag. A cada release, atualize `pkgver` e `sha256sums` (`updpkgsums`), gere o `.SRCINFO` com `makepkg --printsrcinfo > .SRCINFO` e faça o push dos dois arquivos no repositório `ssh://aur@aur.archlinux.org/ordo-db.git`.
-
-## Bancos de demonstração
+### Bancos de demonstração
 
 ```bash
 docker compose -f dev/demo/compose.yml up -d     # Postgres (55432), MySQL (53306), MongoDB (57017) e Redis (56379), populados na 1ª vez
@@ -74,18 +138,6 @@ docker compose -f dev/demo/compose.yml down -v   # para e apaga os dados
 
 Dados e credenciais em [dev/demo](dev/demo) (descartáveis, só local).
 
-## Onde ficam os dados
+## Créditos
 
-- Metadados das conexões: `~/.local/share/dev.nemomartins.dbmanager/connections.json`
-- Senhas: keychain do SO, serviço `db-manager`, usuário = id da conexão (`<id>:ssh` para a senha do túnel SSH)
-
-## Problemas de conexão
-
-No formulário, **Testar conexão** conecta com o que está preenchido, sem salvar nada nem tocar no keychain. Os erros mais comuns:
-
-- **Recusou a conexão / timeout:** confira host e porta, e se o banco aceita conexões de fora (`listen_addresses` no Postgres, `bind-address` no MySQL, `bind` no Redis). Para um banco atrás de bastion, marque **Conectar por túnel SSH** e informe host e porta como o bastion os vê.
-- **Túnel SSH:** usa o `ssh` do sistema. Sem senha SSH no formulário, roda em modo não interativo: só chave sem passphrase ou agente (`ssh-add`). Com ela, a mesma senha responde à senha do usuário ou à passphrase da chave; fica no keychain (usuário `<id>:ssh`) e chega ao `ssh` pelo ambiente do processo (`SSH_ASKPASS`, OpenSSH 8.4 ou mais novo), nunca pela linha de comando. Vale o `~/.ssh/config` (aliases, `ProxyJump`, `User`, `IdentityFile`); um host desconhecido entra no `known_hosts` na primeira vez, e uma chave de host trocada é recusada. Se falhar, a mensagem do `ssh` aparece no erro; confira com `ssh -N -L 15432:host:porta bastion` no terminal.
-- **Senha ou usuário recusados:** a senha salva fica no keychain; ao editar, deixe o campo vazio para manter a salva ou digite outra.
-- **TLS:** "Exigir" recusa servidores sem TLS; "Exigir e verificar certificado" precisa do certificado CA quando ele não é público.
-- **MongoDB por URI:** a URI inteira (`mongodb://` ou `mongodb+srv://`) é o segredo; TLS e autenticação vêm dela.
-- **Keychain indisponível (Linux sem Secret Service):** a conexão é salva, mas a senha não; o app avisa e nunca grava a senha em texto puro.
+O diagrama ER é desenhado com [React Flow](https://reactflow.dev) (licença MIT); o crédito fica aqui, não no canto do diagrama.

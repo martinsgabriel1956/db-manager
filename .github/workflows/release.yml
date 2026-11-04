@@ -39,7 +39,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "::error::secret TAURI_SIGNING_PRIVATE_KEY ausente: veja a seção Release do README"
+            echo "::error::secret TAURI_SIGNING_PRIVATE_KEY ausente: veja docs/release.md"
             exit 1
           fi
 
