@@ -21,7 +21,7 @@ pnpm tauri signer generate -w ~/.tauri/ordo.key
 O comando pede uma senha e grava `~/.tauri/ordo.key` (privada) e `~/.tauri/ordo.key.pub` (pública). Depois:
 
 1. Em **Settings → Secrets and variables → Actions** do repositório, crie `TAURI_SIGNING_PRIVATE_KEY` com o conteúdo de `~/.tauri/ordo.key` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` com a senha.
-2. A pública atual (id `90B7C4B184F0ED9A`) já está no `tauri.conf.json`; com um par novo, cole ali o conteúdo de `~/.tauri/ordo.key.pub` e faça o commit.
+2. A pública atual (id `EE6C26112499653C`) já está no `tauri.conf.json`; com um par novo, cole ali o conteúdo de `~/.tauri/ordo.key.pub` e faça o commit.
 3. Guarde a chave privada e a senha num cofre: sem elas, as versões já instaladas não aceitam mais nenhuma atualização (trocar a chave obriga cada usuário a baixar a próxima versão à mão).
 
 Sem o secret, o workflow falha antes de compilar.
