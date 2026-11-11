@@ -141,3 +141,7 @@ Dados e credenciais em [dev/demo](dev/demo) (descartáveis, só local).
 ## Créditos
 
 O diagrama ER é desenhado com [React Flow](https://reactflow.dev) (licença MIT); o crédito fica aqui, não no canto do diagrama.
+
+## Licença
+
+[MIT](LICENSE).

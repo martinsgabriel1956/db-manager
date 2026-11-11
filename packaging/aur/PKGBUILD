@@ -3,12 +3,12 @@
 # Built from source without a bundle, so the in-app updater only points to the release
 # page and pacman does the updating (src-tauri/src/commands/update.rs).
 pkgname=ordo-db
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="Desktop client for Postgres, MySQL, SQLite, MongoDB and Redis"
 arch=('x86_64')
 url="https://github.com/martinsgabriel1956/db-manager"
-license=('unknown')
+license=('MIT')
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'librsvg' 'dbus')
 makedepends=('rust' 'nodejs' 'pnpm')
 optdepends=(
@@ -16,8 +16,11 @@ optdepends=(
   'postgresql: backup e restauração do PostgreSQL (pg_dump, pg_restore, psql)'
   'mariadb-clients: backup e restauração do MySQL (mysqldump, mysql; com TLS o cliente MariaDB recusa --ssl-mode)'
 )
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('51295b84affa2bd547d56f248abcb21cb586e078e0aba00b7176f3b3730eb78b')
+# LICENSE sits next to the PKGBUILD: tags up to v0.4.0 do not carry it
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        "LICENSE")
+sha256sums=('b3cde23ecfaacc4b0137ba66270f9f6fa49fead8e8c434b2c096f4feb41f34cc'
+            '18ff28efdc53a5a451d971e02ff34b6f3755247e0e97f8ad8a031261a6b8e4ef')
 
 prepare() {
   cd "db-manager-$pkgver"
@@ -33,6 +36,7 @@ build() {
 package() {
   cd "db-manager-$pkgver/src-tauri"
   install -Dm755 target/release/ordo "$pkgdir/usr/bin/ordo-db"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/ordo-db.png"
   install -Dm644 icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/ordo-db.png"
   install -Dm644 icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/ordo-db.png"
