@@ -32,4 +32,20 @@ Para testar os pacotes dos três sistemas, rode o workflow à mão: `gh workflow
 
 ## AUR
 
-O pacote `ordo-db` ([packaging/aur/PKGBUILD](../packaging/aur/PKGBUILD)) compila do código da tag. A cada release, atualize `pkgver` e `sha256sums` (`updpkgsums`), gere o `.SRCINFO` com `makepkg --printsrcinfo > .SRCINFO` e faça o push dos dois arquivos no repositório `ssh://aur@aur.archlinux.org/ordo-db.git`.
+O pacote `ordo-db` ([packaging/aur/PKGBUILD](../packaging/aur/PKGBUILD)) compila do código da tag. O `LICENSE` vai ao lado do PKGBUILD, porque as tags até a v0.4.0 não o trazem. A cada release, atualize `pkgver` e `sha256sums` (`updpkgsums`), gere o `.SRCINFO` e faça o push de `PKGBUILD`, `.SRCINFO` e `LICENSE` no repositório `ssh://aur@aur.archlinux.org/ordo-db.git`:
+
+```bash
+git clone ssh://aur@aur.archlinux.org/ordo-db.git ../ordo-db-aur
+cp -L packaging/aur/PKGBUILD packaging/aur/LICENSE ../ordo-db-aur/
+cd ../ordo-db-aur
+makepkg --printsrcinfo > .SRCINFO
+git add PKGBUILD .SRCINFO LICENSE
+git commit -m "ordo-db <versão>"
+git push
+```
+
+Fora do Arch, troque o `makepkg` por um contêiner (o `makepkg` não roda como root):
+
+```bash
+docker run --rm -u "$(id -u)" -e HOME=/tmp -v "$PWD":/pkg -w /pkg archlinux makepkg --printsrcinfo > .SRCINFO
+```
